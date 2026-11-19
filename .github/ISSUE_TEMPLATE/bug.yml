@@ -1,0 +1,30 @@
+name: Bug report
+description: Something in the Skin Editor is broken or looks wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting. Please do not attach Hytale game files; a screenshot of the editor is fine.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where?
+      options: [Connecting game files, Editor, Wardrobe, Animations, Players, Something else]
+    validations:
+      required: true
+  - type: input
+    id: skin
+    attributes:
+      label: Which cosmetic or animation? (if it is about one)
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Details from the site
+      description: Filled in for you when you come from the Feedback tab. It holds the site version, your game-file date and your browser, nothing personal.

@@ -1,0 +1,17 @@
+name: Feature request
+description: Suggest something the Skin Editor should do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: Search the open requests first and add a thumbs-up to one that matches; the most wanted get built first.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What would it let you do?
