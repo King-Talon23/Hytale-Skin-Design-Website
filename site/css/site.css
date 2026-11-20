@@ -332,3 +332,5 @@ footer { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wr
 input.hex { width: 84px; font: 600 12px ui-monospace, Consolas, monospace; background: #0d1826; border: 1px solid var(--line); border-radius: 3px; padding: 4px 6px; min-height: 0; color: #dce8eb; }
 
 .detail.trying b { color: var(--gold); font-style: italic; }
+
+.howto { margin: 0 0 10px; padding-left: 18px; color: #c5d6e2; } .howto li { margin: 0 0 6px; } .howto b { color: var(--gold); }

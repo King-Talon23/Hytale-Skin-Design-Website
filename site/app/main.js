@@ -512,7 +512,12 @@ function panelLookup() {
 function panelHelp() {
   const sec = (t, ...ps) => [el('h3', { text: t }), ...ps.map(p => typeof p === 'string' ? el('p', { text: p }) : p)];
   const backupFile = el('input', { type: 'file', accept: '.json,application/json', hidden: true, onchange: guard(async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const r = await store.importAll(await readJsonFile(f, 40_000_000)); await reloadAssets(); await refreshWard(); say(`Restored ${r.added} skin${r.added === 1 ? '' : 's'}${r.skipped ? `, ${r.skipped} did not fit` : ''}`); }) });
+  const steps = [['Wardrobe', 'pick a slot like Haircut or Capes, then click items to try them on. Changes save themselves.'], ['Locker', 'all your skins. Load one, rename it, put it in an in-game slot, or publish it once you sign in.'],
+    ['Animations', "play the game's own moves on your skin. Click the tab again to stop."], ['Creator', 'make your own pieces. Start from any game item, paint it, and it shows up under Custom in the Wardrobe.'],
+    ['Players', "look up someone by username to see what they're wearing and what they've published."]];
   return [head('Help'), el('div', { class: 'pbody prose' },
+    sec('How it works', el('ul', { class: 'howto' }, steps.map(([t, d]) => el('li', {}, el('b', { text: t + ' ' }), d))),
+      'Drag the character to turn it, scroll to zoom. Front puts the camera back.'),
     sec('Game files', META ? `Connected: ${META.name}, ${META.files} character files, read on ${new Date(META.at).toLocaleDateString()}.` : 'Not connected yet.',
       el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Connect again', onclick: showConnect }),
         el('button', { class: 'btn danger', text: 'Forget game files', onclick: guard(async () => { if (!await confirmBox('Forget game files', 'Removes the copy of your game files from this browser. Your saved skins stay.', 'Forget', true)) return; await game.forget(); R = null; pics.clear(); fig.clearCache(); showConnect(); }) }))),
