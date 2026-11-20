@@ -6,10 +6,11 @@ import { ensure, json } from '../../lib/api.js';
 const NAME = /^[A-Za-z0-9_.-]{3,40}$/;
 
 export async function onRequestPost({ request, env }) {
-  if (!env.KOFI_TOKEN || !env.DB) return json({ error: 'off' }, 503);
+  const KEY = env.KOFI_TOKEN || env['Ko-Fi'];   // the dashboard secret is named "Ko-Fi"
+  if (!KEY || !env.DB) return json({ error: 'off' }, 503);
   const t = await request.text(); if (t.length > 16384) return json({ error: 'too big' }, 413);
   let d = null; try { d = JSON.parse(new URLSearchParams(t).get('data') || 'null'); } catch { /* not Ko-fi */ }
-  const tok = String(d && d.verification_token || ''), want = String(env.KOFI_TOKEN);
+  const tok = String(d && d.verification_token || ''), want = String(KEY);
   let diff = tok.length ^ want.length; for (let i = 0; i < Math.min(tok.length, want.length); i++) diff |= tok.charCodeAt(i) ^ want.charCodeAt(i);
   if (!d || diff) return json({ error: 'not allowed' }, 403);
   // only an explicit name counts ("Hytale: Name", or a message that is just the name), so ordinary words never become badges
