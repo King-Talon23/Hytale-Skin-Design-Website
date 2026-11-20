@@ -145,9 +145,11 @@ main { min-height: 0; }
 
 /* animations */
 .now { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } .now b { flex: 1; font: 700 16px var(--h); }
-.animlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 5px; }
-.animlist button { text-align: left; background: #14243a; border: 1px solid var(--line); border-radius: 3px; padding: 7px 10px; font-size: 13.5px; }
-.animlist button:hover { border-color: var(--line2); } .animlist button.on { border-color: var(--gold); color: var(--gold); }
+.animlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.animlist button { display: flex; flex-direction: column; padding: 0; background: linear-gradient(#2a4160, #1a2c45); border: 2px solid #22364f; border-radius: 3px; overflow: hidden; font-size: 12px; }
+.animlist img { width: 100%; aspect-ratio: 1; image-rendering: pixelated; display: block; }
+.animlist span { padding: 4px 4px 5px; background: #0d1826; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.animlist button:hover { border-color: var(--line2); } .animlist button.on { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 10px #f4c45255; }
 .prose p { margin: 0 0 10px; color: #c5d6e2; max-width: 62ch; }
 
 /* dialog, drop, footer */

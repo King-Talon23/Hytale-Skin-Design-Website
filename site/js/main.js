@@ -99,6 +99,10 @@ function itemThumb(f, it, color, variant) {
   const frame = HEADF.has(f) ? 'head' : LEGF.has(f) ? 'legs' : f === 'bodyCharacteristic' || f === 'skinFeature' ? 'body' : 'torso';
   return lazyImg('i|' + f + '|' + BASE.map(k => s[k]).join('|') + '|' + s[f], async () => fig.snapshot(await fig.build(s, R), frame, f === 'cape'));
 }
+// an animation's picture: the current skin caught part-way through the move
+function animThumb(g, n) { const s = R.fit(cur.skin);
+  return lazyImg('a|' + g + '|' + n + '|' + JSON.stringify(s), async () => { const [root, a] = await Promise.all([fig.build(s, R), fig.loadAnim(g, n)]);
+    const an = new fig.Animator(); an.setFigure(root); an.set(a); an.t = an.duration * 0.45; an.apply(); return fig.snapshot(root, 'full'); }); }
 const portrait = skin => { const s = R.fit(skin); return lazyImg('p|' + JSON.stringify(s), async () => fig.snapshot(await fig.build(s, R), 'full')); };
 
 // ---------------------------------------------------------------- panels
@@ -179,15 +183,14 @@ async function playAnim(g, n, speed = 1) { try { const a = await fig.loadAnim(g,
 let animGroup = 'Emote';
 function panelAnimations() {
   const groups = Object.keys(CAT.anims).sort((a, b) => (ORDER.indexOf(a) + 99) % 99 - (ORDER.indexOf(b) + 99) % 99 || a.localeCompare(b)); if (!groups.includes(animGroup)) animGroup = groups[0];
-  const A = st.anim, speed = el('input', { type: 'range', min: 0.25, max: 2, step: 0.05, value: A.speed, oninput: e => { A.speed = +e.target.value; lab.textContent = `Speed ${A.speed.toFixed(2)}×`; } }), lab = el('label', { text: `Speed ${A.speed.toFixed(2)}×` });
+  const A = st.anim;
   return [head('Animations'), el('div', { class: 'pbody' },
     el('p', { class: 'note', text: 'See how the skin moves. These are the game\'s own player animations, read from your game files.' }),
     el('div', { class: 'now' }, el('b', { text: A.anim ? nice(playing.name) : 'Rest pose' }),
       el('button', { class: 'btn ghost', text: A.playing ? 'Pause' : 'Play', onclick: () => { A.playing = !A.playing; render(); } }),
       el('button', { class: 'btn ghost', text: 'Rest pose', onclick: () => { A.set(null); render(); } })),
-    lab, speed,
     el('div', { class: 'options' }, groups.map(g => el('button', { class: 'chip' + (g === animGroup ? ' on' : ''), text: nice(g), onclick: () => { animGroup = g; render(); } }))),
-    el('div', { class: 'animlist' }, (CAT.anims[animGroup] || []).map(n => el('button', { class: A.anim && playing.group === animGroup && playing.name === n ? 'on' : '', text: nice(n), onclick: () => playAnim(animGroup, n) }))))];
+    el('div', { class: 'animlist' }, (CAT.anims[animGroup] || []).map(n => el('button', { class: A.anim && playing.group === animGroup && playing.name === n ? 'on' : '', title: nice(n), onclick: () => playAnim(animGroup, n) }, animThumb(animGroup, n), el('span', { text: nice(n) })))))];
 }
 
 // other players' skins
