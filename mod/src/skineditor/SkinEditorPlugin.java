@@ -78,6 +78,12 @@ public final class SkinEditorPlugin extends JavaPlugin {
         super(init);
         // the live pack must be a valid pack before the server loads asset packs (after plugins are found, before setup)
         try { locate(); ensureLivePack(); } catch (Throwable ignored) { }
+        // a world only loads packs it was told about (single-player worlds start with "default mods enabled" off), so the live pack is
+        // switched on here, unless the player turned it off themselves
+        try { var cfg = com.hypixel.hytale.server.core.HytaleServer.get().getConfig().getModConfig();
+            var id = new com.hypixel.hytale.common.plugin.PluginIdentifier("SkinEditorPack", "Live"); var mc = cfg.get(id);
+            if (mc == null || mc.getEnabled() == null) { if (mc == null) mc = new com.hypixel.hytale.server.core.config.ModConfig(); mc.setEnabled(true); cfg.put(id, mc); }
+        } catch (Throwable e) { System.err.println("[SkinEditor] could not switch the live pack on: " + e); }
     }
 
     @Override
@@ -181,8 +187,9 @@ public final class SkinEditorPlugin extends JavaPlugin {
         Path live = modsDir.resolve(LIVE);
         Files.createDirectories(live.resolve("Common").resolve("Characters").resolve("SkinEditor")); Files.createDirectories(live.resolve("Server").resolve("SkinEditor"));
         Path m = live.resolve("manifest.json");
-        if (!Files.isRegularFile(m)) Files.writeString(m, "{\n \"Group\": \"SkinEditorPack\",\n \"Name\": \"Live\",\n \"Version\": \"1.0.0\",\n"
-            + " \"Description\": \"Kept up to date by the Skin Editor mod from your skins folder. Do not edit.\",\n \"Authors\": [{ \"Name\": \"Skin Editor\" }],\n \"ServerVersion\": \"*\"\n}\n");
+        // "DisabledByDefault": false: a pack that appears after the world was made is otherwise skipped as disabled (fresh installs)
+        if (!Files.isRegularFile(m) || !Files.readString(m).contains("DisabledByDefault")) Files.writeString(m, "{\n \"Group\": \"SkinEditorPack\",\n \"Name\": \"Live\",\n \"Version\": \"1.0.0\",\n"
+            + " \"Description\": \"Kept up to date by the Skin Editor mod from your skins folder. Do not edit.\",\n \"Authors\": [{ \"Name\": \"Skin Editor\" }],\n \"ServerVersion\": \"*\",\n \"DisabledByDefault\": false\n}\n");
     }
 
     /** copies "<skins folder>/Custom assets" into the live pack; each texture is named after its content, so a repaint is a new file */

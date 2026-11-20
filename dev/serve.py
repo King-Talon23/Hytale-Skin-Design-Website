@@ -2,6 +2,7 @@
 Assets.zip at /__assets.zip with Range support so the editor can be tested without a file dialog (open /?devzip).
 Usage: python dev/serve.py [port]"""
 import os, re, sys, mimetypes
+from urllib.parse import unquote
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 DEV = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.join(os.path.dirname(DEV), 'site')
 ZIP = os.path.join(os.environ.get('APPDATA', ''), 'Hytale', 'install', 'release', 'package', 'game', 'latest', 'Assets.zip')
@@ -28,6 +29,12 @@ class H(BaseHTTPRequestHandler):
         elif not full.startswith(ROOT + os.sep) or not os.path.isfile(full): return self.out(404, b'not found', 'text/plain')
         self.out(200, open(full, 'rb').read(), mimetypes.guess_type(full)[0] or 'application/octet-stream')
     do_HEAD = do_GET
+    def do_POST(self):   # dev only: POST /__save/<name> writes the body into $DEV_SAVE_DIR (to pull test data out of the browser)
+        out = os.environ.get('DEV_SAVE_DIR'); name = os.path.basename(unquote(self.path.split('?')[0][len('/__save/'):]))
+        if not out or not self.path.startswith('/__save/') or not re.fullmatch(r'[\w .()-]{1,120}', name): return self.out(404, b'not found', 'text/plain')
+        n = int(self.headers.get('Content-Length', '0'))
+        with open(os.path.join(out, name), 'wb') as f: f.write(self.rfile.read(n))
+        self.out(200, b'saved', 'text/plain')
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8766
     print(f'http://localhost:{port}/?devzip', flush=True); ThreadingHTTPServer(('127.0.0.1', port), H).serve_forever()
