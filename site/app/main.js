@@ -543,6 +543,16 @@ async function closeAsset(quiet) {
   if (!quiet) { playAnim('Default', 'Idle', 0.5); rebuild(); render(); }
 }
 // painting: the same strokes whether the pointer is on the flat texture or on the 3D model
+const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+function sharersOf(node) { const mine = ED.rects.filter(r => r.node === node); return [...new Set(ED.rects.filter(r => r.node !== node && mine.some(m => overlaps(m, r))).map(r => r.node))]; }
+async function colourPart(node) {
+  const others = sharersOf(node);
+  if (others.length) { await editModel(); const k = boxesOf(ED.model).findIndex(b => b.node.name === node);
+    if (k >= 0) { ED.box = k; if (!ownArea(true)) return say('This part shares its paint and the texture is full, so it can’t be coloured on its own.', true); } }
+  tintAll(ED.painter.color, node);
+  if (others.length) say(`${partName(node)} got paint of its own (it shared it with ${others.map(partName).join(', ')}) and is now this colour.`);
+}
+const partName = n => { const b = ED.model && boxesOf(ED.model).find(x => x.node.name === n); return b ? boxLabel(b.node) : n.replace(/^L-/, 'Left ').replace(/^R-/, 'Right ').replace(/[-_]+/g, ' '); };
 function partAt(e, onModel, toPixel) {   // the box under the pointer: on the model by its mesh, on the texture by the area it owns
   if (onModel) { const m = st.pickMesh(e.clientX, e.clientY, o => o.material?.map?.image === ED.canvas); return m ? m.userData.nodeName : null; }
   const p = toPixel(e); if (!p) return null; const hit = ED.rects.filter(q => p.x >= q.x && p.x < q.x + q.w && p.y >= q.y && p.y < q.y + q.h).sort((a, b) => a.w * a.h - b.w * b.h)[0]; return hit ? hit.node : null;
@@ -566,7 +576,7 @@ function bindPaint(target, toPixel, reach, onModel) { let down = false, last = n
     else pts = outline(a, cur);
     ED.painter.trace(pts.map(q => q && at(q.x, q.y)), reach); };
   target.addEventListener('pointerdown', e => { if (!ED || e.button !== 0 || (!onModel && (ED.painter.tool === 'select' || ED.mode === 'shape'))) return;
-    if (ED.painter.tool === 'part' && ED.mode !== 'shape') { const node = partAt(e, onModel, toPixel); if (node) { e.preventDefault(); tintAll(ED.painter.color, node); return; } if (!onModel) return; }
+    if (ED.painter.tool === 'part' && ED.mode !== 'shape') { const node = partAt(e, onModel, toPixel); if (node) { e.preventDefault(); colourPart(node).catch(err => say(err.message, true)); return; } if (!onModel) return; }
     const p = onModel && (ED.painter.tool === 'select' || ED.painter.tool === 'part') ? null : toPixel(e);
     if (!p) { if (onModel && !st.gizmoBusy() && !(ED.mode === 'shape' && st.pickMesh(e.clientX, e.clientY, o => o.material?.map?.image === ED.canvas))) turnDrag(e); return; } e.preventDefault(); try { target.setPointerCapture(e.pointerId); } catch { /* fine */ }
     down = true; last = p; lastC = startC = { x: e.clientX, y: e.clientY }; ED.painter.begin();
@@ -670,11 +680,14 @@ function anyItem() {   // or start from any free item in the game, worn or not
   const slots = game.FIELDS.filter(f => CAT.items[f].some(e => !e.custom && tierOf(e) === 0)), slot = el('select', { title: 'Slot' }, slots.map(f => el('option', { value: f, text: LABEL[f] })));
   const ok = e => !e.custom && tierOf(e) === 0 && !/^\s*\[?tmp\]?/i.test(itemName(e)) && !/(^|_)tmp(_|$)/i.test(e.Id);
   const item = el('select', { title: 'Item' }), find_ = el('input', { type: 'search', placeholder: 'Search', class: 'anysearch' }), pic = el('div', { class: 'pic anypic' });
-  const show = () => { const e = CAT.items[slot.value].find(x => x.Id === item.value); pic.replaceChildren(e ? itemThumb(slot.value, e) : ''); };
-  const fill = () => { const q = find_.value.trim().toLowerCase(); item.replaceChildren(...CAT.items[slot.value].filter(e => ok(e) && (!q || itemName(e).toLowerCase().includes(q))).map(e => [itemName(e), e]).sort((a, b) => a[0].localeCompare(b[0])).map(([n, e]) => el('option', { value: e.Id, text: n }))); show(); };
-  slot.value = slots.includes('overtop') ? 'overtop' : slots[0]; fill(); slot.onchange = () => { find_.value = ''; fill(); }; find_.oninput = fill; item.onchange = show;
+  const pick = () => { const [f, id] = item.value.split('|'); return [f, CAT.items[f]?.find(x => x.Id === id)]; };
+  const show = () => { const [f, e] = pick(); pic.replaceChildren(e ? itemThumb(f, e) : ''); };
+  const fill = () => { const q = find_.value.trim().toLowerCase(), from = q ? slots : [slot.value];   // a search looks in every slot
+    const list = from.flatMap(f => CAT.items[f].filter(e => ok(e) && (!q || itemName(e).toLowerCase().includes(q))).map(e => [itemName(e) + (q ? ` (${LABEL[f]})` : ''), f, e]));
+    item.replaceChildren(...(list.length ? list.sort((a, b) => a[0].localeCompare(b[0])).map(([n, f, e]) => el('option', { value: f + '|' + e.Id, text: n })) : [el('option', { value: '', text: 'Nothing found' })])); show(); };
+  slot.value = slots.includes(anyItem.slot) ? anyItem.slot : slots.includes('overtop') ? 'overtop' : slots[0]; fill(); slot.onchange = () => { anyItem.slot = slot.value; find_.value = ''; fill(); }; find_.oninput = fill; item.onchange = show;
   return [el('h3', { text: 'Or start from any item' }), el('div', { class: 'row anyitem' }, pic, el('div', { class: 'anycol' }, el('div', { class: 'row' }, slot, find_), item),
-    el('button', { class: 'btn primary', text: 'Edit a copy', onclick: () => { const e = CAT.items[slot.value].find(x => x.Id === item.value); if (e) newAsset(slot.value, R.partStr(e)); } }))];
+    el('button', { class: 'btn primary', text: 'Edit a copy', onclick: () => { const [f, e] = pick(); if (e) newAsset(f, R.partStr(e)); } }))];
 }
 function assetCard(a) {
   const act = (label, fn, cls) => el('button', { class: 'mini ' + (cls || ''), text: label, onclick: e => { e.stopPropagation(); fn(); } });
@@ -746,7 +759,7 @@ function undoEntry(e, redo) {
 function wsUndo(redo) {
   if (!ED) return; ED.float = null; const from = redo ? ED.fut : ED.hist, to = redo ? ED.hist : ED.fut, e = from.pop(); if (!e) return;
   ED.reshaped = false; to.push(undoEntry(e, redo)); if (ED.reshaped) shapeChanged();
-  render();
+  ED.palette = ED.painter.palette(); render();
 }
 function shapeEdit(fn) {   // with Symmetry on, the box's twin on the other side follows the change
   const before = JSON.stringify(ED.model), b0 = curBox(), tw = symTwin(); fn();
@@ -782,7 +795,7 @@ function tintAll(hex, node) {   // node: only that box's texture area
   P.write((d, W, H) => { let sum = 0, n = 0; for (let p = 0; p < W * H; p++) if (d[p * 4 + 3] && (!m || m[p])) { sum += lum(d, p * 4); n++; } if (!n) return;
     const avg = Math.max(1, sum / n);
     for (let p = 0; p < W * H; p++) { const i = p * 4; if (!d[i + 3] || (m && !m[p])) continue; const k = Math.min(1.8, Math.max(0.35, lum(d, i) / avg)); d[i] = Math.min(255, r0 * k); d[i + 1] = Math.min(255, g0 * k); d[i + 2] = Math.min(255, b0 * k); } });
-  ED.palette = P.palette(); render(); checkReplica(); say(node ? `${boxLabel(boxesOf(ED.model || { nodes: [] }).find(b => b.node.name === node)?.node || { name: node })} is now this colour.` : 'The whole item is now this colour. Ctrl+Z undoes it.');
+  ED.palette = P.palette(); render(); checkReplica(); say(node ? `${partName(node)} is now this colour.` : 'The whole item is now this colour. Ctrl+Z undoes it.');
 }
 function paintSide() {
   const P = ED.painter, adj = { h: 0, s: 0, l: 0 };
@@ -795,6 +808,9 @@ function paintSide() {
   const endAdjust = keep => { if (!keep) adj.h = adj.s = adj.l = 0; P.adjust(adj.h, adj.s / 100, adj.l / 100, true); ED.palette = P.palette(); render(); if (keep) checkReplica(); };
   const toggle = (text, on, fn, title) => el('button', { class: 'chip' + (on ? ' on' : ''), text: `${text}: ${on ? 'on' : 'off'}`, title, onclick: fn });
   const chip = (text, fn, key, off) => el('button', { class: 'chip', text, title: key || '', disabled: !!off, onclick: () => { fn(); render(); } });
+  if (ED.adjOpen) return [el('div', { class: 'wshead', text: 'Fine-tune colours of the whole item' }), el('p', { class: 'dim small', text: 'Type a number for exact steps. Keep saves it, Cancel puts it back.' }),
+    adjRow('h', 'Hue', -180, 180), adjRow('s', 'Saturation', -100, 100), adjRow('l', 'Brightness', -100, 100),
+    el('div', { class: 'row' }, el('button', { class: 'btn primary', text: 'Keep', onclick: () => { ED.adjOpen = false; endAdjust(true); } }), el('button', { class: 'btn ghost', text: 'Cancel', onclick: () => { ED.adjOpen = false; endAdjust(false); } }))];
   return [el('div', { class: 'wshead', text: 'Colour' }),
     el('div', { class: 'row' }, el('input', { type: 'color', value: P.color, title: 'Any colour', oninput: e => { P.color = e.target.value; }, onchange: e => useColour(e.target.value) }), el('code', { class: 'hex', text: P.color })),
     el('div', { class: 'swlabel', text: 'Basic' }), swatchRow(BASIC), el('div', { class: 'swlabel', text: 'In this item' }), swatchRow(ED.palette),
@@ -876,8 +892,11 @@ async function finishAsset() {
   const a = ED.asset; await closeAsset(); const linked = FOLDER.state === 'on';
   const text = linked ? (SHOWGAME ? 'It is on your character in your own worlds too, through the Skin Editor Sync mod.' : 'Turn on In game to wear it in your own Hytale worlds (needs the Skin Editor Sync mod).')
     : 'To wear it in Hytale, install the Skin Editor Sync mod and pick a skins folder in the Locker.';
-  const btns = [...(linked && !SHOWGAME ? [{ label: 'Show in game', value: 'game', primary: true }] : !linked ? [{ label: 'Set up in game', value: 'setup', primary: true }] : []),
-    { label: 'Keep editing', value: 'edit' }, { label: 'Make a copy', value: 'copy' }, { label: 'Back to my items', value: 'back' }];
+  const upd = cur.id && cur.name ? ` "${cur.name}" now wears it too.` : '';
+  if (store_.get('se_finished')) return say(`Saved. You are wearing ${a.name}.${upd}`);
+  store_.set('se_finished', '1');
+  const btns = [{ label: 'Back to my items', value: 'back', primary: true }, { label: 'Keep editing', value: 'edit' }, { label: 'Make a copy', value: 'copy' },
+    ...(linked && !SHOWGAME ? [{ label: 'Show in game', value: 'game' }] : !linked ? [{ label: 'Set up in game', value: 'setup' }] : [])];
   const unsaved = !cur.id || dirty;
   const big = el('img', { alt: '', draggable: false }); fig.build(R.fit(cur.skin), R).then(root => { big.src = fig.snapshot(root, 'full', false, 256); }).catch(() => {});   // drawn now, not behind the thumbnail queue
   const v = await ask('You are wearing it', [el('div', { class: 'finishpic' }, big), el('p', { text }),
@@ -923,7 +942,7 @@ function shapeSide() {
       return el('button', { class: k === i ? 'on' : '', text: name + nth, title: 'Double-click to rename', onclick: () => { ED.box = k; render(); placeGizmo(); }, ondblclick: e => renameBox(e.currentTarget, x.node),
         onmouseenter: () => st.highlight(o => o.material?.map?.image === ED.canvas && o.userData.nodeName === x.node.name), onmouseleave: () => outlineBox() }); })),
     el('div', { class: 'options' }, ...[['Add box', () => addBox('add'), 'A: a new 4-block box in the brush colour'], ['Duplicate', () => addBox('dup'), 'Ctrl+D'], ['Mirror copy', () => addBox('mirror'), 'M: a copy on the other side, paint flipped'],
-      ['Own paint', ownArea, 'Give this box its own room on the texture'], ['Delete', delBox, 'Del']].map(([t, fn, k]) => el('button', { class: 'chip', text: t, title: k, onclick: fn }))),
+      ['Own paint', () => ownArea(), 'Give this box its own room on the texture, so painting it no longer paints other parts'], ['Delete', delBox, 'Del']].map(([t, fn, k]) => el('button', { class: 'chip', text: t, title: k, onclick: fn }))),
     el('div', { class: 'options' }, el('button', { class: 'chip' + (ED.sym ? ' on' : ''), text: `Symmetry: ${ED.sym ? 'on' : 'off'}`, title: 'Changes to a box also change its twin on the other side',
       onclick: () => { ED.sym = !ED.sym; render(); } }), ED.sym ? el('small', { class: 'dim', text: twinOf(b) ? 'Twin: ' + twinOf(b).name : 'No twin for this box' }) : null),
     el('div', { class: 'wshead', text: boxLabel(b.node) }),
@@ -970,7 +989,7 @@ function renderWorkspace() {
     ].filter(Boolean));
   $('wsright').replaceChildren(...(mode === 'paint' ? paintSide() : shapeSide()).flat(Infinity).filter(Boolean));
   viewHint();
-  $('viewbtns').replaceChildren(...[['front', 'Front', '1'], ['side', 'Side', '3'], ['top', 'Top', '7'], ['persp', 'Persp', '5']].map(([v, t, k]) => el('button', { text: t, title: `${t} view (${k})`, onclick: () => { st.setView(v); st.frameOn(ED.canvas); } })), animPicker(),
+  $('viewbtns').replaceChildren(...[['front', 'Front', '1'], ['back', 'Back', '2'], ['side', 'Side', '3'], ['top', 'Top', '7'], ['persp', 'Persp', '5']].map(([v, t, k]) => el('button', { text: t, title: `${t} view (${k})`, onclick: () => { st.setView(v); st.frameOn(ED.canvas); } })), animPicker(),
     el('button', { class: ED.iso ? 'on' : '', text: ED.iso ? 'Item only' : 'Whole body', title: 'Show only the item you are editing, or the whole character', onclick: () => { ED.iso = !ED.iso; st.isolate(ED.iso ? ED.canvas : null); render(); } }));
   const b = mode === 'shape' ? curBox() : null;
   $('wsstatus').textContent = mode === 'paint'
@@ -992,7 +1011,7 @@ addEventListener('keydown', e => {
   else if (ED.mode !== 'shape' && (k === 'delete' || k === 'backspace') && ED.sel && !ED.float) clearSel();
   else if ((k === 'delete' || k === 'x') && ED.mode === 'shape' && !ctrl) delBox();
   else if (k === 'tab') setMode(ED.mode === 'shape' ? 'paint' : 'shape');
-  else if (['1', '3', '7', '5'].includes(k) && !ctrl) { st.setView({ 1: 'front', 3: 'side', 7: 'top', 5: 'persp' }[k]); st.frameOn(ED.canvas); }
+  else if (['1', '2', '3', '7', '5'].includes(k) && !ctrl) { st.setView({ 1: 'front', 2: 'back', 3: 'side', 7: 'top', 5: 'persp' }[k]); st.frameOn(ED.canvas); }
   else if (!ctrl && !e.altKey) { const t = (ED.mode === 'shape' ? SHAPE_TOOLS : PAINT_TOOLS).find(x => x[2] && x[2].toLowerCase() === k); if (t) pickTool(t[0]); else done = false; }
   else done = false;
   if (done) { e.preventDefault(); e.stopImmediatePropagation(); }
@@ -1094,10 +1113,11 @@ function addBox(kind = 'dup') {   // 'dup' a copy, 'mirror' a copy on the other 
   if (paint) { ED.painter.write(paint); ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); render(); if (kind === 'add') say('New box added on the front, outlined in gold. Move it with the Move tool (G) or the Position numbers.'); }
   else say('The texture has no free room left, so the new box shares paint with the box it came from.', true);
 }
-function ownArea() {   // move the selected box's paint to free room of its own, so it no longer shares texels with other boxes
-  const b = curBox(); if (!b) return; const sh = b.node.shape, old = structuredClone(sh.textureLayout || {}), lay = allocLayout(sh);
-  if (!lay) return say('The texture has no free room left for this box.', true);
+function ownArea(quiet) {   // move the selected box's paint to free room of its own, so it no longer shares texels with other boxes
+  const b = curBox(); if (!b) return false; const sh = b.node.shape, old = structuredClone(sh.textureLayout || {}), lay = allocLayout(sh) || (growTexture() ? allocLayout(sh) : null);
+  if (!lay) { if (!quiet) say('The texture is as big as it can be and has no free room left for this box.', true); return false; }
   shapeEdit(() => { sh.textureLayout = lay; }); ED.painter.write(paintFaces(sh, lay, old, false, null)); ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); render();
+  if (!quiet) say(`${boxLabel(b.node)} has its own paint now: painting it no longer paints other parts.`); return true;
 }
 // ---- a move playing while you work (paused while a gizmo is out, so the handles stay on the box)
 function animChoices() { const have = k => { const [g, n] = k.split('/'); return (CAT.anims[g] || []).includes(n); };
