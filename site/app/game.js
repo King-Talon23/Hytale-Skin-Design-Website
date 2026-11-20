@@ -3,6 +3,7 @@
 // hosted by, or uploaded to, the website.
 import { openZip, fileSource } from './zip.js';
 import * as db from './db.js';
+import { SCENE_FILES } from './scene-data.js';
 
 const EXT = /\.(png|json|blockymodel|blockyanim|lang)$/;
 const LANG = 'Common/Languages/en-US/avatarCustomization/';
@@ -15,16 +16,12 @@ export const PROPS = {
   potion: ['Items/Consumables/Potions/Potion.blockymodel', 'Items/Consumables/Potions/Potion_Textures/Pink.png'], block: [null, 'BlockTextures/Rock_Stone.png'] };   // a block is a plain cube with this texture
 // textures for the scenery some moves need (a chair to sit on, a bed, water)
 export const SCENERY_TEX = { wood: 'BlockTextures/Wood_Softwood_Planks_Top.png', water: 'BlockTextures/Fluid_Water.png', stone: 'BlockTextures/Rock_Stone.png' };
-// backgrounds behind the character, made from the game's own files: the sky and fog colours of a zone's weather at noon,
-// and the ground blocks of that zone (tint: the biome file whose grass colour tints a greyscale texture)
-export const BACKDROPS = {
-  meadow: { name: 'Meadow', weather: 'Server/Weathers/Zone1/Zone1_Sunny.json', ground: ['Common/BlockTextures/Soil_Grass_GS.png', 'Common/BlockTextures/Soil_Grass_GS_02.png'], tint: 'Server/HytaleGenerator/Biomes/Plains1/Plains1_Oak.json' },
-  desert: { name: 'Desert', weather: 'Server/Weathers/Zone2/Zone2_Sunny.json', ground: ['Common/BlockTextures/Soil_Sand.png'] },
-  tundra: { name: 'Snow', weather: 'Server/Weathers/Zone3/Zone3_Cloudy_Light.json', ground: ['Common/BlockTextures/Soil_Snow.png'] } };
+// backgrounds behind the character and the set pieces of the moves: built from the game's own files (see scene-data.js)
+export { SCENES, SET_PIECES } from './scene-data.js';
 // which set of files a connect reads; raised when the site starts needing more, so a remembered Assets.zip is read again
-export const FILES_V = 2;
+export const FILES_V = 3;
 const PROP_FILES = new Set([...Object.values(PROPS).flat(), ...Object.values(SCENERY_TEX)].filter(Boolean).map(p => 'Common/' + p)
-  .concat(Object.values(BACKDROPS).flatMap(b => [b.weather, b.tint, ...b.ground]).filter(Boolean)));
+  .concat(SCENE_FILES));
 const wanted = n => EXT.test(n) && !n.includes('..') && (PROP_FILES.has(n) ||
   n.startsWith('Cosmetics/CharacterCreator/') || n.startsWith(LANG) || n.startsWith('Common/Cosmetics/') || n.startsWith('Common/TintGradients/') ||
   (n.startsWith('Common/Characters/') && !n.includes('/Animations/Items/') && !n.endsWith('_FPS.blockyanim')) ||

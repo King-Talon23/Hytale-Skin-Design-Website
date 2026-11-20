@@ -90,7 +90,7 @@ async function startApp() {
   META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); SHOWGAME = !!(await db.get('meta', 'showInGame').catch(() => false));
   $('connect').hidden = true; $('app').hidden = false;
   if (!st) { st = fig.stage($('view'), OrbitControls);
-    st.onFacing(f => { const t = $('facing') || $('view').parentElement.appendChild(el('div', { id: 'facing', class: 'facing' })); t.textContent = 'Facing you: ' + f; }); bindPaint($('view'), e => ED && !ED.shapeOpen && ED.painter.tool !== 'select' ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true);
+    st.onMissing = () => say('Some of the game objects this move uses are not in your saved copy of the game files yet. Connect your Assets.zip again in Help to see them.', true); st.onFacing(f => { const t = $('facing') || $('view').parentElement.appendChild(el('div', { id: 'facing', class: 'facing' })); t.textContent = 'Facing you: ' + f; }); bindPaint($('view'), e => ED && !ED.shapeOpen && ED.painter.tool !== 'select' ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true);
     $('view').addEventListener('pointermove', e => { if (!ED) return; partHover(e); const p = ED.shapeOpen || ED.painter.tool === 'select' ? st.cursor(null) : st.cursor(e.clientX, e.clientY, ED.canvas, brushSize(), ED.mirror);
       ED.hover = p; ED.hoverM = p?.m || null; drawOvl(); });
     $('view').addEventListener('pointerleave', () => { if (!ED) return; st.cursor(null); ED.hover = ED.hoverM = null; drawOvl(); });
@@ -311,7 +311,7 @@ function panelPicker() {
 }
 // top-left of the stage: the background behind the character, and a clean view with the controls hidden (for a good look or a screenshot).
 // Studio is the site's own; the others are built from the player's game files, so they look the way those places look in the game at noon.
-const BACKDROPS = [['dark', 'Studio'], ...Object.entries(game.BACKDROPS).map(([k, b]) => [k, b.name])];
+const BACKDROPS = [['dark', 'Studio'], ...Object.entries(game.SCENES).map(([k, b]) => [k, b.name])];
 const hexIn = v => { const m = /#([0-9a-f]{6})/i.exec(String(v || '')); return m ? '#' + m[1].toLowerCase() : null; };
 function atNoon(keys) {   // a weather's colour keys [{Hour, Color}] at 12:00, blended between the keys either side (round midnight if need be)
   const ks = (Array.isArray(keys) ? keys : []).map(k => ({ h: +k.Hour, c: hexIn(k.Color) })).filter(k => k.c && Number.isFinite(k.h)).sort((x, y) => x.h - y.h); if (!ks.length) return null;
@@ -319,20 +319,16 @@ function atNoon(keys) {   // a weather's colour keys [{Hour, Color}] at 12:00, b
   if (hi.h === lo.h) return lo.c; const t = (12 - lo.h) / (hi.h - lo.h), A = hexRgb(lo.c), B = hexRgb(hi.c);
   return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join(''); }
 const BD_MADE = new Map();
-async function backdropSpec(key) {
-  if (BD_MADE.has(key)) return BD_MADE.get(key); const b = game.BACKDROPS[key], w = await game.json(b.weather);
-  const top = atNoon(w.SkyTopColors), fog = atNoon(w.FogColors) || top; if (!top) throw new Error('no sky colours in ' + b.weather);
-  const tint = b.tint ? hexIn((/"Color"\s*:\s*"(#[0-9a-fA-F]{6})"/.exec(JSON.stringify(await game.json(b.tint))) || [])[1]) : null;
-  const tiles = await Promise.all(b.ground.map(p => game.bitmap(p))), S = tiles[0].width, N = 16, c = el('canvas', { width: N * S, height: N * S }), x = c.getContext('2d');
-  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;   // the same block pattern every time
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) x.drawImage(tiles[Math.floor(rnd() * tiles.length)], i * S, j * S, S, S);
-  if (tint) { x.globalCompositeOperation = 'multiply'; x.fillStyle = tint; x.fillRect(0, 0, c.width, c.height); x.globalCompositeOperation = 'source-over'; }   // greyscale grass takes the biome's colour, as in the game
-  const spec = { top, fog, floor: c }; BD_MADE.set(key, spec); return spec; }
+async function backdropSpec(key) {   // the sky and fog colours of the zone's weather at noon, and the biome colour its grass takes
+  if (BD_MADE.has(key)) return BD_MADE.get(key); const sc = game.SCENES[key], w = await game.json(sc.weather);
+  const top = atNoon(w.SkyTopColors), fog = atNoon(w.FogColors) || top; if (!top) throw new Error('no sky colours in ' + sc.weather);
+  const tint = sc.tintFrom ? hexIn((/"Color"\s*:\s*"(#[0-9a-fA-F]{6})"/.exec(JSON.stringify(await game.json(sc.tintFrom))) || [])[1]) : null;
+  const spec = { sky: { top, fog }, sc, tint }; BD_MADE.set(key, spec); return spec; }
 let bdShown = null;
 async function showBackdrop(key) {
   if (!st || key === bdShown) return; bdShown = key;
   if (key === 'dark') return st.setBackdrop(null);
-  try { const spec = await backdropSpec(key); if (bdShown === key) st.setBackdrop(spec); }
+  try { const spec = await backdropSpec(key); if (bdShown === key) await st.setBackdrop(spec.sky, spec.sc, spec.tint); }
   catch (e) { console.warn('backdrop', e); bdShown = 'dark'; st.setBackdrop(null); store_.set('se_backdrop', 'dark'); drawStageBtns();
     say('This background needs a few more of your game files. Connect your Assets.zip again in Help and it will show.', true); } }
 function drawStageBtns() {
@@ -505,22 +501,29 @@ const HELD = { Glide: { '*': [['glider', 'R-Attachment']] },
 const heldBy = (g, n) => HELD[g]?.[n] || HELD[g]?.['*'] || [];
 // scenery for the moves that use something in the world, in model units (a block is 64; the figure faces +z, its pelvis rests at 51)
 const W = game.SCENERY_TEX;
-const CHAIR = [{ box: [30, 30, 30], at: [0, 15, 2], tex: W.wood }, { box: [30, 44, 6], at: [0, 52, -16], tex: W.wood }];   // seat top at 30: the sit moves drop the pelvis 45 and hang the lower legs
-const BED = [{ box: [44, 14, 132], at: [0, 7, -14], tex: W.wood, repeat: [1, 3] }, { box: [44, 3, 92], at: [0, 15.5, 6], color: 0x9b3b3b }, { box: [30, 7, 18], at: [0, 17.5, -64], color: 0xe8e2d4 }];   // lying moves drop the pelvis about 42, head towards -z
+// the game's own furniture (its village set and workbench, see scene-data.js), placed where the moves use them
+const CHAIR = [{ block: game.SET_PIECES.chair, at: [0, 0, 0], turn: 0 }];   // sit moves drop the pelvis 45 and hang the lower legs
+const BED = [{ block: game.SET_PIECES.bed, at: [-32, 0, -8], turn: 90 }];   // the headboard and pillow end towards -z   // lying moves drop the pelvis about 42, head towards -z
+const BENCH = [{ block: game.SET_PIECES.bench, at: [0, 0, 84], turn: 180 }];   // something to work at, in front of the hands
+const LADDERS = cols => [{ ladder: [cols, 7], at: [0, 0, -8] }];   // climbing faces +z: the rungs just in front of the hands, planks behind them
 const WATER = y => [{ plane: [900, 900], at: [0, y, 0], tex: W.water, repeat: [14, 14], color: 0x7fb2e6, opacity: 0.45 }];
 function sceneryFor(g, n) {
-  if (g === 'Flavor' && /^Sit2?$/.test(n)) return [CHAIR, 30];
-  if (g === 'Flavor' && /^Sleep/.test(n)) return [BED, 14];
+  if (g === 'Flavor' && /^Sit2?$/.test(n)) return [CHAIR, 32];   // the village chair's seat top
+  if (g === 'Flavor' && /^Sleep/.test(n)) return [BED, 50];   // on the mattress, under the blanket's top
+  if (g === 'Climb') return [LADDERS(/_(Left|Right)$/.test(n) ? 3 : 1), 0];   // one ladder up and down, a few side by side to climb across
+  if (g === 'Default' && n === 'Interact') return [BENCH, 0];
   if (g === 'Swim') return [WATER(/Dive|Sink/.test(n) ? 150 : 92), 0];
   // pulling up: the move starts about two blocks below and ends on top, so the figure stands that much higher on a stone block it climbs onto
   if (g === 'Mantle' && /^Mantle_Up/.test(n)) return [[{ box: [160, 126, 128], at: [0, 63, 26], tex: W.stone, repeat: [2.5, 2] }], 126];
   if (g === 'Mantle') return [[{ box: [160, 84, 64], at: [0, 42, 50], tex: W.stone, repeat: [2.5, 1.2] }], 0];   // hands resting on a chest-high ledge in front
   return [null, 0]; }
+// moves done facing something (a ladder, a workbench) are watched from behind, as in the game
+const facesAway = (g, n) => g === 'Climb' || (g === 'Default' && n === 'Interact');
 async function setProps(g, n) { const want = heldBy(g, n);
   const built = await Promise.all(want.map(async ([k, bone, shift]) => { try { const [model, tex] = game.PROPS[k]; return { root: model ? await fig.buildCreature({ model, tex }) : await fig.buildBlock(tex), bone, shift }; } catch (e) { console.warn(k, e.message); return null; } }));
   st.props(built.filter(Boolean)); if (built.some(b => !b)) say('Your saved copy of the game files is from before held items were added. Refresh it once in the Locker to see them (your skins are kept).', true); }
 // st.lift: tall moves aim the view higher, moves near the floor aim lower so they clear the buttons under the view
-async function playAnim(g, n, speed = 1, once = false) { clearTimeout(onceT); try { await setMount(g === 'Mount' ? mountKind : null, n); await setProps(g, n); st.lift(g === 'Glide' ? 165 : g === 'Mantle' && /^Mantle_Up/.test(n) ? 150 : g === 'Flavor' && /^(Sit_Ground|Sleep)/.test(n) ? 34 : 0); st.scenery(...sceneryFor(g, n)); st.wall(g === 'Climb' ? (/_Up$/.test(n) ? [0, 55] : /_Down$/.test(n) ? [0, -55] : /_Left$/.test(n) ? [45, 0] : /_Right$/.test(n) ? [-45, 0] : [0, 0]) : null); const a = await fig.loadAnim(g, n); st.hover(g === 'Fly' ? 44 : g === 'Glide' ? 60 : 0); playing = { group: g, name: n }; st.anim.set(a, speed);
+async function playAnim(g, n, speed = 1, once = false) { clearTimeout(onceT); try { await setMount(g === 'Mount' ? mountKind : null, n); await setProps(g, n); st.lift(g === 'Glide' ? 165 : g === 'Mantle' && /^Mantle_Up/.test(n) ? 150 : g === 'Flavor' && /^(Sit_Ground|Sleep)/.test(n) ? 34 : 0); st.scenery(...sceneryFor(g, n)); if (facesAway(g, n) && !facesAway(playing.group, playing.name)) st.behind(); st.wall(g === 'Climb' ? (/_Up$/.test(n) ? [0, 55] : /_Down$/.test(n) ? [0, -55] : /_Left$/.test(n) ? [45, 0] : /_Right$/.test(n) ? [-45, 0] : [0, 0]) : null); const a = await fig.loadAnim(g, n); st.hover(g === 'Fly' ? 44 : g === 'Glide' ? 60 : 0); playing = { group: g, name: n }; st.anim.set(a, speed);
     if (once) { const still = fig.motionOf(g, n) && st.anim.still, ms = still ? 1700 : (Math.max(1, a.duration || 60) / 60 / speed) * 1000 + (a.holdLastKeyframe ? 700 : 0) + 250;
       onceT = setTimeout(() => { if (playing.group === g && playing.name === n) playAnim('Default', 'Idle', 0.5); }, ms); } st.anim.setMove(fig.motionOf(g, n)); st.anim.playing = true; drawEmotes(); } catch (e) { say('That animation could not be loaded.', true); } if (tab === 'animations') render(); }
 let animGroup = 'Emote';

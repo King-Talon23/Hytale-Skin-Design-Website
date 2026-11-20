@@ -3,6 +3,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { TransformControls } from '../vendor/TransformControls.js';
 import * as game from './game.js';
 import { FIELDS } from './game.js';
+import { BLOCKS, SET_PIECES } from './scene-data.js';
 
 const cache = new Map(), once = (k, f) => cache.has(k) ? cache.get(k) : (cache.set(k, f()), cache.get(k));
 export const clearCache = () => cache.clear();
@@ -179,27 +180,83 @@ export class Animator {
 }
 export async function loadAnim(group, name) { return game.json(`Common/Characters/Animations/${group}/${name}.blockyanim`); }
 
+// ---- the game's blocks as meshes, drawn many at a time: a cube block's six faces, or a block model baked into one geometry
+const BLOCK = 64;   // one block in the figure's units (block models are made at 32 to a block, so they are doubled)
+const SHADE = 0.72;   // the scene's lights are set for the figure; scenery takes this much of them so a sunlit top shows the block's own colour
+const canvasOf = path => once('c:' + path, async () => { const i = await game.bitmap(game.common(path)), c = document.createElement('canvas'); c.width = i.width; c.height = i.height; c.getContext('2d').drawImage(i, 0, 0); return c; });
+function tinted(c, hex) {   // a greyscale texture coloured the way the game tints it (multiply), keeping its see-through parts
+  if (!hex) return c; const o = document.createElement('canvas'); o.width = c.width; o.height = c.height; const x = o.getContext('2d'); x.drawImage(c, 0, 0);
+  x.globalCompositeOperation = 'multiply'; x.fillStyle = hex; x.fillRect(0, 0, o.width, o.height); x.globalCompositeOperation = 'destination-in'; x.drawImage(c, 0, 0); return o; }
+function blockMat(c, cut) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapLinearFilter;
+  return new THREE.MeshLambertMaterial({ map: t, color: new THREE.Color(SHADE, SHADE, SHADE), alphaTest: cut ? 0.5 : 0, side: cut ? THREE.DoubleSide : THREE.FrontSide }); }
+function mergeMeshes(group) {   // every box and quad of a model, moved into place and joined into one geometry
+  group.updateMatrixWorld(true); const pos = [], uv = [], nor = [], idx = []; const v = new THREE.Vector3(), nm = new THREE.Matrix3();
+  group.traverse(m => { if (!m.isMesh) return; const g = m.geometry, P = g.attributes.position, U = g.attributes.uv, N = g.attributes.normal, base = pos.length / 3; nm.getNormalMatrix(m.matrixWorld);
+    for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i).applyMatrix4(m.matrixWorld); pos.push(v.x, v.y, v.z); uv.push(U.getX(i), U.getY(i)); v.fromBufferAttribute(N, i).applyMatrix3(nm).normalize(); nor.push(v.x, v.y, v.z); }
+    for (let i = 0; i < g.index.count; i++) idx.push(base + g.index.getX(i)); });
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); g.setIndex(idx); return g; }
+// one block type as [{ geo, mat }] (a cube with several tops gives one entry per top, the world picks among them)
+const blockParts = (name, tint) => once('blk:' + name + '|' + tint, async () => {
+  const b = BLOCKS[name]; if (!b) throw new Error('unknown block ' + name);
+  if (b.cube) { const side0 = await canvasOf(b.cube.side), bottom = blockMat(await canvasOf(b.cube.bottom));
+    let side = side0; if (b.cube.sideMask) { side = document.createElement('canvas'); side.width = side0.width; side.height = side0.height; const x = side.getContext('2d'); x.drawImage(side0, 0, 0); x.drawImage(tinted(await canvasOf(b.cube.sideMask), tint), 0, 0, side.width, side.height); }
+    const sideM = blockMat(side), tops = Array.isArray(b.cube.top) ? b.cube.top : [b.cube.top], geo = new THREE.BoxGeometry(BLOCK, BLOCK, BLOCK).translate(0, BLOCK / 2, 0);
+    return Promise.all(tops.map(async t => ({ geo, mat: [sideM, sideM, blockMat(b.tintUp ? tinted(await canvasOf(t), tint) : await canvasOf(t)), bottom, sideM, sideM] }))); }
+  const m = await game.json(game.common(b.model)), c = tinted(await canvasOf(b.tex[0]), b.tint), mat = blockMat(c, true), T = { w: c.width, h: c.height, mat }, g = new THREE.Group();
+  for (const n of m.nodes) g.add(node(n, T, null, new Map())); g.scale.setScalar(BLOCK / 32);
+  const geo = mergeMeshes(g); g.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); return [{ geo, mat }]; });
+export async function blockModel(name) { const [p] = await blockParts(name); const m = new THREE.Mesh(p.geo, Array.isArray(p.mat) ? p.mat : p.mat); m.userData.shared = true; return m; }   // one piece of furniture (a chair, a ladder ...)
+const disposeTree = root => root.traverse(o => { if (o.isInstancedMesh) o.dispose(); });   // block geometries and materials are shared and cached, only the instance lists go
+// a block's turn in a prefab: 0-63, quarter turns about y, then x, then z
+const turnOf = r => new THREE.Quaternion().setFromEuler(new THREE.Euler(((r >> 2) & 3) * Math.PI / 2, (r & 3) * Math.PI / 2, ((r >> 4) & 3) * Math.PI / 2, 'YXZ'));
+// a small piece of the zone: rolling land of its ground blocks, its own grasses and flowers, and a few of its trees, from the game's prefabs
+async function buildWorld(sc, tint) {
+  let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const R = 26, FLAT = 6, at = new Map(), put = (name, x, y, z, q, k) => { const key = name + '|' + (k || 0); (at.get(key) || at.set(key, []).get(key)).push([x, y, z, q]); };
+  const height = (x, z) => { const d = Math.hypot(x, z); if (d < FLAT) return 0; const n = Math.sin(x * 0.21 + 1.3) * Math.cos(z * 0.17 - 0.7) + 0.7 * Math.sin((x + z) * 0.09 + 2.1) + 0.4 * Math.cos((x - z) * 0.27);
+    return Math.max(0, Math.round((n + 0.5) * sc.hills * 0.55 * Math.min(1, (d - FLAT) / 7))); };
+  const H = new Map(); for (let x = -R - 1; x <= R + 1; x++) for (let z = -R - 1; z <= R + 1; z++) H.set(x + ',' + z, height(x, z));
+  const h = (x, z) => H.get(x + ',' + z) ?? 0, nTops = (await blockParts(sc.ground, tint)).length;
+  const low = sc.plants.filter(p => p[2]), pick = near => { const from = near ? low : sc.plants; if (!from.length) return null; let r = rnd() * from.reduce((s, p) => s + p[1], 0);
+    for (const [n, w] of from) if ((r -= w) <= 0) return n; return from[0][0]; };   // plants marked low (third value) may grow close
+  // the trees first, so the land under them stays clear of grass
+  const taken = new Set(), trees = await Promise.all(sc.trees.map(p => game.json(p)));
+  const spots = sc.trees.length * 2; for (let i = 0; i < spots; i++) { const ang = (i / spots) * Math.PI * 2 + 0.4, dist = 12 + (i % 3) * 4, tx = Math.round(Math.cos(ang) * dist), tz = Math.round(Math.sin(ang) * dist), base = h(tx, tz);
+    const tb = trees[i % trees.length].blocks, trunks = tb.filter(b => /Trunk/.test(b.name)), lift = trunks.length ? -Math.min(...trunks.map(b => b.y)) : 0;   // the trunk's foot on the ground
+    for (const b0 of tb) { const blk = { ...b0, y: b0.y + lift }; if (!BLOCKS[blk.name]) continue; const q = blk.rotation ? turnOf(blk.rotation) : null; put(blk.name, tx + blk.x, base + blk.y, tz + blk.z, q); if (blk.y === 0) taken.add((tx + blk.x) + ',' + (tz + blk.z)); } }
+  for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) { const d = Math.hypot(x, z); if (d > R) continue; const top = h(x, z), low = Math.min(top, h(x + 1, z), h(x - 1, z), h(x, z + 1), h(x, z - 1));
+    for (let y = low; y <= top; y++) put(y === top ? sc.ground : sc.under, x, y - 1, z, null, y === top ? Math.floor(rnd() * nTops) : 0);
+    // near the character (inside the camera's reach) only low plants grow, so nothing tall stands between the view and the skin
+    if (d > 1.7 && !taken.has(x + ',' + z) && rnd() < sc.density) { const name = d < 8 ? pick(true) : pick(); if (!name) continue; const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * Math.PI * 2);
+      put(name, x + (rnd() - 0.5) * 0.5, top, z + (rnd() - 0.5) * 0.5, yaw); } }
+  const root = new THREE.Group(), M = new THREE.Matrix4(), V = new THREE.Vector3(), Q = new THREE.Quaternion(), ONE = new THREE.Vector3(1, 1, 1);
+  for (const [key, list] of at) { const [name, k] = key.split('|'), parts = await blockParts(name, tint), p = parts[+k] || parts[0];
+    const im = new THREE.InstancedMesh(p.geo, p.mat, list.length);
+    list.forEach(([x, y, z, q], i) => im.setMatrixAt(i, M.compose(V.set(x * BLOCK, y * BLOCK, z * BLOCK), q || Q.identity(), ONE)));
+    im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); root.add(im); }
+  root.position.y = -0.5; return root; }
 // ---- the stage (main view) and a small off-screen renderer for thumbnails
 function lights(scene) { scene.add(new THREE.AmbientLight(0xffffff, 1.7)); const l = new THREE.DirectionalLight(0xfff4e0, 1.9); l.position.set(-60, 160, 120); scene.add(l); }
 export function stage(canvas, Controls) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   const scene = new THREE.Scene(); lights(scene);
-  const cam = new THREE.PerspectiveCamera(32, 1, 1, 2000); cam.position.set(-75, 95, 255);
+  const cam = new THREE.PerspectiveCamera(32, 1, 1, 6000); cam.position.set(-75, 95, 255);
   const ctl = new Controls(cam, canvas); ctl.target.set(0, 62, 0); ctl.enablePan = false; ctl.zoomToCursor = false;   // zoom stays on the figure's centre, lined up with the buttons under it
   ctl.minDistance = 40; ctl.maxDistance = 480; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
   const disc = new THREE.Mesh(new THREE.CircleGeometry(58, 48), new THREE.MeshBasicMaterial({ color: 0x0b1626, transparent: true, opacity: 0.55 })); disc.rotation.x = -Math.PI / 2; disc.position.y = -0.2; scene.add(disc);
   const CELL = 32, grid = new THREE.GridHelper(CELL * 40, 40, 0x4a76ad, 0x33557f); grid.material.transparent = true; grid.material.opacity = 0; grid.material.depthWrite = false; scene.add(grid);
-  let sky = null, ground = null; const groundAt = new THREE.Vector2(), SPAN = CELL * 16;   // the in-game background (setBackdrop below)
+  let sky = null, world = null, scrollers = [];   // the in-game background (setBackdrop below); set pieces that slide while climbing
   // the climbing wall: the same grid stood up in front of the figure, sliding the other way as it climbs
   const wallG = new THREE.GridHelper(CELL * 16, 16, 0x4a76ad, 0x33557f); wallG.rotation.x = Math.PI / 2; wallG.material.transparent = true; wallG.material.opacity = 0; wallG.material.depthWrite = false; wallG.visible = false; scene.add(wallG);
   let wallOn = null; const WALL_Z = 12, WALL_Y = 70;
   const vel = new THREE.Vector2(), want = new THREE.Vector2();
   function travel(dt) { const v = anim.velocity; want.set(v ? v[0] : 0, v ? v[1] : 0); vel.lerp(want, 1 - Math.exp(-dt * 9));
     grid.position.x = (grid.position.x - vel.x * dt) % CELL; grid.position.z = (grid.position.z - vel.y * dt) % CELL;   // the ground runs backwards under the figure
-    if (ground) moveGround(-vel.x * dt, -vel.y * dt);   // the in-game ground runs backwards under the figure instead of the grid
-    grid.material.opacity += ((anim.move && anim.anim && !ground ? 0.5 : 0) - grid.material.opacity) * (1 - Math.exp(-dt * 6)); grid.visible = grid.material.opacity > 0.01;
+    grid.material.opacity += ((anim.move && anim.anim && !world ? 0.5 : 0) - grid.material.opacity) * (1 - Math.exp(-dt * 6)); grid.visible = grid.material.opacity > 0.01;
     const wy = wallG.position.y - WALL_Y - (wallOn ? wallOn[1] : 0) * dt, wx = wallG.position.x - (wallOn ? wallOn[0] : 0) * dt;
-    wallG.position.set(wx % CELL, WALL_Y + wy % CELL, WALL_Z); wallG.material.opacity += ((wallOn ? 0.5 : 0) - wallG.material.opacity) * (1 - Math.exp(-dt * 6)); wallG.visible = wallG.material.opacity > 0.01; }
+    wallG.position.set(wx % CELL, WALL_Y + wy % CELL, WALL_Z); for (const p of scrollers) { const b = p.userData.scroll; if (!wallOn) { p.position.copy(b); continue; } p.position.x = b.x + (p.position.x - b.x - wallOn[0] * dt) % BLOCK; p.position.y = b.y + (p.position.y - b.y - wallOn[1] * dt) % BLOCK; }
+    wallG.material.opacity += ((wallOn && !scrollers.length ? 0.5 : 0) - wallG.material.opacity) * (1 - Math.exp(-dt * 6)); wallG.visible = wallG.material.opacity > 0.01; }
   let hl = null, helpers = [];   // outlines around picked boxes (see drawHL)
   const anim = new Animator(), mountAnim = new Animator(); let figure = null, held = [], perchY = 0, faceCb = null, faced = '', last = performance.now(), mountRoot = null, seat = null, hoverTo = 0, hoverAt = 0;
   function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
@@ -284,13 +341,20 @@ export function stage(canvas, Controls) {
   const setPiece = new THREE.Group(); scene.add(setPiece);
   async function scenery(list, perch = 0) { const my = (scenery.n = (scenery.n || 0) + 1);
     const made = await Promise.all((list || []).map(async it => { let map = null;
+      if (it.block) { const g = new THREE.Group(); try { g.add(await blockModel(it.block)); } catch (e) { console.warn(it.block, e.message); return null; } g.position.set(...it.at); g.rotation.y = (it.turn || 0) * Math.PI / 180; return g; }   // the game's own furniture
+      if (it.ladder) { const [cols, rows] = it.ladder, g = new THREE.Group(); try { await blockModel(SET_PIECES.ladder); await blockModel(SET_PIECES.wall); } catch (e) { console.warn('ladder', e.message); return null; }   // a wall of the game's ladders on planks, one block more each way so it can slide
+        for (let c = -3; c <= cols + 2; c++) for (let r = -1; r <= rows; r++) { const x = (c - (cols - 1) / 2) * BLOCK, w = await blockModel(SET_PIECES.wall); w.position.set(x, r * BLOCK, BLOCK); g.add(w);
+          if (cols > 1 ? c >= -1 && c <= cols : c === 0) { const l = await blockModel(SET_PIECES.ladder); l.position.set(x, r * BLOCK, 0); l.rotation.y = Math.PI; g.add(l); } }   // the wall wider than the ladders
+        g.position.set(...it.at); g.userData.scroll = g.position.clone(); return g; }
       if (it.tex) { try { const T = await texture(it.tex); map = T.mat.map.clone(); map.wrapS = map.wrapT = THREE.RepeatWrapping; map.repeat.set(...(it.repeat || [1, 1])); map.needsUpdate = true; } catch (e) { console.warn(it.tex, e.message); } }
       const mat = new THREE.MeshLambertMaterial({ map, color: it.color ?? 0xffffff, transparent: it.opacity != null, opacity: it.opacity ?? 1, depthWrite: it.opacity == null, side: THREE.DoubleSide });
       const geo = it.plane ? new THREE.PlaneGeometry(...it.plane) : new THREE.BoxGeometry(...it.box), m = new THREE.Mesh(geo, mat);
       if (it.plane) m.rotation.x = -Math.PI / 2; m.position.set(...it.at); return m; }));
-    if (my !== scenery.n) return made.forEach(m => { m.geometry.dispose(); m.material.map?.dispose(); m.material.dispose(); });
-    for (const m of [...setPiece.children]) { setPiece.remove(m); m.geometry.dispose(); m.material.map?.dispose(); m.material.dispose(); }
-    for (const m of made) setPiece.add(m); perchY = perch; seatAt(); }
+    const drop = m => m.traverse(o => { if (o.isMesh && !o.userData.shared) { o.geometry.dispose(); o.material.map?.dispose(); o.material.dispose(); } });   // game blocks are shared, kept
+    const lost = made.some(m => !m); made.splice(0, made.length, ...made.filter(Boolean)); if (lost) api.onMissing?.();   // older copies of the game files lack the furniture
+    if (my !== scenery.n) return made.forEach(drop);
+    for (const m of [...setPiece.children]) { setPiece.remove(m); drop(m); }
+    for (const m of made) setPiece.add(m); scrollers = made.filter(m => m.userData.scroll); perchY = perch; seatAt(); }
   // flying moves: the figure rises off the ground and bobs gently, easing up and down when the move changes
   function float(dt, now) { if (!figure || (!hoverTo && !hoverAt)) return; hoverAt += (hoverTo - hoverAt) * (1 - Math.exp(-dt * 4)); if (Math.abs(hoverTo - hoverAt) < 0.05) hoverAt = hoverTo;
     seatAt(); if (hoverAt > 1 && hoverTo) figure.position.y += Math.sin(now / 1000 * 2.2) * 2.5 * Math.min(1, hoverAt / hoverTo); }
@@ -346,26 +410,27 @@ export function stage(canvas, Controls) {
     setView(name) { const v = VIEWS[name] || VIEWS.persp; cam.position.set(...v); ctl.target.set(0, 62, 0); ctl.update(); },
     highlight(f) { hl = f; drawHL(); },
     show(root) { if (figure) { unhang(); scene.remove(figure); dispose(figure); } figure = root; scene.add(root); seatAt(); anim.setFigure(root); hang(); lit = []; applyIsolate(); drawHL(); if (api.afterShow) api.afterShow(); },
-    view(front) { lifted = null; cam.position.set(front ? 0 : -75, 95, front ? 265 : 255); ctl.target.set(0, 62, 0); ctl.update(); } };
+    view(front) { lifted = null; cam.position.set(front ? 0 : -75, 95, front ? 265 : 255); ctl.target.set(0, 62, 0); ctl.update(); },
+    behind() { if (cam.position.z - ctl.target.z < 0) return; const off = cam.position.clone().sub(ctl.target); off.x = -off.x; off.z = -off.z; cam.position.copy(ctl.target).add(off); ctl.update(); } };   // a climb is watched from behind, as in the game
   // ---- in-game backgrounds: a sky dome from the zone's sky and fog colours, and a floor of its ground blocks fading into that fog
   const shadow = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
     g.addColorStop(0, 'rgba(0,0,0,0.42)'); g.addColorStop(0.6, 'rgba(0,0,0,0.22)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
-  api.setBackdrop = bd => {
-    for (const o of [sky, ground]) if (o) { scene.remove(o); o.geometry.dispose(); o.material.map?.dispose(); o.material.dispose(); }
-    sky = ground = null; scene.fog = null;
+  // bd: { top, fog } colours from the zone's weather at noon, sc: its entry in SCENES, tint: the biome's grass colour
+  api.setBackdrop = async (bd, sc, tint) => { const my = (api.setBackdrop.n = (api.setBackdrop.n || 0) + 1);
+    const built = bd ? await buildWorld(sc, tint).catch(e => { console.warn('scene', e); return null; }) : null;
+    if (my !== api.setBackdrop.n) { if (built) disposeTree(built); return; }
+    if (sky) { scene.remove(sky); sky.geometry.dispose(); sky.material.dispose(); sky = null; }
+    if (world) { scene.remove(world); disposeTree(world); world = null; } scene.fog = null;
     disc.material.map = bd ? shadow : null; disc.material.color.set(bd ? 0xffffff : 0x0b1626); disc.material.opacity = bd ? 1 : 0.55; disc.material.needsUpdate = true;
+    ctl.maxPolarAngle = Math.PI * (bd ? 0.47 : 0.55); ctl.update();   // on real land the camera stays above the ground
     if (!bd) return;
-    const top = new THREE.Color(bd.top), hor = new THREE.Color(bd.fog), R = 1500, g = new THREE.SphereGeometry(R, 48, 24), p = g.attributes.position, cols = [];
+    const top = new THREE.Color(bd.top), hor = new THREE.Color(bd.fog), R = 2600, g = new THREE.SphereGeometry(R, 48, 24), p = g.attributes.position, cols = [];
     for (let i = 0; i < p.count; i++) { const c = hor.clone().lerp(top, Math.pow(Math.max(0, p.getY(i) / R), 0.5)); cols.push(c.r, c.g, c.b); }
     g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     sky = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -2; scene.add(sky);
-    const t = new THREE.CanvasTexture(bd.floor); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.LinearMipmapLinearFilter;
-    t.anisotropy = renderer.capabilities.getMaxAnisotropy(); const size = CELL * 84; t.repeat.set(size / SPAN, size / SPAN);
-    ground = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: t })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.6; ground.renderOrder = -1; scene.add(ground);
-    scene.fog = new THREE.Fog(hor, 500, 1300); groundAt.set(0, 0);
+    if (built) { world = built; scene.add(world); }
+    scene.fog = new THREE.Fog(hor, 950, 1750);   // the far edge of the land melts into the sky, as the game's fog does
   };
-  function moveGround(dx, dz) { if (!ground) return; groundAt.x += dx; groundAt.y += dz; ground.material.map.offset.set(-groundAt.x / SPAN, groundAt.y / SPAN); }
-  api.hasGround = () => !!ground;
   return api;
 }
 let TR, tscene, tcam;
