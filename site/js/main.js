@@ -14,7 +14,7 @@ function el(tag, props = {}, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) { if (v == null) continue;
     if (k === 'class') e.className = v; else if (k === 'text') e.textContent = v; else if (k === 'data') Object.assign(e.dataset, v); else e[k] = v; }
-  e.append(...kids.flat().filter(k => k != null && k !== false)); return e;
+  e.append(...kids.flat(Infinity).filter(k => k != null && k !== false)); return e;
 }
 const VERSION = '0.1.0', REPO = 'https://github.com/King-Talon23/Hytale-Skin-Design-Website';
 const HEX = /^#[0-9a-fA-F]{3,8}$/;
@@ -62,7 +62,7 @@ let FOLDER = { state: 'none' }, ACCOUNT = null;
 let found = [];   // skins brought in this session by a lookup or from files; not saved until the player saves them
 
 async function startApp() {
-  META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets();
+  META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes();
   $('connect').hidden = true; $('app').hidden = false;
   if (!st) { st = fig.stage($('view'), OrbitControls); bindPaint($('view'), e => ED ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true); }
   try { if (await store.resumeFolder(false)) await reloadAssets(); } catch (e) { console.warn(e); }
@@ -125,9 +125,9 @@ function animThumb(g, n) { const s = R.fit(cur.skin);
 const portrait = skin => { const s = R.fit(skin); return lazyImg('p|' + JSON.stringify(s), async () => fig.snapshot(await fig.build(s, R), 'full')); };
 
 // ---------------------------------------------------------------- panels
-function setTab(t) { if (ED && t !== 'creator') closeAsset(true).then(() => { playAnim('Default', 'Idle', 0.5); rebuild(); });
+function setTab(t) { if (t !== 'editor' && picking) leavePicker(); if (ED && t !== 'creator') closeAsset(true).then(() => { playAnim('Default', 'Idle', 0.5); rebuild(); });
   tab = t; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t); if (R) render(); }
-function render() { jobGen++; plate(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
+function render() { jobGen++; plate(); drawEmotes(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
   p.replaceChildren(...({ editor: panelEditor, wardrobe: panelWardrobe, animations: panelAnimations, lookup: panelLookup, feedback: panelFeedback, creator: panelCreator, help: panelHelp }[tab])());
   if (was === p.className && top) { const b = p.querySelector('.pbody'); if (b) b.scrollTop = top; } }
 // our own small symbols for the category rail (drawn here, not taken from the game)
@@ -143,25 +143,81 @@ function icon(d) { const NS = 'http://www.w3.org/2000/svg', s = document.createE
   s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', d); p.setAttribute('fill-rule', 'evenodd'); s.append(p); return s; }
 const head = (title, right) => el('div', { class: 'phead' }, el('h2', { text: title }), right);
 
-function panelEditor() {
-  const fields = GROUPS.find(g => g[0] === group)[1].filter(f => R.ITEMS[f].length); if (!fields.includes(slot)) slot = fields[0];
-  const it = R.find(slot, cur.skin[slot]), { color, variant } = parse(cur.skin[slot]);
-  const change = (item, c, v) => setSkin({ ...cur.skin, [slot]: R.partStr(item, c, v) });
-  const rail = el('div', { class: 'rail' }, GROUPS.map(([g]) => el('button', { class: g === group ? 'on' : '', onclick: () => { group = g; filter = ''; render(); } }, icon(ICON[g]), el('span', { text: g }))));
-  const sub = el('div', { class: 'rail sub' }, fields.map(f => el('button', { class: f === slot ? 'on' : '', onclick: () => { slot = f; filter = ''; render(); } }, icon(SLOT_ICON[f]), el('div', {}, el('span', { text: LABEL[f] }), el('small', { text: cur.skin[f] ? itemName(R.find(f, cur.skin[f]) || { Id: parse(cur.skin[f]).id }) : 'None' })))));
-  const q = filter.toLowerCase(), items = R.ITEMS[slot].filter(e => itemName(e).toLowerCase().includes(q));
-  const grid = el('div', { class: 'grid' },
-    REQUIRED.has(slot) ? null : el('button', { class: 'tile none' + (!it ? ' on' : ''), title: 'None', onclick: () => change(null), ...hover(null) }, el('span', { text: '✕' })),
-    items.map(e => el('button', { class: 'tile' + (e === it ? ' on' : '') + (e.custom ? ' mine' : ''), title: itemName(e), onclick: () => change(e, color, variant), ...hover(R.partStr(e, color, variant)) }, itemThumb(slot, e, color, variant))));
-  const search = el('input', { type: 'search', placeholder: 'Search', value: filter, maxLength: 40, oninput: e => { filter = e.target.value; const g = panelEditor(); $('panel').querySelector('.grid').replaceWith(g[1].querySelector('.grid')); } });
+// ---------------------------------------------------------------- the locker: every slot at a glance, and a picker per slot
+const TIERS = ['Standard', 'Base edition', 'Deluxe', 'Founder', 'Event reward'];
+function tierOf(e) {   // from how the game unlocks the item (its entitlements), standing in for rarity
+  if (!e || e.custom) return 0; const t = Array.isArray(e.Entitlements) ? e.Entitlements : []; if (!t.length) return 0;
+  if (t.some(x => !String(x).startsWith('game.'))) return 4; if (t.includes('game.base')) return 1; if (t.includes('game.deluxe')) return 2; return 3;
+}
+const tierClass = e => e && e.custom ? 'mine' : 't' + tierOf(e);
+let LOCK = { favs: new Set(), seen: null }, picking = false, seenSlot = null, lockFilter = 'all', lockSort = 'default';
+const favKey = (f, e) => f + '|' + e.Id, isNew = (f, e) => !e.custom && LOCK.seen && !LOCK.seen.has(favKey(f, e));
+const saveLock = () => db.put('meta', 'locker', { favs: [...LOCK.favs], seen: [...LOCK.seen] }).catch(() => {});
+async function loadLock() {
+  const m = await db.get('meta', 'locker').catch(() => null), all = game.FIELDS.flatMap(f => R.ITEMS[f].filter(e => !e.custom).map(e => favKey(f, e)));
+  LOCK.favs = new Set(m?.favs || []); LOCK.seen = m ? new Set(m.seen || []) : new Set(all); if (!m) saveLock();   // on a first visit nothing counts as new
+}
+function leavePicker() { if (seenSlot) { for (const e of R.ITEMS[seenSlot]) if (!e.custom) LOCK.seen.add(favKey(seenSlot, e)); saveLock(); seenSlot = null; } picking = false; }
+function variantName(it, v) { const nk = it?.Variants?.[v]?.NameKey; return (nk && CAT.names[nk]) || nice(v); }
+function lookCard(r, kind) { return el('button', { class: 'look ' + kind + (cur.id === r.id ? ' on' : ''), title: r.name, onclick: () => open(r) }, portrait(r.skin)); }
+function panelEditor() { return picking ? panelPicker() : panelLocker(); }
+function panelLocker() {
+  const tile = f => { const it = R.find(f, cur.skin[f]), { color, variant } = parse(cur.skin[f]);
+    return el('button', { class: 'slot ' + (it ? tierClass(it) : 'none'), title: LABEL[f], onclick: () => { slot = f; picking = true; seenSlot = f; filter = ''; lockFilter = 'all'; render(); } },
+      it ? itemThumb(f, it, color, variant) : el('span', { class: 'nothing', text: '—' }),
+      el('i', {}, icon(SLOT_ICON[f]), el('span', { text: LABEL[f] })), el('b', { text: it ? itemName(it) : 'None' })); };
+  const looks = [...WARD.game.filter(Boolean).map(r => lookCard(r, 'game')), ...WARD.custom.map(r => lookCard(r, 'custom'))];
+  return [head('Locker'), el('div', { class: 'pbody locker' },
+    GROUPS.map(([g, fs]) => { const fields = fs.filter(f => R.ITEMS[f].length); return fields.length ? [el('h3', { text: g }), el('div', { class: 'slots' }, fields.map(tile))] : null; }),
+    el('h3', { text: 'Saved looks' }), el('div', { class: 'looks' }, looks, el('button', { class: 'look add', title: 'Save this look', text: '+', onclick: saveAs })))];
+}
+function panelPicker() {
+  const f = slot, it = R.find(f, cur.skin[f]), { color, variant } = parse(cur.skin[f]);
+  const change = (item, c, v) => setSkin({ ...cur.skin, [f]: R.partStr(item, c, v) });
+  const all = R.ITEMS[f], tiersHere = [...new Set(all.filter(e => !e.custom).map(tierOf))].sort();
+  const counts = { fav: all.filter(e => LOCK.favs.has(favKey(f, e))).length, new: all.filter(e => isNew(f, e)).length, mine: all.filter(e => e.custom).length };
+  const chip = (id, label) => el('button', { class: 'chip' + (lockFilter === id ? ' on' : ''), text: label, onclick: () => { lockFilter = id; drawCards(); for (const c of bar.querySelectorAll('.chip[data-f]')) c.classList.toggle('on', c.dataset.f === id); }, data: { f: id } });
+  const bar = el('div', { class: 'options lockbar' }, chip('all', 'All'), counts.fav ? chip('fav', `Favourites ${counts.fav}`) : null, counts.new ? chip('new', `New ${counts.new}`) : null,
+    tiersHere.length > 1 ? tiersHere.map(t => chip('t' + t, TIERS[t])) : null, counts.mine ? chip('mine', 'Mine') : null,
+    el('select', { class: 'sort', title: 'Sort', onchange: e => { lockSort = e.target.value; drawCards(); } }, [['default', 'Game order'], ['name', 'Name'], ['tier', 'Tier']].map(([v, t]) => el('option', { value: v, text: t, selected: v === lockSort }))));
+  const detail = el('div', { class: 'detail' }), showDetail = e => { const t = e ? (e.custom ? 'Custom asset' : TIERS[tierOf(e)]) : '';
+    detail.replaceChildren(el('b', { text: e ? itemName(e) : 'None' }), el('span', { text: ' · ' + LABEL[f] }), el('em', { class: e ? tierClass(e) : '', text: t })); };
+  const cardsBox = el('div', { class: 'cards lcards' });
+  function drawCards() {
+    const q = filter.toLowerCase(); let items = all.filter(e => itemName(e).toLowerCase().includes(q));
+    if (lockFilter === 'fav') items = items.filter(e => LOCK.favs.has(favKey(f, e))); else if (lockFilter === 'new') items = items.filter(e => isNew(f, e));
+    else if (lockFilter === 'mine') items = items.filter(e => e.custom); else if (/^t\d$/.test(lockFilter)) items = items.filter(e => !e.custom && 't' + tierOf(e) === lockFilter);
+    if (lockSort === 'name') items = [...items].sort((a, b) => itemName(a).localeCompare(itemName(b))); else if (lockSort === 'tier') items = [...items].sort((a, b) => tierOf(b) - tierOf(a));
+    const card = e => { const part = e ? R.partStr(e, color, variant) : null, hv = hover(part), k = e && favKey(f, e), fav = e && LOCK.favs.has(k);
+      const star = e ? el('span', { class: 'star' + (fav ? ' on' : ''), role: 'button', title: fav ? 'Remove from favourites' : 'Add to favourites', text: fav ? '★' : '☆',
+        onclick: ev => { ev.stopPropagation(); LOCK.favs.has(k) ? LOCK.favs.delete(k) : LOCK.favs.add(k); saveLock(); render(); } }) : null;
+      return el('button', { class: 'lcard ' + (e ? tierClass(e) : 'none') + (e === it ? ' on' : ''), title: e ? itemName(e) : 'None', onclick: () => change(e, color, variant),
+        onpointerenter: ev => { hv.onpointerenter(ev); showDetail(e); }, onpointerleave: ev => { hv.onpointerleave(ev); showDetail(it); } },
+        e ? itemThumb(f, e, color, variant) : el('span', { class: 'nothing', text: '✕' }), star, e && isNew(f, e) ? el('span', { class: 'new', text: 'NEW' }) : null, el('b', { text: e ? itemName(e) : 'None' })); };
+    cardsBox.replaceChildren(...(REQUIRED.has(f) || lockFilter !== 'all' ? [] : [card(null)]), ...items.map(card));
+    if (!cardsBox.children.length) cardsBox.append(el('p', { class: 'blank', text: 'Nothing here.' }));
+  }
+  drawCards(); showDetail(it);
+  const search = el('input', { type: 'search', placeholder: 'Search', value: filter, maxLength: 40, oninput: e => { filter = e.target.value; drawCards(); } });
   const cols = it ? R.colorsOf(it, variant) : [], vs = it?.Variants ? Object.keys(it.Variants) : [];
   const swatches = el('div', { class: 'swatches' }, cols.map(([k, base]) => { const b = el('button', { title: nice(k), class: k === color ? 'on' : '', onclick: () => change(it, k, variant), ...hover(R.partStr(it, k, variant)) });
     const ok = (Array.isArray(base) ? base : [base]).filter(c => HEX.test(c)); b.style.background = ok.length > 1 ? `linear-gradient(135deg, ${ok.join(',')})` : ok[0] || '#888'; return b; }));
-  const options = el('div', { class: 'options' }, vs.map(v => el('button', { class: 'chip' + (v === (variant || vs[0]) ? ' on' : ''), text: nice(v), onclick: () => change(it, color, v), ...hover(R.partStr(it, color, v)) })));
-  const body = el('div', { class: 'pbody' }, el('div', { class: 'crumb' }, el('span', { text: group }), el('i', { text: '▸' }), el('b', { text: LABEL[slot] })), search, el('div', { class: 'row owned' }, locked('Only show what I own', 'the owned cosmetics filter', 'chip'), need('the owned cosmetics filter')), grid,
-    cols.length ? [el('h3', { text: 'Color' }), swatches] : null, vs.length > 1 ? [el('h3', { text: 'Option' }), options] : null);
-  return [head('Customize Avatar'), el('div', { class: 'editor' }, rail, sub, body)];
+  const options = el('div', { class: 'options' }, vs.map(v => el('button', { class: 'chip' + (v === (variant || vs[0]) ? ' on' : ''), text: variantName(it, v), onclick: () => change(it, color, v), ...hover(R.partStr(it, color, v)) })));
+  return [head('Locker'), el('div', { class: 'pbody' },
+    el('div', { class: 'pickhead' }, el('button', { class: 'btn ghost', text: '‹ Locker', onclick: () => { leavePicker(); render(); } }), icon(SLOT_ICON[f]), el('b', { text: LABEL[f] })),
+    el('div', { class: 'row' }, search, locked('Owned only', 'the owned cosmetics filter', 'chip')), bar, cardsBox, detail,
+    cols.length ? [el('h3', { text: 'Colour' }), swatches] : null, vs.length > 1 ? [el('h3', { text: 'Option' }), options] : null)];
 }
+// six favourite moves under the character, one click to play
+let EMOTES = null;
+const EMOTE_DEFAULT = ['Wave', 'Clap', 'Dance_Boogie', 'Shrug', 'Salute_Chest', 'Laugh_Strong'];
+async function loadEmotes() { const m = await db.get('meta', 'emotes').catch(() => null), have = new Set(CAT.anims.Emote || []);
+  EMOTES = (Array.isArray(m) ? m : EMOTE_DEFAULT.map(n => 'Emote/' + n)).filter(k => { const [g, n] = k.split('/'); return (CAT.anims[g] || []).includes(n); }).slice(0, 6);
+  if (!EMOTES.length) EMOTES = [...have].slice(0, 6).map(n => 'Emote/' + n); }
+function toggleEmote(g, n) { const k = g + '/' + n, i = EMOTES.indexOf(k); if (i >= 0) EMOTES.splice(i, 1); else { EMOTES.push(k); if (EMOTES.length > 6) EMOTES.shift(); } db.put('meta', 'emotes', EMOTES).catch(() => {}); drawEmotes(); }
+function drawEmotes() { const box = $('emotes'); if (!box || !EMOTES) return; box.hidden = !!ED;
+  box.replaceChildren(...EMOTES.map(k => { const [g, n] = k.split('/');
+    return el('button', { class: 'emote' + (st.anim.anim && playing.group === g && playing.name === n ? ' on' : ''), title: nice(n), onclick: () => { playAnim(g, n); drawEmotes(); } }, animThumb(g, n)); })); }
 
 function card(rec, kind, i) {
   if (!rec) return el('div', { class: 'skin empty ' + kind }, el('div', { class: 'pic' }, el('span', { text: '+' })), el('b', { text: 'Slot ' + (i + 1) }), el('small', { text: 'Empty' }));
@@ -220,8 +276,8 @@ const moveOut = guard(async rec => { await store.saveCustom(rec.name, rec.skin);
 const duplicate = guard(async rec => { await store.saveCustom(cleanName(rec.name + ' copy'), rec.skin); await refreshWard(); });
 const removeSkin = guard(async rec => { if (!await confirmBox('Delete skin', `Delete "${rec.name}"? This cannot be undone.`, 'Delete', true)) return; await store.remove(rec.id); await refreshWard(); });
 function checklist(rec) {
-  const rows = GROUPS.flatMap(([g, fs]) => fs.filter(f => rec.skin[f]).map(f => { const p = parse(rec.skin[f]);
-    return el('tr', {}, el('td', { text: g + ' ▸ ' + LABEL[f] }), el('td', { text: nice(p.id) }), el('td', { text: [p.color && nice(p.color), p.variant && nice(p.variant)].filter(Boolean).join(', ') })); }));
+  const rows = GROUPS.flatMap(([g, fs]) => fs.filter(f => rec.skin[f]).map(f => { const p = parse(rec.skin[f]), item = R.find(f, rec.skin[f]);
+    return el('tr', {}, el('td', { text: g + ' ▸ ' + LABEL[f] }), el('td', { text: item ? itemName(item) : nice(p.id) }), el('td', { text: [p.color && nice(p.color), p.variant && nice(p.variant)].filter(Boolean).join(', ') })); }));
   ask(`Set "${rec.name}" in game`, [el('p', { text: `In Hytale, open My Avatar, choose preset ${rec.slot + 1} and pick these parts:` }), el('table', { class: 'parts' }, el('tbody', {}, rows))], [{ label: 'Done', value: '', primary: true }]);
 }
 async function save() { if (!cur.id) return saveAs();
@@ -239,7 +295,7 @@ async function saveAs() {
 // animations
 let playing = { group: 'Default', name: 'Idle' };
 const ORDER = ['Emote', 'Default', 'Poses', 'Taunt', 'Flavor', 'Expressions'];
-async function playAnim(g, n, speed = 1) { try { const a = await fig.loadAnim(g, n); playing = { group: g, name: n }; st.anim.set(a, speed); st.anim.setMove(fig.motionOf(g, n)); st.anim.playing = true; } catch (e) { say('That animation could not be loaded.', true); } if (tab === 'animations') render(); }
+async function playAnim(g, n, speed = 1) { try { const a = await fig.loadAnim(g, n); playing = { group: g, name: n }; st.anim.set(a, speed); st.anim.setMove(fig.motionOf(g, n)); st.anim.playing = true; drawEmotes(); } catch (e) { say('That animation could not be loaded.', true); } if (tab === 'animations') render(); }
 let animGroup = 'Emote';
 function panelAnimations() {
   const groups = Object.keys(CAT.anims).sort((a, b) => (ORDER.indexOf(a) + 99) % 99 - (ORDER.indexOf(b) + 99) % 99 || a.localeCompare(b)); if (!groups.includes(animGroup)) animGroup = groups[0];
@@ -249,7 +305,9 @@ function panelAnimations() {
       el('button', { class: 'btn ghost', text: A.playing ? 'Pause' : 'Play', onclick: () => { A.playing = !A.playing; render(); } }),
       el('button', { class: 'btn ghost', text: 'Rest pose', onclick: () => { A.set(null); render(); } })),
     el('div', { class: 'options' }, groups.map(g => el('button', { class: 'chip' + (g === animGroup ? ' on' : ''), text: nice(g), onclick: () => { animGroup = g; render(); } }))),
-    el('div', { class: 'animlist' }, (CAT.anims[animGroup] || []).map(n => el('button', { class: A.anim && playing.group === animGroup && playing.name === n ? 'on' : '', title: nice(n), onclick: () => playAnim(animGroup, n) }, animThumb(animGroup, n), el('span', { text: nice(n) })))))];
+    el('div', { class: 'animlist' }, (CAT.anims[animGroup] || []).map(n => { const k = animGroup + '/' + n, pinned = EMOTES && EMOTES.includes(k);
+      return el('button', { class: A.anim && playing.group === animGroup && playing.name === n ? 'on' : '', title: nice(n), onclick: () => playAnim(animGroup, n) }, animThumb(animGroup, n), el('span', { text: nice(n) }),
+        el('i', { class: 'star' + (pinned ? ' on' : ''), title: pinned ? 'Remove from quick slots' : 'Add to quick slots', text: pinned ? '★' : '☆', onclick: e => { e.stopPropagation(); toggleEmote(animGroup, n); render(); } })); })))];
 }
 
 // other players' skins
@@ -308,9 +366,9 @@ function panelFeedback() {
 
 // ---------------------------------------------------------------- asset creator
 let ASSETS = [], ED = null, edN = 0;
-const itemName = e => e && e.custom ? e.Name : nice(e ? e.Id : '');
+const itemName = e => e && e.custom ? e.Name : (e && CAT.names && CAT.names[e.Name]) || nice(e ? e.Id : '');
 const hasCustom = skin => Object.values(skin).some(v => typeof v === 'string' && v.startsWith('Custom_'));
-async function reloadAssets() { ASSETS = await assets.list().catch(() => []); registerAssets(); cur.skin = R.fit(cur.skin); }
+async function reloadAssets() { ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); cur.skin = R.fit(cur.skin); }
 const syncFolder = () => store.sync().catch(e => say(e.message, true));
 function registerAssets() {   // custom assets join the catalogue as extra items in their slot, so the editor treats them like any other
   for (const f of game.FIELDS) { const arr = CAT.items[f]; for (let i = arr.length - 1; i >= 0; i--) if (arr[i].custom) arr.splice(i, 1); }

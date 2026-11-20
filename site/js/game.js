@@ -4,9 +4,10 @@
 import { openZip, fileSource } from './zip.js';
 import * as db from './db.js';
 
-const EXT = /\.(png|json|blockymodel|blockyanim)$/;
+const EXT = /\.(png|json|blockymodel|blockyanim|lang)$/;
+const LANG = 'Common/Languages/en-US/avatarCustomization/';
 const wanted = n => EXT.test(n) && !n.includes('..') && (
-  n.startsWith('Cosmetics/CharacterCreator/') || n.startsWith('Common/Cosmetics/') || n.startsWith('Common/TintGradients/') ||
+  n.startsWith('Cosmetics/CharacterCreator/') || n.startsWith(LANG) || n.startsWith('Common/Cosmetics/') || n.startsWith('Common/TintGradients/') ||
   (n.startsWith('Common/Characters/') && !n.includes('/Animations/Items/') && !n.endsWith('_FPS.blockyanim')));
 
 // skin field -> the game's catalogue file, in the game's own order
@@ -52,8 +53,15 @@ export async function catalog() {
   // player moves only: the player folder also holds poses made for creatures and factions (Feran, Outlander, Guardian ...)
   const MOB = /^(Feran|Outlander|Guardian|Skeleton|Zombie|Trork|Goblin|Kweebec|Golem|Scarak|Void)/i, all = (await db.get('meta', 'anims')) || await listAnims();
   const anims = Object.fromEntries(Object.entries(all).map(([g, ns]) => [g, ns.filter(n => !MOB.test(n))]).filter(([, ns]) => ns.length));
-  return { items: Object.fromEntries(slots.map(s => [s.field, s.items])), gradients: Object.fromEntries(gradients.map(g => [g.Id, g.Gradients])),
+  const names = await langNames();
+  return { names, items: Object.fromEntries(slots.map(s => [s.field, s.items])), gradients: Object.fromEntries(gradients.map(g => [g.Id, g.Gradients])),
     fallbacks: Array.isArray(fallbacks) ? {} : fallbacks, emotes, anims };
+}
+async function langNames() {   // "Cape_King.name = King's Cape" in capes.lang is the name for the key avatarCustomization.capes.Cape_King.name
+  const out = {}, utf8 = new TextDecoder();
+  for (const k of await db.keys('files')) { if (!k.startsWith(LANG) || !k.endsWith('.lang')) continue; const sect = k.slice(LANG.length, -5);
+    for (const line of utf8.decode(await bytes(k)).split(/\r?\n/)) { const m = /^\s*([\w.-]+)\s*=\s*(.+?)\s*$/.exec(line); if (m && m[2].length <= 60) out[`avatarCustomization.${sect}.${m[1]}`] = m[2]; } }
+  return out;
 }
 async function listAnims() {   // every player animation the game ships, grouped by its folder
   const out = {};
