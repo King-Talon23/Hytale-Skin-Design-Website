@@ -22,7 +22,12 @@ const texture = (tex, tint) => once('t:' + tex + '|' + tint, async () => {
       const k = Math.min(gw - 1, Math.round(a[i] * (gw - 1) / 255)) * 4; a[i] = g.data[k]; a[i + 1] = g.data[k + 1]; a[i + 2] = g.data[k + 2]; }
     x.putImageData(d, 0, 0); }
   const t = new THREE.CanvasTexture(c); t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.colorSpace = THREE.SRGBColorSpace;
-  return { mat: new THREE.MeshLambertMaterial({ map: t, alphaTest: 0.05, side: THREE.DoubleSide }), w: c.width, h: c.height };
+  const mat = new THREE.MeshLambertMaterial({ map: t, alphaTest: 0.05, side: THREE.DoubleSide });
+  // centroid sampling: antialiased edge pixels look up the texture inside the face, not past its edge (that drew thin lines along box edges)
+  mat.onBeforeCompile = sh => { const c = k => THREE.ShaderChunk[k].replace(/varying vec2/g, 'centroid varying vec2');
+    sh.vertexShader = sh.vertexShader.replace('#include <uv_pars_vertex>', c('uv_pars_vertex')); sh.fragmentShader = sh.fragmentShader.replace('#include <uv_pars_fragment>', c('uv_pars_fragment')); };
+  mat.customProgramCacheKey = () => 'centroid-uv';
+  return { mat, w: c.width, h: c.height };
 });
 
 // ---- a blockymodel box/quad as a mesh
@@ -45,7 +50,7 @@ export function usedRects(modelJson) {
 }
 function shapeMesh(sh, T) {
   const size = xyz(sh.settings?.size), st = xyz(sh.stretch, 1), off = xyz(sh.offset), half = size.map(v => v / 2), quad = sh.type === 'quad'; if (quad) half[2] = 0;
-  const qr = new THREE.Quaternion(...(quad ? QUADROT[sh.settings?.normal] || QUADROT['+Z'] : QUADROT['+Z'])), lay = sh.textureLayout || {}, pos = [], uv = [], idx = [];
+  const qr = new THREE.Quaternion(...(quad ? QUADROT[sh.settings?.normal] || QUADROT['+Z'] : QUADROT['+Z'])), lay = sh.textureLayout || {}, pos = [], uv = [], idx = [], fuv = [];
   for (const [name, [na, ns, ua, us, va, vs]] of Object.entries(quad ? { front: FACES.front } : FACES)) {
     const fl = lay[name]; if (!fl) continue; const fu = size[ua], fv = size[va]; if (fu <= 0 || fv <= 0) continue;
     const ox = fl.offset?.x ?? 0, oy = fl.offset?.y ?? 0, a = ((fl.angle | 0) % 360 + 360) % 360, b = pos.length / 3;
@@ -55,8 +60,12 @@ function shapeMesh(sh, T) {
       // mirrored (that axis runs back from the offset), then turned about the offset by the angle
       const pu = su * fu * (fl.mirror?.x ? -1 : 1), pv = sv * fv * (fl.mirror?.y ? -1 : 1);
       const [X, Y] = a === 90 ? [ox - pv, oy + pu] : a === 180 ? [ox - pu, oy - pv] : a === 270 ? [ox + pv, oy - pu] : [ox + pu, oy + pv];
-      uv.push(X / T.w, 1 - Y / T.h);
+      fuv.push(X, Y);
     }
+    // pull the corners a hair inside the face's rectangle: with antialiasing, edge pixels otherwise sample the texel next door and draw thin lines along box edges
+    const cx = (fuv[0] + fuv[2] + fuv[4] + fuv[6]) / 4, cy = (fuv[1] + fuv[3] + fuv[5] + fuv[7]) / 4, E = 1 / 64;
+    for (let k = 0; k < 8; k += 2) { const X = fuv[k] + Math.sign(cx - fuv[k]) * E, Y = fuv[k + 1] + Math.sign(cy - fuv[k + 1]) * E; uv.push(X / T.w, 1 - Y / T.h); }
+    fuv.length = 0;
     idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
   }
   if (!idx.length) return null;
@@ -171,7 +180,8 @@ export function stage(canvas, Controls) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   const scene = new THREE.Scene(); lights(scene);
   const cam = new THREE.PerspectiveCamera(32, 1, 1, 2000); cam.position.set(-75, 95, 255);
-  const ctl = new Controls(cam, canvas); ctl.target.set(0, 62, 0); ctl.enablePan = false; ctl.zoomToCursor = true; ctl.minDistance = 40; ctl.maxDistance = 480; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
+  const ctl = new Controls(cam, canvas); ctl.target.set(0, 62, 0); ctl.enablePan = false; ctl.zoomToCursor = false;   // zoom stays on the figure's centre, lined up with the buttons under it
+  ctl.minDistance = 40; ctl.maxDistance = 480; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
   const disc = new THREE.Mesh(new THREE.CircleGeometry(58, 48), new THREE.MeshBasicMaterial({ color: 0x0b1626, transparent: true, opacity: 0.55 })); disc.rotation.x = -Math.PI / 2; disc.position.y = -0.2; scene.add(disc);
   const CELL = 32, grid = new THREE.GridHelper(CELL * 40, 40, 0x4a76ad, 0x33557f); grid.material.transparent = true; grid.material.opacity = 0; grid.material.depthWrite = false; scene.add(grid);
   const vel = new THREE.Vector2(), want = new THREE.Vector2();
