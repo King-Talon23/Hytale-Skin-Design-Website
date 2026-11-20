@@ -74,6 +74,8 @@ export function createPainter(canvas, onChange, onPick) {
     palette(n = 14) {   // the texture's own most used colours, to paint with
       const d = ctx.getImageData(0, 0, W, H).data, count = new Map();
       for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) { const k = hex(d[i], d[i + 1], d[i + 2]); count.set(k, (count.get(k) || 0) + 1); }
-      return [...count].sort((a, b) => b[1] - a[1]).slice(0, n).map(c => c[0]); } };
+      const out = [], rgb = k => [1, 3, 5].map(i => parseInt(k.slice(i, i + 2), 16));   // most used first, skipping shades too close to one already picked
+      for (const [k] of [...count].sort((a, b) => b[1] - a[1])) { const c = rgb(k); if (out.every(o => Math.abs(o[1][0] - c[0]) + Math.abs(o[1][1] - c[1]) + Math.abs(o[1][2] - c[2]) > 24)) out.push([k, c]); if (out.length >= n) break; }
+      return out.map(o => o[0]); } };
   return P;
 }

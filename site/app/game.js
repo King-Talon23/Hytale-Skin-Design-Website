@@ -48,7 +48,7 @@ export async function importFrom(src, info, onProgress = () => {}) {
   const meta = { ...info, files: names.length, at: Date.now() };
   await db.put('meta', 'game', meta); cache.clear(); return meta;
 }
-export async function forget() { await db.clear('files'); await db.del('meta', 'game'); await db.del('meta', 'anims'); await db.del('meta', 'zipHandle').catch(() => {}); cache.clear(); }
+export async function forget() { await db.clear('files'); await db.del('meta', 'game'); await db.del('meta', 'anims'); await db.del('meta', 'zipHandle').catch(() => {}); await db.clear('thumbs').catch(() => {}); cache.clear(); }
 // the Assets.zip the player picked (a file handle, Chrome and Edge only), kept so a game update can be read again without hunting for the file
 export const rememberZip = h => db.put('meta', 'zipHandle', h).catch(() => {});
 export const zipHandle = () => db.get('meta', 'zipHandle').catch(() => null);
