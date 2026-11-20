@@ -653,6 +653,10 @@ function bindPaint(target, toPixel, reach, onModel) { let down = false, last = n
   target.addEventListener('pointerup', up); target.addEventListener('pointercancel', up);
 }
 const urls = new Map();
+function assetThumb(a) {   // the piece as it looks worn, on the bare character (falls back to the flat texture)
+  const it = R?.ITEMS[a.field]?.find(e => e.Id === 'Custom_' + a.id); if (!it) return assetPicture(a);
+  const s = bareSkin(a.field, R.partStr(it)), frame = FACE_FRAME[a.field] || (HEADF.has(a.field) ? 'head' : LEGF.has(a.field) ? 'legs' : a.field === 'bodyCharacteristic' || a.field === 'skinFeature' ? 'body' : 'torso');
+  return lazyImg('a|' + a.id + '@' + a.updated, async () => fig.snapshot(await fig.build(s, R), frame, a.field === 'cape'), 'a|' + a.id); }
 function assetPicture(a) { const k = a.id + '@' + a.updated; if (!urls.has(k)) { for (const [o, u] of urls) if (o.startsWith(a.id + '@')) { URL.revokeObjectURL(u); urls.delete(o); } urls.set(k, URL.createObjectURL(a.data)); } return el('img', { alt: '', src: urls.get(k), draggable: false }); }
 function downloadBlob(name, blob) { const a = el('a', { href: URL.createObjectURL(blob), download: name }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
 // Paid (edition and reward) items: open to edit only for an account that owns them. Hytale's sign-in tells us what an account
@@ -795,7 +799,7 @@ function assetCard(a) {
   const act = (label, fn, cls) => el('button', { class: 'mini ' + (cls || ''), text: label, onclick: e => { e.stopPropagation(); fn(); } });
   const worn = cur.skin[a.field] && cur.skin[a.field].startsWith('Custom_' + a.id);
   return el('div', { class: 'skin asset' + (worn ? ' on' : ''), tabIndex: 0, title: a.name + ': open in the creator', onclick: guard(() => openAsset(a)) },
-    el('div', { class: 'pic tex' }, assetPicture(a)), el('b', { text: a.name }), el('small', { text: modReady(a) ? LABEL[a.field] : a.flag ? 'Site only: looks like ' + a.flag : 'Paid item: site only', title: a.flag ? FLAG_WHY(a.flag) : '' }),
+    el('div', { class: 'pic' }, assetThumb(a)), el('b', { text: a.name }), el('small', { text: modReady(a) ? LABEL[a.field] : a.flag ? 'Site only: looks like ' + a.flag : 'Paid item: site only', title: a.flag ? FLAG_WHY(a.flag) : '' }),
     el('div', { class: 'acts' }, act('Edit', guard(() => openAsset(a)), 'primary'), act('Copy', guard(() => copyAsset(a))), worn ? el('span', { class: 'worn', text: 'Worn ✓', title: 'Your character has this on' }) : act('Wear', () => setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' })),
 
       act('Delete', guard(async () => { if (!await confirmBox('Delete custom asset', `Delete "${a.name}"? Skins wearing it lose that part. This cannot be undone.`, 'Delete', true)) return;
