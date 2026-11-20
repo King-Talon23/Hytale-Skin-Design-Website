@@ -23,7 +23,7 @@ function el(tag, props = {}, ...kids) {
 }
 const VERSION = '0.1.0', REPO = 'https://github.com/King-Talon23/Hytale-Skin-Design-Website';
 const HEX = /^#[0-9a-fA-F]{3,8}$/;
-const say = (t, bad) => { const s = $('status'); s.textContent = t || ''; s.classList.toggle('bad', !!bad); clearTimeout(say.t); if (t) say.t = setTimeout(() => s.textContent = '', 4000); };
+const say = (t, bad) => { const s = $('status'); s.textContent = t || ''; s.classList.toggle('bad', !!bad); clearTimeout(say.t); if (t) say.t = setTimeout(() => s.textContent = '', bad ? 8000 : 4000); };
 
 // ---------------------------------------------------------------- dialogs
 function ask(title, body, buttons) {
@@ -301,6 +301,7 @@ function accountRow() {
 }
 function folderRow() {
   if (!store.folderSupported) return el('p', { class: 'note', text: 'Saving to a folder needs Chrome or Edge.' });
+  if (FOLDER.state === 'none') return null;   // the numbered steps above cover choosing one
   const after = async r => { FOLDER = await store.folderState(); await reloadAssets(); await refreshWard(); pushWearing(); if (r) say(r.imported ? `Folder connected, ${r.imported} skin${r.imported > 1 ? 's' : ''} brought in` : 'Folder connected'); };
   const btn = (t, fn, c = 'ghost') => el('button', { class: 'btn ' + c, text: t, onclick: guard(fn) });
   const [title, text] = FOLDER.state === 'on' ? ['Saving to folder: ' + FOLDER.name, 'Every skin and custom asset is a small file in this folder and updates as you edit.']
@@ -311,8 +312,16 @@ function folderRow() {
       : [FOLDER.state === 'ask' ? btn('Reconnect', async () => after(await store.resumeFolder(true)), 'primary') : btn('Change', async () => after(await store.chooseFolder())),
          btn('Stop', async () => { await store.forgetFolder(); await after(); })]);
 }
+function gameSteps() {   // the path to wearing your skins in Hytale, in order
+  if (!store.folderSupported) return null; const linked = FOLDER.state === 'on', all = linked && SHOWGAME;
+  const row = (n, done, title, text, action) => el('li', { class: done ? 'done' : '' }, el('span', { class: 'num', text: done ? '✓' : n }), el('div', {}, el('b', { text: title }), el('small', { text })), done ? null : action);
+  return el('details', { class: 'gamesteps', open: !all }, el('summary', { text: all ? 'Wearing your skins in Hytale: all set' : 'Wear your skins in Hytale: 3 steps' }), el('ol', {},
+    row(1, false, 'Get the Skin Editor Sync mod', 'Install it once from CurseForge. It dresses you in game.', modLink('ghost')),
+    row(2, linked, 'Choose a skins folder', 'Pick a "Hytale Skins" folder in Documents. The mod reads it.', linked ? null : el('button', { class: 'btn primary', text: FOLDER.state === 'ask' ? 'Reconnect folder' : 'Choose folder', onclick: guard(async () => { FOLDER.state === 'ask' ? await store.resumeFolder(true) : await store.chooseFolder(); FOLDER = await store.folderState(); await reloadAssets(); await refreshWard(); pushWearing(); }) })),
+    row(3, linked && SHOWGAME, 'Turn on In game', 'What you wear here, you wear in your worlds.', el('button', { class: 'btn ghost', text: 'Turn on', disabled: !linked, onclick: () => { if (!SHOWGAME) $('ingame').onclick(); } }))));
+}
 function panelWardrobe() {
-  return [head('Locker'), el('div', { class: 'pbody' }, folderRow(), accountRow(),
+  return [head('Locker'), el('div', { class: 'pbody' }, gameSteps(), folderRow(), accountRow(),
     el('div', { class: 'shelf game' }, el('h3', {}, el('span', { text: 'In-game slots' }), el('em', { text: `${WARD.game.filter(Boolean).length} / ${store.GAME_SLOTS}` })),
       el('div', { class: 'row' }, locked('Load my presets', 'loading your in-game presets'), locked('Send all to game', 'sending skins to your in-game presets')), need('preset sync'),
       el('div', { class: 'cards' }, WARD.game.map((r, i) => card(r, 'game', i)))),
@@ -485,8 +494,12 @@ const newAsset = guard(async f => {
   const r = R.resolve(f, cur.skin), it = R.find(f, cur.skin[f]); if (!r || !it) throw new Error('Wear something in that slot first.');
   const paidBase = it.custom ? CAT.items[f].find(e => e.Id === it.baseId) : it;
   if (paidBase && tierOf(paidBase) > 0) throw new Error(`${itemName(paidBase)} is a ${TIERS[tierOf(paidBase)]} item. Paid items can't be repainted.`);
-  const c = await fig.bakedCanvas(r.tex, r.tint), data = await new Promise(ok => c.toBlob(ok, 'image/png'));
-  const a = await assets.save({ id: assets.newId(), name: itemName(it) + (it.custom ? ' copy' : ' (mine)'), field: f, baseId: it.custom ? it.baseId : it.Id, model: r.model, w: c.width, h: c.height, data });
+  const src = it.custom ? ASSETS.find(x => 'Custom_' + x.id === it.Id) : null;
+  if (it.custom && !src) throw new Error('That custom item is gone. Pick another one.');
+  let a;
+  if (src) a = await assets.save({ ...src, id: assets.newId(), name: src.name.replace(/ \(mine\)$/, '') + ' copy', flag: undefined });
+  else { const c = await fig.bakedCanvas(r.tex, r.tint), data = await new Promise(ok => c.toBlob(ok, 'image/png'));
+    a = await assets.save({ id: assets.newId(), name: itemName(it) + ' (mine)', field: f, baseId: it.Id, model: r.model, w: c.width, h: c.height, data }); }
   ASSETS = await assets.list(); registerAssets(); setSkin({ ...cur.skin, [f]: 'Custom_' + a.id + '.Mine' }); await openAsset(a);
 });
 const makePainter = (c, a) => createPainter(c, final => { fig.refreshCustom(a.id); if (final) { queueAssetSave(); recordPaint(); if (ED && !ED.replaying) render(); } }, () => render());
@@ -523,9 +536,16 @@ async function closeAsset(quiet) {
   if (!quiet) { playAnim('Default', 'Idle', 0.5); rebuild(); render(); }
 }
 // painting: the same strokes whether the pointer is on the flat texture or on the 3D model
+function turnDrag(e) {   // drag on empty space or another body part: the model turns, like right-drag
+  const v = $('view'); let x = e.clientX, y = e.clientY; try { v.setPointerCapture(e.pointerId); } catch { /* fine */ }
+  const move = ev => { st.orbit(ev.clientX - x, ev.clientY - y); x = ev.clientX; y = ev.clientY; store_.set('se_turned', '1'); if ($('viewhint')) $('viewhint').hidden = true; };
+  const up = () => { v.removeEventListener('pointermove', move); v.removeEventListener('pointerup', up); v.removeEventListener('pointercancel', up); };
+  v.addEventListener('pointermove', move); v.addEventListener('pointerup', up); v.addEventListener('pointercancel', up);
+}
 function bindPaint(target, toPixel, reach, onModel) { let down = false, last = null;
   const twin = (a, b) => { const t = ED.painter.tool; if (ED.mirror && b.m && !SHAPES.has(t) && !ONCE.has(t)) ED.painter.stroke(a && a.m ? a.m : b.m, b.m); };
-  target.addEventListener('pointerdown', e => { if (!ED || e.button !== 0 || ED.painter.tool === 'select' || (!onModel && ED.mode === 'shape')) return; const p = toPixel(e); if (!p) return; e.preventDefault(); try { target.setPointerCapture(e.pointerId); } catch { /* fine */ }
+  target.addEventListener('pointerdown', e => { if (!ED || e.button !== 0 || (!onModel && (ED.painter.tool === 'select' || ED.mode === 'shape'))) return; const p = onModel && ED.painter.tool === 'select' ? null : toPixel(e);
+    if (!p) { if (onModel && !st.gizmoBusy() && !(ED.mode === 'shape' && st.pickMesh(e.clientX, e.clientY, o => o.material?.map?.image === ED.canvas))) turnDrag(e); return; } e.preventDefault(); try { target.setPointerCapture(e.pointerId); } catch { /* fine */ }
     down = true; last = p; ED.painter.begin(); ED.painter.stroke(p, p); twin(null, p); });
   target.addEventListener('pointermove', e => { if (!down || !ED) return; const p = toPixel(e); if (!p) { last = null; return; }
     const from = last && (Math.abs(last.x - p.x) + Math.abs(last.y - p.y) <= reach || (onModel && SHAPES.has(ED.painter.tool))) ? last : p;
@@ -613,16 +633,17 @@ async function checkReplica() {   // after an import, a recolour, a shape change
   if (!flag && e.model && (e.shapeN || e.asset.shape)) { flag = await shapeReplicaOf(e.asset, e.model).catch(() => null); why = 'shape is'; }
   if ((flag || undefined) === e.asset.flag) return;
   e.asset = { ...e.asset, flag: flag || undefined }; queueAssetSave();
-  if (flag) say(`This ${why} too close to ${flag}, a paid item. It stays on this site: it won't show in game or export.`, true);
+  if (flag) say(`This ${why} too close to ${flag}, a paid item. It stays on this site: it won't show in game or export. Change it more and the check clears.`, true);
   render();
 }
 
+const FLAG_WHY = n => `This looks too much like ${n}, a paid item, so it stays on this site and won't show in game. Change its colours or pattern more and the check clears by itself.`;
 function assetCard(a) {
   const act = (label, fn, cls) => el('button', { class: 'mini ' + (cls || ''), text: label, onclick: e => { e.stopPropagation(); fn(); } });
   const worn = cur.skin[a.field] && cur.skin[a.field].startsWith('Custom_' + a.id);
   return el('div', { class: 'skin asset' + (worn ? ' on' : ''), tabIndex: 0, title: 'Open in the creator', onclick: guard(() => openAsset(a)) },
-    el('div', { class: 'pic tex' }, assetPicture(a)), el('b', { text: a.name }), el('small', { text: modReady(a) ? LABEL[a.field] : a.flag ? 'Too close to ' + a.flag : 'Paid item: site only' }),
-    el('div', { class: 'acts' }, act(worn ? 'Wearing' : 'Wear', () => setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' })),
+    el('div', { class: 'pic tex' }, assetPicture(a)), el('b', { text: a.name }), el('small', { text: modReady(a) ? LABEL[a.field] : a.flag ? 'Site only: looks like ' + a.flag : 'Paid item: site only', title: a.flag ? FLAG_WHY(a.flag) : '' }),
+    el('div', { class: 'acts' }, act('Edit', guard(() => openAsset(a)), 'primary'), act(worn ? 'Wearing' : 'Wear', () => setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' })),
 
       act('Delete', guard(async () => { if (!await confirmBox('Delete custom asset', `Delete "${a.name}"? Skins wearing it lose that part. This cannot be undone.`, 'Delete', true)) return;
         await assets.remove(a.id); ASSETS = await assets.list(); syncFolder(); registerAssets(); cur.skin = R.fit(cur.skin); pics.clear(); rebuild(); render(); }), 'danger')));
@@ -716,11 +737,22 @@ function scrub(label, get, set, step = 1, min = -64, max = 64) {
     lab.onpointerup = () => { lab.onpointermove = lab.onpointerup = null; if (moved) finishShape(before); }; };
   return el('label', { class: 'numfield' }, lab, inp);
 }
+// the whole drawn area in one colour: each pixel keeps how light or dark it was compared with the item's average
+function tintAll(hex) {
+  const P = ED.painter, m = P.mask, [r0, g0, b0] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)), lum = (d, i) => 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+  P.write((d, W, H) => { let sum = 0, n = 0; for (let p = 0; p < W * H; p++) if (d[p * 4 + 3] && (!m || m[p])) { sum += lum(d, p * 4); n++; } if (!n) return;
+    const avg = Math.max(1, sum / n);
+    for (let p = 0; p < W * H; p++) { const i = p * 4; if (!d[i + 3] || (m && !m[p])) continue; const k = Math.min(1.8, Math.max(0.35, lum(d, i) / avg)); d[i] = Math.min(255, r0 * k); d[i + 1] = Math.min(255, g0 * k); d[i + 2] = Math.min(255, b0 * k); } });
+  ED.palette = P.palette(); render(); checkReplica(); say('The whole item is now this colour. Ctrl+Z undoes it.');
+}
 function paintSide() {
   const P = ED.painter, adj = { h: 0, s: 0, l: 0 };
   const slider = (label, min, max, step, get, set, fmt) => { const lab = el('span', { text: `${label} ${fmt(get())}` });
     return el('label', { class: 'wsslider' }, lab, el('input', { type: 'range', min, max, step, value: get(), oninput: e => { set(+e.target.value); lab.textContent = `${label} ${fmt(get())}`; } })); };
-  const adjRow = (key, label, min, max) => slider(label, min, max, 1, () => adj[key], v => { adj[key] = v; P.adjust(adj.h, adj.s / 100, adj.l / 100, false); }, v => v);
+  const adjRow = (key, label, min, max) => { const set = v => { adj[key] = Math.max(min, Math.min(max, Math.round(v) || 0)); P.adjust(adj.h, adj.s / 100, adj.l / 100, false); };
+    const num = el('input', { type: 'number', min, max, step: 1, value: adj[key], class: 'adjnum', onchange: e => { set(+e.target.value); rng.value = adj[key]; } }),
+      rng = el('input', { type: 'range', min, max, step: 1, value: adj[key], oninput: e => { set(+e.target.value); num.value = adj[key]; } });
+    return el('label', { class: 'wsslider adj' }, el('span', { text: label }), rng, num); };
   const endAdjust = keep => { if (!keep) adj.h = adj.s = adj.l = 0; P.adjust(adj.h, adj.s / 100, adj.l / 100, true); ED.palette = P.palette(); render(); if (keep) checkReplica(); };
   const toggle = (text, on, fn, title) => el('button', { class: 'chip' + (on ? ' on' : ''), text: `${text}: ${on ? 'on' : 'off'}`, title, onclick: fn });
   const chip = (text, fn, key, off) => el('button', { class: 'chip', text, title: key || '', disabled: !!off, onclick: () => { fn(); render(); } });
@@ -728,6 +760,7 @@ function paintSide() {
     el('div', { class: 'row' }, el('input', { type: 'color', value: P.color, title: 'Any colour', oninput: e => { P.color = e.target.value; }, onchange: e => useColour(e.target.value) }), el('code', { class: 'hex', text: P.color })),
     el('div', { class: 'swlabel', text: 'Basic' }), swatchRow(BASIC), el('div', { class: 'swlabel', text: 'In this item' }), swatchRow(ED.palette),
     RECENT.length ? [el('div', { class: 'swlabel', text: 'Recent' }), swatchRow(RECENT)] : null,
+    el('button', { class: 'btn primary wide', text: 'Colour whole item', title: 'Turn the whole item this colour and keep its light and dark shading', onclick: () => tintAll(P.color) }),
     el('div', { class: 'wshead', text: 'Brush' }),
     slider('Size', 1, 8, 1, () => P.size, v => { P.size = v; }, v => v), slider('Strength', 10, 100, 10, () => Math.round(P.opacity * 100), v => { P.opacity = v / 100; }, v => v + '%'),
     el('div', { class: 'options' }, toggle('Mirror', ED.mirror, () => { ED.mirror = !ED.mirror; render(); }, 'Painting on the model also paints the matching spot on the other side')),
@@ -736,7 +769,7 @@ function paintSide() {
         : [chip('Copy', () => copySel(false), 'Ctrl+C', !ED.sel), chip('Cut', () => copySel(true), 'Ctrl+X', !ED.sel), chip('Paste', pasteClip, 'Ctrl+V', !ED.clip), chip('Clear', clearSel, 'Del', !ED.sel)]))] : null,
     ED.adjOpen ? [el('div', { class: 'wshead', text: 'Adjust colours of the whole item' }), adjRow('h', 'Hue', -180, 180), adjRow('s', 'Saturation', -100, 100), adjRow('l', 'Brightness', -100, 100),
       el('div', { class: 'row' }, el('button', { class: 'btn primary', text: 'Keep', onclick: () => { ED.adjOpen = false; endAdjust(true); } }), el('button', { class: 'btn ghost', text: 'Cancel', onclick: () => { ED.adjOpen = false; endAdjust(false); } }))]
-      : el('button', { class: 'btn ghost wide', text: 'Adjust colours…', title: 'Shift the hue, saturation or brightness of the whole item', onclick: () => { ED.adjOpen = true; render(); } })];
+      : el('button', { class: 'btn ghost wide', text: 'Fine-tune colours…', title: 'Shift the hue, saturation or brightness of the whole item', onclick: () => { ED.adjOpen = true; render(); } })];
 }
 // boxes get readable names: the player's own, else one made from the game's node name ("L-ArmCostume" -> "Left arm", new boxes -> "Box 2")
 function boxLabel(node) {
@@ -769,7 +802,8 @@ function bindTexView(box) {
 
 // ---- first-time help: a short tour of the workspace, and a hint on the model until it has been turned once
 const store_ = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private window */ } } };
-const TOUR = [['#view', 'Paint right on the model', 'Left-drag paints. Right-drag turns the model and the mouse wheel zooms.'],
+const TOUR = [['#view', 'Paint right on the model', 'Drag on the item to paint it. Drag anywhere else to turn the model; the wheel zooms.'],
+  ['#wsright', 'Colours', 'Pick a colour, then press Colour whole item to turn the whole thing that colour. Brush and Fill paint parts of it.'],
   ['#wsleft', 'The flat texture', 'The same item laid out flat. You can paint here too. Dimmed parts never show on the model.'],
   ['.wsmodes', 'Paint and Shape', 'Shape changes the form: make sleeves longer, add boxes, mirror them to the other side.'],
   ['#wsdone', 'Saved as you go', 'Every change saves by itself. Press Done when you are finished.']];
@@ -791,7 +825,7 @@ function viewHint() {
   let h = $('viewhint'); if (!h) { h = el('div', { id: 'viewhint', class: 'viewhint' }); $('view').parentElement.appendChild(h);
     $('view').addEventListener('pointerdown', e => { if (e.button === 2 && ED) { store_.set('se_turned', '1'); $('viewhint').hidden = true; } }); }
   h.hidden = !ED || !!store_.get('se_turned');
-  if (ED) h.textContent = ED.mode === 'shape' ? 'Click a box to pick it  ·  Right-drag turns  ·  Wheel zooms' : 'Left-drag paints  ·  Right-drag turns  ·  Wheel zooms';
+  if (ED) h.textContent = ED.mode === 'shape' ? 'Click a box to pick it  ·  Drag empty space to turn  ·  Wheel zooms' : 'Drag on the item to paint  ·  Drag elsewhere to turn  ·  Wheel zooms';
 }
 // ---- colours: a fixed set of basics, the item's own colours and the ones used lately
 const BASIC = ['#ffffff', '#c9c9c9', '#808080', '#3d3d3d', '#000000', '#e23b3b', '#ef8a35', '#f4d24a', '#7cc444', '#2e9a58', '#3db7c9', '#3b6fe0', '#7a4fd6', '#d65ab4', '#8a5a32', '#f2c9a1'];
@@ -806,7 +840,8 @@ async function finishAsset() {
     : 'To wear it in Hytale, install the Skin Editor Sync mod and pick a skins folder in the Locker.';
   const btns = [...(linked && !SHOWGAME ? [{ label: 'Show in game', value: 'game', primary: true }] : !linked ? [{ label: 'Set up in game', value: 'setup', primary: true }] : []),
     { label: 'Keep editing', value: 'edit' }, { label: 'Make another', value: 'another' }];
-  const v = await ask('You are wearing it', [el('div', { class: 'finishpic' }, portrait(cur.skin)), el('p', { text })], btns);
+  const big = lazyImg('big|' + JSON.stringify(R.fit(cur.skin)), async () => fig.snapshot(await fig.build(R.fit(cur.skin), R), 'full', false, 256));
+  const v = await ask('You are wearing it', [el('div', { class: 'finishpic' }, big), el('p', { text })], btns);
   if (v === 'game') $('ingame').onclick(); else if (v === 'setup') setTab('wardrobe');
   else if (v === 'edit') { const x = ASSETS.find(y => y.id === a.id); if (x) openAsset(x); }
 }
@@ -871,7 +906,7 @@ function renderWorkspace() {
     el('input', { type: 'text', class: 'wsname', value: a.name, maxLength: 40, title: 'Name', onchange: e => { ED.asset = { ...ED.asset, name: cleanName(e.target.value) || a.name }; queueAssetSave(); } }),
     el('div', { class: 'wsmodes' }, [['paint', 'Paint'], ['shape', 'Shape']].map(([m, t]) => el('button', { class: mode === m ? 'on' : '', text: t, title: 'Tab switches', onclick: guard(() => setMode(m)) }))),
     el('span', { id: 'wssaved', class: 'wssaved', text: ED.saved === false ? 'Saving…' : 'Saved' }),
-    el('span', { class: 'grow' }), a.flag ? el('span', { class: 'tag none', text: 'Too close to ' + a.flag }) : null,
+    el('span', { class: 'grow' }), a.flag ? el('button', { class: 'tag none', text: 'Site only: looks like ' + a.flag, title: FLAG_WHY(a.flag), onclick: () => say(FLAG_WHY(a.flag), true) }) : null,
     el('button', { class: 'btn icon', text: '↶', title: 'Undo (Ctrl+Z)', disabled: !ED.hist.length, onclick: () => wsUndo(false) }),
     el('button', { class: 'btn icon', text: '↷', title: 'Redo (Ctrl+Y)', disabled: !ED.fut.length, onclick: () => wsUndo(true) }),
     el('button', { class: 'btn icon', text: '?', title: 'Show the tips again', onclick: () => tour(0) }),
@@ -896,7 +931,7 @@ function renderWorkspace() {
     el('button', { class: ED.iso ? 'on' : '', text: ED.iso ? 'Item only' : 'Whole body', title: 'Show only the item you are editing, or the whole character', onclick: () => { ED.iso = !ED.iso; st.isolate(ED.iso ? ED.canvas : null); render(); } }));
   const b = mode === 'shape' ? curBox() : null;
   $('wsstatus').textContent = mode === 'paint'
-    ? `Paint · ${PAINT_TOOLS.find(t => t[0] === P.tool)?.[1] || P.tool} · ${P.tool === 'select' ? 'drag over the texture to select · Ctrl+C copy · Ctrl+V paste · drag the piece · Enter places' : 'left-drag paints on the texture or the model'} · right-drag orbits · M select · Ctrl+Z undo · Tab: Shape`
+    ? `Paint · ${PAINT_TOOLS.find(t => t[0] === P.tool)?.[1] || P.tool} · ${P.tool === 'select' ? 'drag over the texture to select · Ctrl+C copy · Ctrl+V paste · drag the piece · Enter places' : 'drag on the item paints'} · drag elsewhere to turn · M select · Ctrl+Z undo · Tab: Shape`
     : `Shape · ${b ? boxLabel(b.node) : ''} · click a box on the model or its area on the texture · ${ED.stool === 'move' ? 'drag the arrows to move' : ED.stool === 'resize' ? 'drag the handles to resize' : ED.stool === 'rotate' ? 'drag the rings to turn' : 'G move, S resize, R rotate'} · A add · Ctrl+D duplicate · M mirror copy · Del delete · Tab: Paint`;
 }
 // shortcuts while the workspace is open (caught before the page's own Ctrl+Z, which undoes the skin)
@@ -1037,7 +1072,9 @@ function panelCreator() {
     const paidIn = f => { const it = R.find(f, cur.skin[f]), b = it && it.custom ? CAT.items[f].find(e => e.Id === it.baseId) : it; return b && tierOf(b) > 0; };
     const tile = f => { const it = R.find(f, cur.skin[f]), p = parse(cur.skin[f]), paid = paidIn(f);
       return el('div', { class: 'skin starttile' + (paid ? ' paid' : '') }, el('div', { class: 'pic' }, itemThumb(f, it, p.color, p.variant)), el('b', { text: itemName(it) }), el('small', { text: LABEL[f] }),
-        paid ? el('small', { class: 'dim', text: 'Paid item' }) : el('button', { class: 'mini primary', text: 'Edit a copy', onclick: () => newAsset(f) })); };
+        paid ? el('small', { class: 'dim', text: 'Paid item' }) : it.custom ? el('div', { class: 'acts' }, el('button', { class: 'mini primary', text: 'Open', title: 'Keep editing your version', onclick: guard(() => { const a = ASSETS.find(x => 'Custom_' + x.id === it.Id); if (!a) throw new Error('That custom item is gone.'); return openAsset(a); }) }),
+          el('button', { class: 'mini', text: 'Copy', title: 'Make a second version to edit', onclick: () => newAsset(f) }))
+        : el('button', { class: 'mini primary', text: 'Edit a copy', onclick: () => newAsset(f) })); };
     return [head('Asset Creator'), el('div', { class: 'pbody' },
       el('h3', { text: 'Make your own version of something you wear' }), el('div', { class: 'cards' }, worn.map(tile)),
       el('h3', { text: `My custom assets (${ASSETS.length} / ${assets.MAX})` }),
