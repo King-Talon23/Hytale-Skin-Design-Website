@@ -440,16 +440,12 @@ function panelHelp() {
   const sec = (t, ...ps) => [el('h3', { text: t }), ...ps.map(p => typeof p === 'string' ? el('p', { text: p }) : p)];
   const backupFile = el('input', { type: 'file', accept: '.json,application/json', hidden: true, onchange: guard(async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const r = await store.importAll(await readJsonFile(f, 40_000_000)); await reloadAssets(); await refreshWard(); say(`Restored ${r.added} skin${r.added === 1 ? '' : 's'}${r.skipped ? `, ${r.skipped} did not fit` : ''}`); }) });
   return [head('Help'), el('div', { class: 'pbody prose' },
-    sec('How it works', 'The editor draws your character from the cosmetic files in your own copy of Hytale. When you connect, it reads the small character files out of Assets.zip and keeps a copy in this browser, on your computer. This website hosts no Hytale files and none of yours are uploaded.'),
-    sec('Your game files', META ? `Connected: ${META.name}, ${META.files} character files, read on ${new Date(META.at).toLocaleDateString()}.` : 'Not connected yet.',
-      'After a game update that adds cosmetics, connect again to pick them up.',
+    sec('Game files', META ? `Connected: ${META.name}, ${META.files} character files, read on ${new Date(META.at).toLocaleDateString()}.` : 'Not connected yet.',
       el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Connect again', onclick: showConnect }),
         el('button', { class: 'btn danger', text: 'Forget game files', onclick: guard(async () => { if (!await confirmBox('Forget game files', 'Removes the copy of your game files from this browser. Your saved skins stay.', 'Forget', true)) return; await game.forget(); R = null; pics.clear(); fig.clearCache(); showConnect(); }) }))),
-    sec('In-game slots and My skins', 'In-game slots (gold) mirror the 5 presets inside Hytale. My skins (blue) are up to 45 extra skins that exist only here. Hytale offers no way for other sites to read or change your presets, so you keep the gold slots in step yourself: "Set in game" lists exactly which parts to pick.'),
-    sec('Back up your skins', 'Skins are kept in this browser, and in your skins folder if you chose one in the Locker. Without a folder, clearing site data or switching browser starts empty, so keep a backup file.',
+    sec('Backup', 'Keep a backup file if you have not picked a skins folder in the Locker.',
       el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Download backup', onclick: guard(async () => download('skin-editor-backup.json', await store.exportAll())) }), el('label', { class: 'btn ghost' }, 'Restore backup', backupFile))),
-    sec('Privacy', 'No account, no cookies, no analytics, no ads. The only request this site makes to another server is the player lookup, and only when you press Find.'),
-    sec('About', 'An unofficial fan tool. Not affiliated with or endorsed by Hypixel Studios. Hytale is a trademark of Hypixel Studios; the cosmetics you see come from your own game.'))];
+    el('p', {}, el('a', { href: '/privacy', text: 'Privacy: what the site keeps and how to delete it' })))];
 }
 
 // Feedback goes to the project's public GitHub issues: the site itself stores and sends nothing.
