@@ -3,4 +3,4 @@
 export const HYTALE_CLIENT_ID = '';
 // The site owner's Ko-fi page (https://ko-fi.com/<name>). Shown as "Support the site" in the footer; supporting unlocks nothing.
 // Leave empty to hide the link.
-export const SUPPORT_URL = '';
+export const SUPPORT_URL = 'https://ko-fi.com/kingtalon233';
