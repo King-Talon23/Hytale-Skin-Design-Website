@@ -49,7 +49,9 @@ export async function catalog() {
   const cat = n => json(`Cosmetics/CharacterCreator/${n}.json`), opt = async n => { try { return await cat(n); } catch { return []; } };
   const [slots, gradients, fallbacks, emotes] = await Promise.all([
     Promise.all(SLOTS.map(async ([field, file]) => ({ field, items: await cat(file) }))), cat('GradientSets'), opt('HaircutFallbacks'), opt('Emotes')]);
-  const anims = (await db.get('meta', 'anims')) || await listAnims();
+  // player moves only: the player folder also holds poses made for creatures and factions (Feran, Outlander, Guardian ...)
+  const MOB = /^(Feran|Outlander|Guardian|Skeleton|Zombie|Trork|Goblin|Kweebec|Golem|Scarak|Void)/i, all = (await db.get('meta', 'anims')) || await listAnims();
+  const anims = Object.fromEntries(Object.entries(all).map(([g, ns]) => [g, ns.filter(n => !MOB.test(n))]).filter(([, ns]) => ns.length));
   return { items: Object.fromEntries(slots.map(s => [s.field, s.items])), gradients: Object.fromEntries(gradients.map(g => [g.Id, g.Gradients])),
     fallbacks: Array.isArray(fallbacks) ? {} : fallbacks, emotes, anims };
 }
