@@ -320,7 +320,7 @@ footer { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wr
 .modrow > div { display: grid; gap: 2px; }
 
 /* which side of the figure faces the camera: shown while an item is edited (the body is see-through then) */
-.facing { display: none; position: absolute; left: 10px; top: 44px; z-index: 3; font: 700 11px var(--h); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); background: #0b1626cc; border: 1px solid #f4c45255; border-radius: 3px; padding: 3px 7px; pointer-events: none; }
+.facing { display: none; position: absolute; right: 10px; bottom: 10px; z-index: 3; font: 700 11px var(--h); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); background: #0b1626cc; border: 1px solid #f4c45255; border-radius: 3px; padding: 3px 7px; pointer-events: none; }
 #app.ws .facing { display: block; }
 
 /* between the stacked phone layout and a wide screen the top bar ran past the window and dragged the page wider: tighten it */
@@ -329,3 +329,5 @@ footer { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wr
   nav button { padding: 0 9px; font-size: 13px; }
   .conn span { display: none; } .conn { padding: 9px; }
 }
+
+input.hex { width: 84px; font: 600 12px ui-monospace, Consolas, monospace; background: #0d1826; border: 1px solid var(--line); border-radius: 3px; padding: 4px 6px; min-height: 0; color: #dce8eb; }
