@@ -145,7 +145,10 @@ const FACE_FRAME = { face: 'face', eyes: 'face', eyebrows: 'face', mouth: 'face'
   headAccessory: 'hat', haircut: 'head', pants: 'pants', overpants: 'socks', shoes: 'shoes', gloves: 'gloves', underwear: 'hips', undertop: 'top', overtop: 'top' };
 // pieces that hide the one in the picture: a coat over the gloves, boots over the socks, trousers over underwear
 function itemThumb(f, it, color, variant) {   // the current character, wearing this option
-  const s = { ...cur.skin, [f]: R.partStr(it, color, variant) }; for (const k of HIDE[f] || []) s[k] = null;
+  let s = { ...cur.skin, [f]: R.partStr(it, color, variant) }; for (const k of HIDE[f] || []) s[k] = null;
+  if (f === 'bodyCharacteristic') {   // a body is shown bare: just the body, its face, and boxers
+    const keep = new Set(['bodyCharacteristic', 'face', 'eyes', 'mouth', 'ears']), boxer = R.ITEMS.underwear.find(e => e.Id === 'Boxer');
+    s = Object.fromEntries(Object.entries(s).map(([k, v]) => [k, keep.has(k) ? v : null])); s.underwear = boxer ? R.partStr(boxer) : cur.skin.underwear; }
   const frame = FACE_FRAME[f] || (HEADF.has(f) ? 'head' : LEGF.has(f) ? 'legs' : f === 'bodyCharacteristic' || f === 'skinFeature' ? 'body' : 'torso');
   return lazyImg('i|' + f + '|' + JSON.stringify(s), async () => fig.snapshot(await fig.build(s, R), frame, f === 'cape'), f + '|' + it.Id);
 }
@@ -230,9 +233,15 @@ function panelPicker() {
     const card = e => { const part = e ? R.partStr(e, color, variant) : null, hv = hover(part), k = e && favKey(f, e), fav = e && LOCK.favs.has(k);
       const star = e ? el('span', { class: 'star' + (fav ? ' on' : ''), role: 'button', title: fav ? 'Remove from favourites' : 'Add to favourites', text: fav ? '★' : '☆',
         onclick: ev => { ev.stopPropagation(); LOCK.favs.has(k) ? LOCK.favs.delete(k) : LOCK.favs.add(k); saveLock(); render(); } }) : null;
+      const a = e?.custom && ASSETS.find(x => 'Custom_' + x.id === e.Id);
+      const bin = a ? el('span', { class: 'bin' + (fav ? ' off' : ''), role: 'button', title: fav ? 'Favourites can\'t be deleted. Unstar it first.' : 'Delete this custom piece', text: '🗑',
+        onclick: ev => { ev.stopPropagation(); const b = ev.currentTarget; if (fav) { say('Favourites can\'t be deleted. Unstar it first.', true); return; }
+          if (!b.classList.contains('sure')) { b.classList.add('sure'); b.textContent = 'Sure?'; b.title = 'Click again to delete "' + a.name + '"'; clearTimeout(b._t);
+            b._t = setTimeout(() => { b.classList.remove('sure'); b.textContent = '🗑'; b.title = 'Delete this custom piece'; }, 3000); return; }
+          clearTimeout(b._t); deleteAsset(a); } }) : null;
       return el('button', { class: 'lcard ' + (e ? tierClass(e) : 'none') + (e === it ? ' on' : ''), title: e ? itemName(e) : 'None', onclick: () => change(e, color, variant),
         onpointerenter: ev => { hv.onpointerenter(ev); showDetail(e); }, onpointerleave: ev => { hv.onpointerleave(ev); showDetail(it); } },
-        e ? itemThumb(f, e, color, variant) : el('span', { class: 'nothing', text: '✕' }), star, e && isNew(f, e) ? el('span', { class: 'new', text: 'NEW' }) : null, el('b', { text: e ? itemName(e) : 'None' })); };
+        e ? itemThumb(f, e, color, variant) : el('span', { class: 'nothing', text: '✕' }), star, bin, e && isNew(f, e) ? el('span', { class: 'new', text: 'NEW' }) : null, el('b', { text: e ? itemName(e) : 'None' })); };
     cardsBox.replaceChildren(...(REQUIRED.has(f) || lockFilter !== 'all' ? [] : [card(null)]), ...items.map(card));
     if (!cardsBox.children.length) cardsBox.append(el('p', { class: 'blank', text: 'Nothing here.' }));
   }
@@ -245,7 +254,9 @@ function panelPicker() {
   return [head('Wardrobe'), el('div', { class: 'pbody' },
     el('div', { class: 'pickhead' }, el('button', { class: 'btn ghost', text: '‹ Wardrobe', onclick: () => { leavePicker(); render(); } }), icon(SLOT_ICON[f]), el('b', { text: LABEL[f] })),
     el('div', { class: 'row' }, search, locked('Owned only', 'the owned cosmetics filter', 'chip')), bar, cardsBox, detail,
-    cols.length ? [el('h3', { text: 'Colour' }), swatches] : null, vs.length > 1 ? [el('h3', { text: 'Option' }), options] : null)];
+    it?.custom ? [el('h3', { text: 'Colour' }), el('p', { class: 'dim' }, 'This is your own piece, painted in the Creator. ', (() => { const a = ASSETS.find(x => 'Custom_' + x.id === it.Id);
+      return a ? el('button', { class: 'btn ghost small', text: 'Recolour in the Creator', onclick: guard(() => openAsset(a)) }) : null; })())]
+      : cols.length ? [el('h3', { text: 'Colour' }), swatches] : null, vs.length > 1 ? [el('h3', { text: 'Option' }), options] : null)];
 }
 // six favourite moves under the character, one click to play
 let EMOTES = null;
@@ -739,7 +750,11 @@ function assetCard(a) {
     el('div', { class: 'acts' }, act('Edit', guard(() => openAsset(a)), 'primary'), act('Copy', guard(() => copyAsset(a))), worn ? el('span', { class: 'worn', text: 'Worn ✓', title: 'Your character has this on' }) : act('Wear', () => setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' })),
 
       act('Delete', guard(async () => { if (!await confirmBox('Delete custom asset', `Delete "${a.name}"? Skins wearing it lose that part. This cannot be undone.`, 'Delete', true)) return;
-        await assets.remove(a.id); ASSETS = await assets.list(); syncFolder(); registerAssets(); if (worn) setSkin(R.fit(cur.skin)); else cur.skin = R.fit(cur.skin); pics.clear(); rebuild(); pressing = false; render(); say(`Deleted "${a.name}"`); }), 'danger')));
+        pressing = false; await deleteAsset(a); }), 'danger')));
+}
+async function deleteAsset(a) {   // skins wearing it fall back to the slot's usual item
+  const worn = cur.skin[a.field] && cur.skin[a.field].startsWith('Custom_' + a.id);
+  await assets.remove(a.id); ASSETS = await assets.list(); syncFolder(); registerAssets(); if (worn) setSkin(R.fit(cur.skin)); else cur.skin = R.fit(cur.skin); pics.clear(); rebuild(); render(); say(`Deleted "${a.name}"`);
 }
 const disclosure = () => el('div', { class: 'disclose' }, el('b', { text: 'Site only' }), el('span', { text: 'With the Skin Editor Sync mod installed and Show in game on, your character in your own worlds wears what you have on here, custom assets included. Repaints of edition and reward items stay on this site.' }));
 // the drawn area over the flat texture: everything outside it is dimmed and each drawn face is outlined

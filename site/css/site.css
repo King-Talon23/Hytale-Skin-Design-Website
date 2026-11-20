@@ -259,6 +259,10 @@ input[type=color] { width: 46px; height: 38px; padding: 2px; background: #0d1826
 .slot:hover, .lcard:hover { border-color: var(--line2); filter: brightness(1.12); }
 .slot.on, .lcard.on { border-color: var(--gold); box-shadow: 0 0 12px #f4c45266; }
 .mine { border-style: dashed; }
+.lcard .bin { position: absolute; top: 3px; left: 4px; font-size: 13px; line-height: 1; padding: 3px 4px; border-radius: 3px; background: #0b1626b0; cursor: pointer; filter: grayscale(1) brightness(1.6); }
+.lcard .bin:hover { filter: none; background: #5a1d24; }
+.lcard .bin.sure { filter: none; background: #b8323d; color: #fff; font: 800 11px/1 var(--h); padding: 4px 6px; letter-spacing: .03em; }
+.lcard .bin.off { opacity: .45; cursor: not-allowed; }
 .lcard .star { position: absolute; top: 2px; right: 5px; font-size: 17px; color: #ffffffa0; text-shadow: 0 1px 2px #000; cursor: pointer; line-height: 1.1; }
 .lcard .star.on, .animlist .star.on { color: var(--gold); }
 .lcard .new { position: absolute; top: 4px; left: 4px; background: var(--gold); color: #2a1d00; font: 800 10px var(--h); padding: 1px 5px; border-radius: 2px; }
