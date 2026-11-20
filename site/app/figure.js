@@ -27,6 +27,20 @@ const texture = (tex, tint) => once('t:' + tex + '|' + tint, async () => {
 const FACES = { front: [2, 1, 0, 1, 1, -1], back: [2, -1, 0, -1, 1, -1], right: [0, 1, 2, -1, 1, -1], left: [0, -1, 2, 1, 1, -1], top: [1, 1, 0, 1, 2, -1], bottom: [1, -1, 0, 1, 2, 1] };
 const S = 0.7071068, QUADROT = { '+Z': [0, 0, 0, 1], '-Z': [0, 1, 0, 0], '+Y': [-S, 0, 0, S], '-Y': [S, 0, 0, S], '+X': [0, S, 0, S], '-X': [0, -S, 0, S] };
 const xyz = (o, d = 0) => [o?.x ?? d, o?.y ?? d, o?.z ?? d];
+export function usedRects(modelJson) {
+  const out = [];
+  const walk = n => { const sh = n.shape || {};
+    if ((sh.type === 'box' || sh.type === 'quad') && sh.visible !== false) { const size = xyz(sh.settings?.size), lay = sh.textureLayout || {};
+      for (const [name, [, , ua, , va]] of Object.entries(sh.type === 'quad' ? { front: FACES.front } : FACES)) {
+        const fl = lay[name]; if (!fl) continue; const fu = size[ua], fv = size[va]; if (fu <= 0 || fv <= 0) continue;
+        const ox = fl.offset?.x ?? 0, oy = fl.offset?.y ?? 0, a = ((fl.angle | 0) % 360 + 360) % 360, xs = [], ys = [];
+        for (const [su, sv] of [[0, 0], [1, 0], [1, 1], [0, 1]]) { const pu = su * fu * (fl.mirror?.x ? -1 : 1), pv = sv * fv * (fl.mirror?.y ? -1 : 1);
+          const [X, Y] = a === 90 ? [ox - pv, oy + pu] : a === 180 ? [ox - pu, oy - pv] : a === 270 ? [ox + pv, oy - pu] : [ox + pu, oy + pv]; xs.push(X); ys.push(Y); }
+        out.push({ x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys), face: name, node: n.name }); } }
+    for (const c of n.children || []) walk(c); };
+  for (const n of modelJson.nodes || []) walk(n);
+  return out;
+}
 function shapeMesh(sh, T) {
   const size = xyz(sh.settings?.size), st = xyz(sh.stretch, 1), off = xyz(sh.offset), half = size.map(v => v / 2), quad = sh.type === 'quad'; if (quad) half[2] = 0;
   const qr = new THREE.Quaternion(...(quad ? QUADROT[sh.settings?.normal] || QUADROT['+Z'] : QUADROT['+Z'])), lay = sh.textureLayout || {}, pos = [], uv = [], idx = [];
