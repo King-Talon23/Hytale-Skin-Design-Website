@@ -213,9 +213,9 @@ const turnOf = r => new THREE.Quaternion().setFromEuler(new THREE.Euler(((r >> 2
 // a small piece of the zone: rolling land of its ground blocks, its own grasses and flowers, and a few of its trees, from the game's prefabs
 async function buildWorld(sc, tint) {
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const R = 26, FLAT = 6, at = new Map(), put = (name, x, y, z, q, k) => { const key = name + '|' + (k || 0); (at.get(key) || at.set(key, []).get(key)).push([x, y, z, q]); };
+  const R = 26, FLAT = 3, at = new Map(), put = (name, x, y, z, q, k) => { const key = name + '|' + (k || 0); (at.get(key) || at.set(key, []).get(key)).push([x, y, z, q]); };
   const height = (x, z) => { const d = Math.hypot(x, z); if (d < FLAT) return 0; const n = Math.sin(x * 0.21 + 1.3) * Math.cos(z * 0.17 - 0.7) + 0.7 * Math.sin((x + z) * 0.09 + 2.1) + 0.4 * Math.cos((x - z) * 0.27);
-    return Math.max(0, Math.round((n + 0.5) * sc.hills * 0.55 * Math.min(1, (d - FLAT) / 7))); };
+    return Math.max(0, Math.round((n + 0.5) * sc.hills * 0.55 * Math.min(1, (d - FLAT) / 5))); };
   const H = new Map(); for (let x = -R - 1; x <= R + 1; x++) for (let z = -R - 1; z <= R + 1; z++) H.set(x + ',' + z, height(x, z));
   const h = (x, z) => H.get(x + ',' + z) ?? 0, nTops = (await blockParts(sc.ground, tint)).length;
   const low = sc.plants.filter(p => p[2]), pick = near => { const from = near ? low : sc.plants; if (!from.length) return null; let r = rnd() * from.reduce((s, p) => s + p[1], 0);
@@ -228,7 +228,7 @@ async function buildWorld(sc, tint) {
   for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) { const d = Math.hypot(x, z); if (d > R) continue; const top = h(x, z), low = Math.min(top, h(x + 1, z), h(x - 1, z), h(x, z + 1), h(x, z - 1));
     for (let y = low; y <= top; y++) put(y === top ? sc.ground : sc.under, x, y - 1, z, null, y === top ? Math.floor(rnd() * nTops) : 0);
     // near the character (inside the camera's reach) only low plants grow, so nothing tall stands between the view and the skin
-    if (d > 1.7 && !taken.has(x + ',' + z) && rnd() < sc.density) { const name = d < 8 ? pick(true) : pick(); if (!name) continue; const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * Math.PI * 2);
+    if (d > 1.7 && !taken.has(x + ',' + z) && rnd() < sc.density) { const name = d < 3.2 ? pick(true) : pick(); if (!name) continue; const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * Math.PI * 2);
       put(name, x + (rnd() - 0.5) * 0.5, top, z + (rnd() - 0.5) * 0.5, yaw); } }
   const root = new THREE.Group(), M = new THREE.Matrix4(), V = new THREE.Vector3(), Q = new THREE.Quaternion(), ONE = new THREE.Vector3(1, 1, 1);
   for (const [key, list] of at) { const [name, k] = key.split('|'), parts = await blockParts(name, tint), p = parts[+k] || parts[0];
@@ -417,7 +417,7 @@ export function stage(canvas, Controls) {
     g.addColorStop(0, 'rgba(0,0,0,0.42)'); g.addColorStop(0.6, 'rgba(0,0,0,0.22)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   // bd: { top, fog } colours from the zone's weather at noon, sc: its entry in SCENES, tint: the biome's grass colour
   api.setBackdrop = async (bd, sc, tint) => { const my = (api.setBackdrop.n = (api.setBackdrop.n || 0) + 1);
-    const built = bd ? await buildWorld(sc, tint).catch(e => { console.warn('scene', e); return null; }) : null;
+    let built = null; if (bd) try { built = await buildWorld(sc, tint); } catch (e) { console.warn('scene', e); if (my === api.setBackdrop.n) throw new Error('scene files missing'); return; }   // the caller says what is missing
     if (my !== api.setBackdrop.n) { if (built) disposeTree(built); return; }
     if (sky) { scene.remove(sky); sky.geometry.dispose(); sky.material.dispose(); sky = null; }
     if (world) { scene.remove(world); disposeTree(world); world = null; } scene.fog = null;
