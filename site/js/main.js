@@ -4,6 +4,8 @@ import * as db from './db.js';
 import * as fig from './figure.js';
 import * as store from './store.js';
 import * as auth from './auth.js';
+import * as assets from './assets.js';
+import { createPainter } from './paint.js';
 import { rules, sanitize, cleanName, parse, nice, LABEL, GROUPS, REQUIRED } from './skin.js';
 
 const $ = id => document.getElementById(id);
@@ -60,9 +62,9 @@ let FOLDER = { state: 'none' }, ACCOUNT = null;
 let found = [];   // skins brought in this session by a lookup or from files; not saved until the player saves them
 
 async function startApp() {
-  META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META);
+  META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets();
   $('connect').hidden = true; $('app').hidden = false;
-  st ??= fig.stage($('view'), OrbitControls);
+  if (!st) { st = fig.stage($('view'), OrbitControls); bindPaint($('view'), e => ED ? st.pick(e.clientX, e.clientY, ED.canvas) : null, 10); }
   try { await store.resumeFolder(false); } catch (e) { console.warn(e); }
   FOLDER = await store.folderState(); WARD = await store.list(); ACCOUNT = await auth.account().catch(() => null);
   const draft = await db.get('meta', 'draft'), ds = sanitize(draft?.skin);
@@ -123,9 +125,10 @@ function animThumb(g, n) { const s = R.fit(cur.skin);
 const portrait = skin => { const s = R.fit(skin); return lazyImg('p|' + JSON.stringify(s), async () => fig.snapshot(await fig.build(s, R), 'full')); };
 
 // ---------------------------------------------------------------- panels
-function setTab(t) { tab = t; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t); if (R) render(); }
+function setTab(t) { if (ED && t !== 'creator') closeAsset(true).then(() => { playAnim('Default', 'Idle', 0.5); rebuild(); });
+  tab = t; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t); if (R) render(); }
 function render() { jobGen++; plate(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
-  p.replaceChildren(...({ editor: panelEditor, wardrobe: panelWardrobe, animations: panelAnimations, lookup: panelLookup, feedback: panelFeedback, help: panelHelp }[tab])());
+  p.replaceChildren(...({ editor: panelEditor, wardrobe: panelWardrobe, animations: panelAnimations, lookup: panelLookup, feedback: panelFeedback, creator: panelCreator, help: panelHelp }[tab])());
   if (was === p.className && top) { const b = p.querySelector('.pbody'); if (b) b.scrollTop = top; } }
 // our own small symbols for the category rail (drawn here, not taken from the game)
 const ICON = { Head: 'M6 3h12v13H6zM9 8v3h2V8zM13 8v3h2V8zM9 17h6v4H9z', Body: 'M9 2h6v6H9zM7 9h10v8H7zM3 9h3v8H3zM18 9h3v8h-3zM8 18h3v4H8zM13 18h3v4h-3z',
@@ -145,11 +148,11 @@ function panelEditor() {
   const it = R.find(slot, cur.skin[slot]), { color, variant } = parse(cur.skin[slot]);
   const change = (item, c, v) => setSkin({ ...cur.skin, [slot]: R.partStr(item, c, v) });
   const rail = el('div', { class: 'rail' }, GROUPS.map(([g]) => el('button', { class: g === group ? 'on' : '', onclick: () => { group = g; filter = ''; render(); } }, icon(ICON[g]), el('span', { text: g }))));
-  const sub = el('div', { class: 'rail sub' }, fields.map(f => el('button', { class: f === slot ? 'on' : '', onclick: () => { slot = f; filter = ''; render(); } }, icon(SLOT_ICON[f]), el('div', {}, el('span', { text: LABEL[f] }), el('small', { text: cur.skin[f] ? nice(parse(cur.skin[f]).id) : 'None' })))));
-  const q = filter.toLowerCase(), items = R.ITEMS[slot].filter(e => nice(e.Id).toLowerCase().includes(q));
+  const sub = el('div', { class: 'rail sub' }, fields.map(f => el('button', { class: f === slot ? 'on' : '', onclick: () => { slot = f; filter = ''; render(); } }, icon(SLOT_ICON[f]), el('div', {}, el('span', { text: LABEL[f] }), el('small', { text: cur.skin[f] ? itemName(R.find(f, cur.skin[f]) || { Id: parse(cur.skin[f]).id }) : 'None' })))));
+  const q = filter.toLowerCase(), items = R.ITEMS[slot].filter(e => itemName(e).toLowerCase().includes(q));
   const grid = el('div', { class: 'grid' },
     REQUIRED.has(slot) ? null : el('button', { class: 'tile none' + (!it ? ' on' : ''), title: 'None', onclick: () => change(null), ...hover(null) }, el('span', { text: '✕' })),
-    items.map(e => el('button', { class: 'tile' + (e === it ? ' on' : ''), title: nice(e.Id), onclick: () => change(e, color, variant), ...hover(R.partStr(e, color, variant)) }, itemThumb(slot, e, color, variant))));
+    items.map(e => el('button', { class: 'tile' + (e === it ? ' on' : '') + (e.custom ? ' mine' : ''), title: itemName(e), onclick: () => change(e, color, variant), ...hover(R.partStr(e, color, variant)) }, itemThumb(slot, e, color, variant))));
   const search = el('input', { type: 'search', placeholder: 'Search', value: filter, maxLength: 40, oninput: e => { filter = e.target.value; const g = panelEditor(); $('panel').querySelector('.grid').replaceWith(g[1].querySelector('.grid')); } });
   const cols = it ? R.colorsOf(it, variant) : [], vs = it?.Variants ? Object.keys(it.Variants) : [];
   const swatches = el('div', { class: 'swatches' }, cols.map(([k, base]) => { const b = el('button', { title: nice(k), class: k === color ? 'on' : '', onclick: () => change(it, k, variant), ...hover(R.partStr(it, k, variant)) });
@@ -211,6 +214,7 @@ async function refreshWard() { WARD = await store.list(); if (cur.id && ![...WAR
 const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { if (e && e.name === 'AbortError') return; console.error(e); say(e.message || 'That did not work.', true); } };
 const slotButtons = () => WARD.game.map((r, i) => ({ label: `Slot ${i + 1}${r ? ': ' + r.name : ' (empty)'}`, value: String(i) }));
 const toGame = guard(async rec => {
+  if (hasCustom(rec.skin)) throw new Error('In-game slots cannot hold custom assets, because the game does not have them.');
   const v = await ask('Move to an in-game slot', el('p', { text: `"${rec.name}" goes into the slot you pick. A skin already in that slot moves to My skins, so nothing is lost.` }), [...slotButtons(), { label: 'Cancel', value: '' }]);
   if (v === '') return; await store.swap(rec.id, +v); if (cur.id === rec.id) { cur.id = 'game-' + v; cur.kind = 'game'; cur.slot = +v; } await refreshWard(); say('Moved to in-game slot ' + (+v + 1));
 });
@@ -229,6 +233,7 @@ async function saveAs() {
   const where = el('select', {}, el('option', { value: 'custom', text: `My skins (${WARD.custom.length} / ${store.CUSTOM_MAX})` }), WARD.game.map((r, i) => el('option', { value: String(i), text: `In-game slot ${i + 1}${r ? ', replaces "' + r.name + '"' : ' (empty)'}` })));
   const v = await ask('Save skin', [el('label', { text: 'Name' }), name, el('label', { text: 'Save to' }), where], [{ label: 'Cancel', value: '' }, { label: 'Save', value: 'yes', primary: true }]);
   if (v !== 'yes') return; const n = cleanName(name.value) || 'Unnamed';
+  if (where.value !== 'custom' && hasCustom(cur.skin)) return say('In-game slots cannot hold custom assets. Save this one to My skins.', true);
   await guard(async () => { const r = where.value === 'custom' ? await store.saveCustom(n, cur.skin) : await store.saveGame(+where.value, n, cur.skin);
     cur.id = r.id; cur.kind = r.kind; cur.slot = r.slot ?? null; cur.name = r.name; dirty = false; keepDraft(); await refreshWard(); say(`Saved "${r.name}"`); })();
 }
@@ -303,6 +308,89 @@ function panelFeedback() {
     el('h3', { text: 'Request a feature' }), el('p', { text: 'Vote for a request with a thumbs-up, or add your own. The most wanted get built first.' }),
     el('div', { class: 'row' }, link('See and vote on requests', `${REPO}/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement+sort%3Areactions-%2B1-desc`, 'ghost'), link('Request a feature', `${REPO}/issues/new?template=feature.yml`, 'primary')),
     el('p', { class: 'note', text: 'Reports are public and need a free GitHub account. This site collects nothing itself.' }))];
+}
+
+// ---------------------------------------------------------------- asset creator
+let ASSETS = [], ED = null, edN = 0;
+const itemName = e => e && e.custom ? e.Name : nice(e ? e.Id : '');
+const hasCustom = skin => Object.values(skin).some(v => typeof v === 'string' && v.startsWith('Custom_'));
+function registerAssets() {   // custom assets join the catalogue as extra items in their slot, so the editor treats them like any other
+  for (const f of game.FIELDS) { const arr = CAT.items[f]; for (let i = arr.length - 1; i >= 0; i--) if (arr[i].custom) arr.splice(i, 1); }
+  for (const a of ASSETS) { const base = CAT.items[a.field].find(e => e.Id === a.baseId) || {};
+    CAT.items[a.field].push({ ...base, Id: 'Custom_' + a.id, custom: true, baseId: a.baseId, Name: a.name, Model: a.model, Variants: undefined, GradientSet: undefined, GreyscaleTexture: undefined, IsDefaultAsset: false,
+      Textures: { Mine: { Texture: `custom:${a.id}@${ED && ED.asset.id === a.id ? 'live' + ED.n : a.updated}`, BaseColor: ['#f4c452'] } } }); }
+}
+fig.setCustomSource(async id => {
+  if (ED && ED.asset.id === id) return ED.canvas;
+  const a = ASSETS.find(x => x.id === id); if (!a) throw new Error('that custom asset is gone');
+  const bmp = await createImageBitmap(a.data), c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height; c.getContext('2d').drawImage(bmp, 0, 0); return c;
+});
+const newAsset = guard(async f => {
+  if (ASSETS.length >= assets.MAX) throw new Error(`You have ${assets.MAX} custom assets, the most this site keeps. Delete one first.`);
+  const r = R.resolve(f, cur.skin), it = R.find(f, cur.skin[f]); if (!r || !it) throw new Error('Wear something in that slot first.');
+  const c = await fig.bakedCanvas(r.tex, r.tint), data = await new Promise(ok => c.toBlob(ok, 'image/png'));
+  const a = await assets.save({ id: assets.newId(), name: itemName(it) + (it.custom ? ' copy' : ' (mine)'), field: f, baseId: it.custom ? it.baseId : it.Id, model: r.model, w: c.width, h: c.height, data });
+  ASSETS = await assets.list(); registerAssets(); setSkin({ ...cur.skin, [f]: 'Custom_' + a.id + '.Mine' }); await openAsset(a);
+});
+async function openAsset(a) {
+  if (ED) await closeAsset(true);
+  const bmp = await createImageBitmap(a.data), c = el('canvas', { width: bmp.width, height: bmp.height, className: 'paint' }); c.getContext('2d', { willReadFrequently: true }).drawImage(bmp, 0, 0);
+  ED = { asset: a, canvas: c, n: ++edN, zoom: Math.max(2, Math.min(8, Math.floor(440 / bmp.width))) };
+  ED.painter = createPainter(c, final => { fig.refreshCustom(a.id); if (final) queueAssetSave(); }, () => render());
+  ED.palette = ED.painter.palette(); bindPaint(c, e => { const r = c.getBoundingClientRect(); return { x: Math.min(c.width - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * c.width))), y: Math.min(c.height - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * c.height))) }; }, 1e9);
+  registerAssets(); st.anim.set(null); st.paintMode(true); tab = 'creator'; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === 'creator'); render(); rebuild();
+}
+function queueAssetSave() { clearTimeout(queueAssetSave.t); queueAssetSave.t = setTimeout(() => flushAsset().catch(e => say(e.message, true)), 900); }
+async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; const e = ED, data = await new Promise(ok => e.canvas.toBlob(ok, 'image/png'));
+  e.asset = await assets.save({ ...e.asset, data }); ASSETS = await assets.list(); }
+async function closeAsset(quiet) {
+  if (!ED) return; await flushAsset().catch(e => say(e.message, true)); ED = null; registerAssets(); st.paintMode(false); pics.clear(); lastPic.clear();
+  if (!quiet) { playAnim('Default', 'Idle', 0.5); rebuild(); render(); }
+}
+// painting: the same strokes whether the pointer is on the flat texture or on the 3D model
+function bindPaint(target, toPixel, reach) { let down = false, last = null;
+  target.addEventListener('pointerdown', e => { if (!ED || e.button !== 0) return; const p = toPixel(e); if (!p) return; e.preventDefault(); try { target.setPointerCapture(e.pointerId); } catch { /* fine */ }
+    down = true; last = p; ED.painter.begin(); ED.painter.stroke(p, p); });
+  target.addEventListener('pointermove', e => { if (!down || !ED) return; const p = toPixel(e); if (!p) { last = null; return; }
+    ED.painter.stroke(last && Math.abs(last.x - p.x) + Math.abs(last.y - p.y) <= reach ? last : p, p); last = p; });   // on the model, a jump to another face starts a new dab instead of streaking across the texture
+  const up = () => { if (!down) return; down = false; ED && ED.painter.end(); }; target.addEventListener('pointerup', up); target.addEventListener('pointercancel', up);
+}
+const urls = new Map();
+function assetPicture(a) { const k = a.id + '@' + a.updated; if (!urls.has(k)) { for (const [o, u] of urls) if (o.startsWith(a.id + '@')) { URL.revokeObjectURL(u); urls.delete(o); } urls.set(k, URL.createObjectURL(a.data)); } return el('img', { alt: '', src: urls.get(k), draggable: false }); }
+function downloadBlob(name, blob) { const a = el('a', { href: URL.createObjectURL(blob), download: name }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+function assetCard(a) {
+  const act = (label, fn, cls) => el('button', { class: 'mini ' + (cls || ''), text: label, onclick: e => { e.stopPropagation(); fn(); } });
+  const worn = cur.skin[a.field] && cur.skin[a.field].startsWith('Custom_' + a.id);
+  return el('div', { class: 'skin asset' + (worn ? ' on' : ''), tabIndex: 0, title: 'Open in the creator', onclick: guard(() => openAsset(a)) },
+    el('div', { class: 'pic tex' }, assetPicture(a)), el('b', { text: a.name }), el('small', { text: LABEL[a.field] }),
+    el('div', { class: 'acts' }, act(worn ? 'Wearing' : 'Wear', () => setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' })), act('Export', () => downloadBlob(a.name.replace(/[^\w -]/g, '') + '.png', a.data)),
+      act('Delete', guard(async () => { if (!await confirmBox('Delete custom asset', `Delete "${a.name}"? Skins wearing it lose that part. This cannot be undone.`, 'Delete', true)) return;
+        await assets.remove(a.id); ASSETS = await assets.list(); registerAssets(); cur.skin = R.fit(cur.skin); pics.clear(); rebuild(); render(); }), 'danger')));
+}
+function panelCreator() {
+  if (!ED) { const worn = game.FIELDS.filter(f => R.resolve(f, cur.skin));
+    const sel = el('select', {}, worn.map(f => el('option', { value: f, text: `${LABEL[f]}: ${itemName(R.find(f, cur.skin[f]))}` })));
+    return [head('Asset Creator'), el('div', { class: 'pbody' },
+      el('p', { class: 'note', text: 'Make your own version of any item by repainting it, on the flat texture or straight on the 3D model. Custom assets exist on this site only, in this browser: the game and other players will not see them, and they cannot go into in-game slots.' }),
+      el('h3', { text: 'Start from something you are wearing' }), el('div', { class: 'row' }, sel, el('button', { class: 'btn primary', text: 'Create', onclick: () => newAsset(sel.value) })),
+      el('h3', { text: `My custom assets (${ASSETS.length} / ${assets.MAX})` }),
+      ASSETS.length ? el('div', { class: 'cards' }, ASSETS.map(assetCard)) : el('p', { class: 'blank', text: 'None yet. Pick a slot above and press Create.' }))]; }
+  const P = ED.painter, a = ED.asset, c = ED.canvas; c.style.width = c.width * ED.zoom + 'px';
+  const tool = (id, label) => el('button', { class: 'chip' + (P.tool === id ? ' on' : ''), text: label, onclick: () => { P.tool = id; render(); } });
+  const btn = (t, fn, cls = 'ghost') => el('button', { class: 'btn ' + cls, text: t, onclick: fn });
+  const sizeLabel = el('label', { text: `Brush size ${P.size}` });
+  const file = el('input', { type: 'file', accept: 'image/png', hidden: true, onchange: guard(async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; if (f.size > 2_000_000) throw new Error('That image is too large.');
+    const bmp = await createImageBitmap(f); if (bmp.width !== c.width || bmp.height !== c.height) throw new Error(`The image must be ${c.width} by ${c.height} pixels, the size of this texture.`); P.replace(bmp); ED.palette = P.palette(); render(); }) });
+  return [head('Asset Creator'), el('div', { class: 'pbody' },
+    el('div', { class: 'row' }, el('input', { type: 'text', value: a.name, maxLength: 40, onchange: e => { ED.asset = { ...ED.asset, name: cleanName(e.target.value) || a.name }; queueAssetSave(); } }), btn('Done', () => closeAsset(), 'primary')),
+    el('p', { class: 'note', text: 'Left-drag paints, on the texture below or on the model. Right-drag turns the model. Changes save by themselves.' }),
+    el('div', { class: 'options' }, tool('brush', 'Brush'), tool('erase', 'Eraser'), tool('fill', 'Fill'), tool('pick', 'Pick colour'), tool('light', 'Lighten'), tool('dark', 'Darken')),
+    el('div', { class: 'row tools' }, el('input', { type: 'color', value: P.color, title: 'Colour', oninput: e => { P.color = e.target.value; }, onchange: () => { if (P.tool === 'pick' || P.tool === 'erase') P.tool = 'brush'; render(); } }),
+      el('div', { class: 'grow' }, sizeLabel, el('input', { type: 'range', min: 1, max: 8, step: 1, value: P.size, oninput: e => { P.size = +e.target.value; sizeLabel.textContent = `Brush size ${P.size}`; } }))),
+    el('div', { class: 'swatches' }, ED.palette.map(h => { const b = el('button', { title: h, class: h === P.color ? 'on' : '', onclick: () => { P.color = h; if (P.tool === 'pick' || P.tool === 'erase') P.tool = 'brush'; render(); } }); b.style.background = h; return b; })),
+    el('div', { class: 'row' }, btn('Undo', () => P.undo()), btn('Redo', () => P.redo()), btn('Zoom −', () => { ED.zoom = Math.max(1, ED.zoom - 1); render(); }), btn('Zoom +', () => { ED.zoom = Math.min(16, ED.zoom + 1); render(); }),
+      el('label', { class: 'btn ghost' }, 'Import PNG', file), btn('Export PNG', () => c.toBlob(b => downloadBlob(a.name.replace(/[^\w -]/g, '') + '.png', b), 'image/png'))),
+    el('div', { class: 'paintbox' }, c))];
 }
 
 // ---------------------------------------------------------------- wiring

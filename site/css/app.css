@@ -157,6 +157,13 @@ main { min-height: 0; }
 .page p { margin: 0 0 10px; color: #c5d6e2; }
 .navlink { align-self: center; color: #b9cbd9; text-decoration: none; font: 700 14px var(--h); text-transform: uppercase; letter-spacing: .06em; padding: 0 16px; }
 .navlink:hover { color: #fff; }
+.tile.mine { border-style: dashed; border-color: var(--gold2); }
+.paintbox { margin-top: 10px; overflow: auto; max-height: 520px; border: 1px solid var(--line); border-radius: 3px; background: repeating-conic-gradient(#1b2b40 0% 25%, #223650 0% 50%) 50% / 16px 16px; }
+.paint { display: block; image-rendering: pixelated; cursor: crosshair; touch-action: none; }
+.row.tools { align-items: flex-end; margin: 6px 0 8px; } .row.tools .grow { flex: 1; } .row.tools label { margin: 0 0 2px; }
+.row input[type=color] { flex: none; }
+input[type=color] { width: 46px; height: 38px; padding: 2px; background: #0d1826; border: 1px solid var(--line); border-radius: 3px; cursor: pointer; }
+.skin .pic.tex { background: repeating-conic-gradient(#1b2b40 0% 25%, #223650 0% 50%) 50% / 12px 12px; } .skin .pic.tex img { object-fit: contain; }
 /* animations */
 .now { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } .now b { flex: 1; font: 700 16px var(--h); }
 .animlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }

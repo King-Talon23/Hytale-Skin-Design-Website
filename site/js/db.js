@@ -1,12 +1,12 @@
 // Everything the site remembers lives in this browser's IndexedDB: the player's own copy of the game files it needs,
 // and their skins. Nothing is sent to a server.
-const NAME = 'skin-editor', VERSION = 1;
+const NAME = 'skin-editor', VERSION = 2;
 let opening;
 function open() {
   return opening ??= new Promise((ok, no) => {
     const r = indexedDB.open(NAME, VERSION);
     r.onupgradeneeded = () => { const d = r.result;
-      for (const s of ['files', 'meta', 'skins']) if (!d.objectStoreNames.contains(s)) d.createObjectStore(s); };
+      for (const s of ['files', 'meta', 'skins', 'assets']) if (!d.objectStoreNames.contains(s)) d.createObjectStore(s); };
     r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
   });
 }

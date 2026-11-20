@@ -5,7 +5,13 @@ import { FIELDS } from './game.js';
 
 const cache = new Map(), once = (k, f) => cache.has(k) ? cache.get(k) : (cache.set(k, f()), cache.get(k));
 export const clearCache = () => cache.clear();
-async function pixels(p) { const i = await game.bitmap(game.common(p)), c = document.createElement('canvas'); c.width = i.width; c.height = i.height;
+// a custom asset's texture comes from the asset creator (the live canvas while it is being painted), not from the game files
+let customSource = null; export const setCustomSource = f => { customSource = f; };
+export function refreshCustom(id) { for (const [k, v] of cache) if (k.startsWith('t:custom:' + id + '@')) v.then(T => { T.mat.map.needsUpdate = true; }, () => {}); }
+export async function bakedCanvas(tex, tint) { const T = await texture(tex, tint), c = document.createElement('canvas'); c.width = T.w; c.height = T.h; c.getContext('2d').drawImage(T.mat.map.image, 0, 0); return c; }
+async function pixels(p) {
+  if (p.startsWith('custom:')) { const c = await customSource(p.slice(7).split('@')[0]), x = c.getContext('2d', { willReadFrequently: true }); return { c, x, d: x.getImageData(0, 0, c.width, c.height) }; }
+  const i = await game.bitmap(game.common(p)), c = document.createElement('canvas'); c.width = i.width; c.height = i.height;
   const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(i, 0, 0); return { c, x, d: x.getImageData(0, 0, i.width, i.height) }; }
 const texture = (tex, tint) => once('t:' + tex + '|' + tint, async () => {
   const { c, x, d } = await pixels(tex);
@@ -153,7 +159,15 @@ export function stage(canvas, Controls) {
   function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
   new ResizeObserver(fit).observe(canvas); fit();
   (function loop(now) { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000 || 0); anim.update(dt); travel(dt); last = now; renderer.render(scene, cam); })(last);
-  return { anim, show(root) { if (figure) { scene.remove(figure); dispose(figure); } figure = root; scene.add(root); anim.setFigure(root); },
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  // the texel of `image` under a screen point, for painting straight on the model
+  function pick(cx, cy, image) { if (!figure) return null; const r = canvas.getBoundingClientRect(); ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, cam);
+    for (const h of ray.intersectObject(figure, true)) { if (!h.uv || !h.object.visible || h.object.material?.map?.image !== image) continue;
+      return { x: Math.min(image.width - 1, Math.max(0, Math.floor(h.uv.x * image.width))), y: Math.min(image.height - 1, Math.max(0, Math.floor((1 - h.uv.y) * image.height))) }; }
+    return null; }
+  // while painting, the left button paints and the right button turns the view
+  function paintMode(on) { ctl.mouseButtons.LEFT = on ? -1 : THREE.MOUSE.ROTATE; ctl.mouseButtons.RIGHT = THREE.MOUSE.ROTATE; ctl.touches.ONE = on ? -1 : THREE.TOUCH.ROTATE; canvas.style.cursor = on ? 'crosshair' : ''; }
+  return { anim, pick, paintMode, show(root) { if (figure) { scene.remove(figure); dispose(figure); } figure = root; scene.add(root); anim.setFigure(root); },
     view(front) { cam.position.set(front ? 0 : -75, 95, front ? 265 : 255); ctl.target.set(0, 62, 0); ctl.update(); } };
 }
 let TR, tscene, tcam;
