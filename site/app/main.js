@@ -61,8 +61,8 @@ async function connectHandle(h, ask) {
 async function checkGameUpdate() {
   const h = await game.zipHandle().catch(() => null); if (!h || !META) return;
   try { if ((await h.queryPermission({ mode: 'read' })) !== 'granted') return; const f = await h.getFile();
-    if (f.size === META.size && f.lastModified === META.modified) return;
-    say('Hytale updated, reading the new game files…'); await game.connect(f, () => {}); fig.clearCache(); pics.clear(); META = await game.status(); CAT = await game.catalog(); R = rules(CAT); registerAssets(); setConn(META); rebuild(); render(); say('Game files updated.');
+    if (f.size === META.size && f.lastModified === META.modified && (META.v || 1) >= game.FILES_V) return;   // same file, and read with today's list of files
+    say((META.v || 1) < game.FILES_V && f.size === META.size ? 'Reading a few more of your game files…' : 'Hytale updated, reading the new game files…'); BD_MADE.clear(); bdShown = null; await game.connect(f, () => {}); fig.clearCache(); pics.clear(); META = await game.status(); CAT = await game.catalog(); R = rules(CAT); registerAssets(); setConn(META); rebuild(); render(); say('Game files updated.');
   } catch (e) { console.warn('game update check', e); say('Hytale seems to have updated, but the new game files could not be read. Use Connect again in Help.', true); } }
 function progress(p) { const b = $('progress'); b.hidden = false; b.firstElementChild.style.width = Math.round(p * 100) + '%'; b.lastElementChild.textContent = p < 1 ? `Reading your game files… ${Math.round(p * 100)}%` : 'Done'; }
 let connecting = false;
@@ -309,18 +309,41 @@ function panelPicker() {
       return a ? el('button', { class: 'btn ghost small', text: 'Recolour in the Creator', onclick: guard(() => openAsset(a)) }) : null; })())]
       : cols.length ? [el('h3', { text: 'Colour' }), swatches] : null, vs.length > 1 ? [el('h3', { text: 'Option' }), options] : null))];
 }
-// top-left of the stage: the backdrop behind the character, and a clean view with the controls hidden (for a good look or a screenshot)
-const BACKDROPS = [['dark', 'Dark'], ['light', 'Light'], ['sky', 'Sky'], ['grass', 'Meadow']];
+// top-left of the stage: the background behind the character, and a clean view with the controls hidden (for a good look or a screenshot).
+// Studio is the site's own; the others are built from the player's game files, so they look the way those places look in the game at noon.
+const BACKDROPS = [['dark', 'Studio'], ...Object.entries(game.BACKDROPS).map(([k, b]) => [k, b.name])];
+const hexIn = v => { const m = /#([0-9a-f]{6})/i.exec(String(v || '')); return m ? '#' + m[1].toLowerCase() : null; };
+function atNoon(keys) {   // a weather's colour keys [{Hour, Color}] at 12:00, blended between the keys either side (round midnight if need be)
+  const ks = (Array.isArray(keys) ? keys : []).map(k => ({ h: +k.Hour, c: hexIn(k.Color) })).filter(k => k.c && Number.isFinite(k.h)).sort((x, y) => x.h - y.h); if (!ks.length) return null;
+  const lo = ks.filter(k => k.h <= 12).pop() || { ...ks[ks.length - 1], h: ks[ks.length - 1].h - 24 }, hi = ks.find(k => k.h >= 12) || { ...ks[0], h: ks[0].h + 24 };
+  if (hi.h === lo.h) return lo.c; const t = (12 - lo.h) / (hi.h - lo.h), A = hexRgb(lo.c), B = hexRgb(hi.c);
+  return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join(''); }
+const BD_MADE = new Map();
+async function backdropSpec(key) {
+  if (BD_MADE.has(key)) return BD_MADE.get(key); const b = game.BACKDROPS[key], w = await game.json(b.weather);
+  const top = atNoon(w.SkyTopColors), fog = atNoon(w.FogColors) || top; if (!top) throw new Error('no sky colours in ' + b.weather);
+  const tint = b.tint ? hexIn((/"Color"\s*:\s*"(#[0-9a-fA-F]{6})"/.exec(JSON.stringify(await game.json(b.tint))) || [])[1]) : null;
+  const tiles = await Promise.all(b.ground.map(p => game.bitmap(p))), S = tiles[0].width, N = 16, c = el('canvas', { width: N * S, height: N * S }), x = c.getContext('2d');
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;   // the same block pattern every time
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) x.drawImage(tiles[Math.floor(rnd() * tiles.length)], i * S, j * S, S, S);
+  if (tint) { x.globalCompositeOperation = 'multiply'; x.fillStyle = tint; x.fillRect(0, 0, c.width, c.height); x.globalCompositeOperation = 'source-over'; }   // greyscale grass takes the biome's colour, as in the game
+  const spec = { top, fog, floor: c }; BD_MADE.set(key, spec); return spec; }
+let bdShown = null;
+async function showBackdrop(key) {
+  if (!st || key === bdShown) return; bdShown = key;
+  if (key === 'dark') return st.setBackdrop(null);
+  try { const spec = await backdropSpec(key); if (bdShown === key) st.setBackdrop(spec); }
+  catch (e) { console.warn('backdrop', e); bdShown = 'dark'; st.setBackdrop(null); store_.set('se_backdrop', 'dark'); drawStageBtns();
+    say('This background needs a few more of your game files. Connect your Assets.zip again in Help and it will show.', true); } }
 function drawStageBtns() {
   const box = $('stagebtns'), stg = $('view').parentElement; if (!box) return;
-  let bd = store_.get('se_backdrop'); if (!BACKDROPS.some(b => b[0] === bd)) bd = 'dark';
-  for (const [k] of BACKDROPS) stg.classList.toggle('bd-' + k, k === bd);
+  let bd = store_.get('se_backdrop'); if (!BACKDROPS.some(b => b[0] === bd)) bd = 'dark'; showBackdrop(bd);
   const name = BACKDROPS.find(b => b[0] === bd)[1], clean = stg.classList.contains('clean');
   box.replaceChildren(...[
-    el('button', { class: 'stbtn', title: 'Change the background behind your character', 'aria-label': 'Background: ' + name, onclick: () => { const i = BACKDROPS.findIndex(b => b[0] === bd); store_.set('se_backdrop', BACKDROPS[(i + 1) % BACKDROPS.length][0]); drawStageBtns(); } },
-      el('span', { class: 'bdchip' }), el('b', { text: name })),
+    el('button', { class: 'stbtn', title: 'Change the background behind your character (the game\u2019s own places)', 'aria-label': 'Background: ' + name, onclick: () => { const i = BACKDROPS.findIndex(b => b[0] === bd); store_.set('se_backdrop', BACKDROPS[(i + 1) % BACKDROPS.length][0]); drawStageBtns(); } },
+      el('span', { class: 'bdchip bd-' + bd }), el('b', { text: name })),
     ED ? null : el('button', { class: 'stbtn', title: clean ? 'Show the buttons again (Esc)' : 'Hide the buttons for a clean look at your character', onclick: () => { stg.classList.toggle('clean'); drawStageBtns(); } },
-      el('span', { text: clean ? '◉' : '◎' }), el('b', { text: clean ? 'Show buttons' : 'Clean view' }))].filter(Boolean));
+      el('span', { text: clean ? '\u25c9' : '\u25ce' }), el('b', { text: clean ? 'Show buttons' : 'Clean view' }))].filter(Boolean));
 }
 addEventListener('keydown', e => { if (e.key === 'Escape' && !ED) { const stg = $('view')?.parentElement; if (stg?.classList.contains('clean')) { stg.classList.remove('clean'); drawStageBtns(); } } });
 // six favourite moves under the character, one click to play

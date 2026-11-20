@@ -189,13 +189,15 @@ export function stage(canvas, Controls) {
   ctl.minDistance = 40; ctl.maxDistance = 480; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
   const disc = new THREE.Mesh(new THREE.CircleGeometry(58, 48), new THREE.MeshBasicMaterial({ color: 0x0b1626, transparent: true, opacity: 0.55 })); disc.rotation.x = -Math.PI / 2; disc.position.y = -0.2; scene.add(disc);
   const CELL = 32, grid = new THREE.GridHelper(CELL * 40, 40, 0x4a76ad, 0x33557f); grid.material.transparent = true; grid.material.opacity = 0; grid.material.depthWrite = false; scene.add(grid);
+  let sky = null, ground = null; const groundAt = new THREE.Vector2(), SPAN = CELL * 16;   // the in-game background (setBackdrop below)
   // the climbing wall: the same grid stood up in front of the figure, sliding the other way as it climbs
   const wallG = new THREE.GridHelper(CELL * 16, 16, 0x4a76ad, 0x33557f); wallG.rotation.x = Math.PI / 2; wallG.material.transparent = true; wallG.material.opacity = 0; wallG.material.depthWrite = false; wallG.visible = false; scene.add(wallG);
   let wallOn = null; const WALL_Z = 12, WALL_Y = 70;
   const vel = new THREE.Vector2(), want = new THREE.Vector2();
   function travel(dt) { const v = anim.velocity; want.set(v ? v[0] : 0, v ? v[1] : 0); vel.lerp(want, 1 - Math.exp(-dt * 9));
     grid.position.x = (grid.position.x - vel.x * dt) % CELL; grid.position.z = (grid.position.z - vel.y * dt) % CELL;   // the ground runs backwards under the figure
-    grid.material.opacity += ((anim.move && anim.anim ? 0.5 : 0) - grid.material.opacity) * (1 - Math.exp(-dt * 6)); grid.visible = grid.material.opacity > 0.01;
+    if (ground) moveGround(-vel.x * dt, -vel.y * dt);   // the in-game ground runs backwards under the figure instead of the grid
+    grid.material.opacity += ((anim.move && anim.anim && !ground ? 0.5 : 0) - grid.material.opacity) * (1 - Math.exp(-dt * 6)); grid.visible = grid.material.opacity > 0.01;
     const wy = wallG.position.y - WALL_Y - (wallOn ? wallOn[1] : 0) * dt, wx = wallG.position.x - (wallOn ? wallOn[0] : 0) * dt;
     wallG.position.set(wx % CELL, WALL_Y + wy % CELL, WALL_Z); wallG.material.opacity += ((wallOn ? 0.5 : 0) - wallG.material.opacity) * (1 - Math.exp(-dt * 6)); wallG.visible = wallG.material.opacity > 0.01; }
   let hl = null, helpers = [];   // outlines around picked boxes (see drawHL)
@@ -345,6 +347,25 @@ export function stage(canvas, Controls) {
     highlight(f) { hl = f; drawHL(); },
     show(root) { if (figure) { unhang(); scene.remove(figure); dispose(figure); } figure = root; scene.add(root); seatAt(); anim.setFigure(root); hang(); lit = []; applyIsolate(); drawHL(); if (api.afterShow) api.afterShow(); },
     view(front) { lifted = null; cam.position.set(front ? 0 : -75, 95, front ? 265 : 255); ctl.target.set(0, 62, 0); ctl.update(); } };
+  // ---- in-game backgrounds: a sky dome from the zone's sky and fog colours, and a floor of its ground blocks fading into that fog
+  const shadow = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(0,0,0,0.42)'); g.addColorStop(0.6, 'rgba(0,0,0,0.22)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+  api.setBackdrop = bd => {
+    for (const o of [sky, ground]) if (o) { scene.remove(o); o.geometry.dispose(); o.material.map?.dispose(); o.material.dispose(); }
+    sky = ground = null; scene.fog = null;
+    disc.material.map = bd ? shadow : null; disc.material.color.set(bd ? 0xffffff : 0x0b1626); disc.material.opacity = bd ? 1 : 0.55; disc.material.needsUpdate = true;
+    if (!bd) return;
+    const top = new THREE.Color(bd.top), hor = new THREE.Color(bd.fog), R = 1500, g = new THREE.SphereGeometry(R, 48, 24), p = g.attributes.position, cols = [];
+    for (let i = 0; i < p.count; i++) { const c = hor.clone().lerp(top, Math.pow(Math.max(0, p.getY(i) / R), 0.5)); cols.push(c.r, c.g, c.b); }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    sky = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -2; scene.add(sky);
+    const t = new THREE.CanvasTexture(bd.floor); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy(); const size = CELL * 84; t.repeat.set(size / SPAN, size / SPAN);
+    ground = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: t })); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.6; ground.renderOrder = -1; scene.add(ground);
+    scene.fog = new THREE.Fog(hor, 500, 1300); groundAt.set(0, 0);
+  };
+  function moveGround(dx, dz) { if (!ground) return; groundAt.x += dx; groundAt.y += dz; ground.material.map.offset.set(-groundAt.x / SPAN, groundAt.y / SPAN); }
+  api.hasGround = () => !!ground;
   return api;
 }
 let TR, tscene, tcam;
