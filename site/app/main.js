@@ -737,7 +737,7 @@ function anyItem() {   // or start from any free item in the game, worn or not
     [...pic.querySelectorAll('img.next')].forEach(x => x.remove()); pic.append(img); };
   const peek = i => { clearTimeout(hov); hov = setTimeout(() => draw(i), 40); };
   const mark = i => { act = i; menu.querySelectorAll('[aria-selected=true]').forEach(o => o.setAttribute('aria-selected', 'false')); const o = menu.children[i]; if (o) { o.setAttribute('aria-selected', 'true'); o.scrollIntoView({ block: 'nearest' }); } };
-  const label = () => { item.textContent = list[at]?.[0] || (list.length ? 'Choose an item' : 'Nothing found'); edit.disabled = !list[at]; };
+  const label = () => { item.textContent = list[at]?.[0] || (list.length ? 'Choose an item' : 'Nothing found'); edit.disabled = !list[at]?.[2]; };
   const away = ev => { if (!menu.contains(ev.target) && ev.target !== item) close(); };
   const drift = ev => { if (!menu.contains(ev.target)) close(); };   // the list floats over the page, so it closes when the page under it scrolls
   const close = () => { if (menu.hidden) return; menu.hidden = true; if (item.isConnected) item.after(menu); else menu.remove(); item.setAttribute('aria-expanded', 'false'); peek(at); document.removeEventListener('pointerdown', away, true); removeEventListener('scroll', drift, true); removeEventListener('resize', close); };
@@ -757,8 +757,9 @@ function anyItem() {   // or start from any free item in the game, worn or not
   menu.onclick = ev => { const o = ev.target.closest('[role=option]'); if (o) { choose(+o.dataset.i); item.focus(); } };
   const fill = () => { const q = find_.value.trim().toLowerCase(), from = q ? slots : [slot.value];   // a search looks in every slot
     list = from.flatMap(f => CAT.items[f].filter(e => ok(e) && (!q || itemName(e).toLowerCase().includes(q))).map(e => [itemName(e) + (q ? ` (${LABEL[f]})` : ''), f, e])).sort((a, b) => a[0].localeCompare(b[0]));
+    if (!q) list.unshift(['None', slot.value, null]);   // None: the picture shows the slot empty; wearing nothing there starts on a random item
     menu.replaceChildren(...list.map(([n], i) => el('div', { role: 'option', class: 'anyopt', text: n, data: { i } })));
-    const worn = !q && parse(cur.skin[slot.value]).id; at = q ? (list.length ? 0 : -1) : list.findIndex(r => r[2].Id === worn); act = Math.max(0, at); label(); item.disabled = !list.length; close(); clearTimeout(hov); draw(at); };
+    const worn = !q && parse(cur.skin[slot.value]).id; at = q ? (list.length ? 0 : -1) : list.findIndex(r => r[2] && r[2].Id === worn); if (!q && at < 0 && list.length > 1) at = 1 + Math.floor(Math.random() * (list.length - 1)); act = Math.max(0, at); label(); item.disabled = !list.length; close(); clearTimeout(hov); draw(at); };
   slot.value = slots.includes(anyItem.slot) ? anyItem.slot : slots.includes('overtop') ? 'overtop' : slots[0]; fill(); slot.onchange = () => { anyItem.slot = slot.value; find_.value = ''; fill(); }; find_.oninput = fill;
   find_.onkeydown = ev => { if (ev.key === 'ArrowDown' && list.length) { ev.preventDefault(); item.focus(); item.onkeydown(ev); } };
   return [el('h3', { text: 'Or start from any item' }), el('div', { class: 'row anyitem' }, pic, el('div', { class: 'anycol' }, el('div', { class: 'row' }, slot, find_), el('div', { class: 'anywrap' }, item, menu)), edit)];
