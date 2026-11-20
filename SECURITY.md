@@ -4,8 +4,12 @@
 - **No server side.** Static files only: no accounts, passwords, database, cookies, analytics or ads. There is nothing of a
   player's to steal from the site, because the site holds nothing of theirs.
 - **Game files and skins stay in the player's browser** (IndexedDB). Nothing is uploaded.
-- **One outside request, on demand:** the player lookup sends the typed username to `https://playerdb.co`. It is the only
-  host allowed by the Content Security Policy.
+- **Two outside hosts, both on demand:** the player lookup sends the typed username to `https://playerdb.co`, and Sign in with
+  Hytale (off until a client ID is set in `site/js/config.js`) talks to `https://connect.accounts.hytale.com`. They are the only
+  hosts allowed by the Content Security Policy.
+- **Sign-in keeps no tokens.** It is OpenID Connect with PKCE as a public client (no secret). `state` is checked, the one-time
+  code is removed from the address bar at once, the tokens are used once to read the chosen game profile and then dropped, and
+  only that profile (UUID and username) is kept, in the player's browser.
 - **Strict Content Security Policy** (`site/_headers`): scripts, styles and fonts from this origin only; no inline script or
   style; no frames, forms, plugins or `eval`. Plus HSTS (preload), `nosniff`, `no-referrer`, a locked Permissions-Policy and
   same-origin opener/resource policies.

@@ -23,6 +23,7 @@ class H(BaseHTTPRequestHandler):
             with open(ZIP, 'rb') as f: f.seek(a); data = f.read(b - a + 1)
             return self.out(206, data, 'application/zip', [('Content-Range', f'bytes {a}-{b}/{size}')])
         rel = 'index.html' if p == '/' else p.lstrip('/'); full = os.path.normpath(os.path.join(ROOT, rel))
+        if not os.path.isfile(full) and os.path.isfile(full + '.html'): full += '.html'   # /auth/callback -> auth/callback.html, as the host does
         if p == '/dev/devsource.js': full = os.path.join(DEV, 'devsource.js')
         elif not full.startswith(ROOT + os.sep) or not os.path.isfile(full): return self.out(404, b'not found', 'text/plain')
         self.out(200, open(full, 'rb').read(), mimetypes.guess_type(full)[0] or 'application/octet-stream')
