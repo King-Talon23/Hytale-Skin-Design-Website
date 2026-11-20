@@ -172,7 +172,7 @@ input[type=color] { width: 46px; height: 38px; padding: 2px; background: #0d1826
 .numfield { display: flex; flex: none; align-items: center; gap: 4px; margin: 0; color: var(--text); } .numfield span { font-size: 12px; width: 12px; } .numfield input { flex: none; width: 64px; color: var(--text); font: 13px var(--b); min-height: 30px; padding: 3px 6px; background: #0d1826; border: 1px solid var(--line); border-radius: 3px; }
 /* creator workspace (Blockbench-like) */
 .ws-part { display: none; }
-#app.ws { grid-template-columns: 46px minmax(230px, 300px) minmax(0, 1fr) minmax(230px, 280px); grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px;
+#app.ws { grid-template-columns: 62px minmax(230px, 300px) minmax(0, 1fr) minmax(230px, 280px); grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px;
   grid-template-areas: "top top top top" "tools left view right" "status status status status"; }
 #app.ws > .panel, #app.ws .stage .bar, #app.ws .nameplate, #app.ws .emotes { display: none; }
 #app.ws .ws-part { display: flex; }
@@ -184,13 +184,17 @@ input[type=color] { width: 46px; height: 38px; padding: 2px; background: #0d1826
 .wsmodes button.on { background: #22303f; color: var(--gold); box-shadow: inset 0 -2px 0 var(--gold); }
 #wstools { grid-area: tools; flex-direction: column; gap: 4px; align-items: center; background: #15263b; border: 1px solid var(--line); border-radius: 4px; padding: 6px 4px; overflow: auto; }
 #wstools hr { width: 70%; border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
-.wstool { position: relative; width: 36px; height: 36px; flex: none; padding: 0; border-radius: 4px; border: 1px solid #2e4a6e; background: #1b2e48; color: #dce8eb; font-size: 17px; display: grid; place-items: center; }
+#app.ws.ws-wide { grid-template-columns: 62px minmax(380px, 46vw) minmax(0, 1fr) minmax(230px, 280px); }
+.wstool b { font: 600 9.5px var(--b); color: var(--dim); line-height: 1; margin-top: 2px; } .wstool.on b { color: var(--gold); }
+.wstool { position: relative; width: 52px; height: 46px; flex: none; padding: 0; border-radius: 4px; border: 1px solid #2e4a6e; background: #1b2e48; color: #dce8eb; font-size: 17px; display: grid; align-content: center; justify-items: center; place-items: center; }
 .wstool:hover { border-color: var(--line2); } .wstool.on { border-color: var(--gold); color: var(--gold); background: #2a3340; }
-.wstool i { position: absolute; right: 2px; bottom: 0; font: 700 9px var(--b); font-style: normal; color: var(--dim); }
+.wstool i { position: absolute; right: 3px; top: 1px; font: 700 9px var(--b); font-style: normal; color: var(--dim); }
 .wspanel { flex-direction: column; gap: 8px; min-height: 0; overflow: auto; background: #101d2f; border: 1px solid var(--line); border-radius: 4px; padding: 10px; }
 #wsleft { grid-area: left; } #wsright { grid-area: right; }
 .wshead { font: 700 11px var(--h); text-transform: uppercase; letter-spacing: .08em; color: var(--dim); border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: 4px; }
-#wsleft .paintbox { margin: 0; max-height: none; }
+#wsleft .paintbox { margin: 0; max-height: none; min-height: 120px; flex: 1 1 auto; }
+.outliner .rename { width: 100%; min-height: 28px; padding: 3px 6px; }
+.viewbtns button.on { border-color: var(--gold); color: var(--gold); }
 #wsstatus { grid-area: status; background: #15263b; border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; font-size: 12.5px; color: var(--dim); }
 .viewbtns { position: absolute; top: 8px; right: 8px; gap: 3px; } .viewbtns button { background: #0b1422d0; border: 1px solid var(--line2); border-radius: 3px; padding: 3px 9px; font-size: 12px; color: #c5d6e2; }
 .viewbtns button:hover { border-color: var(--gold2); color: #fff; }

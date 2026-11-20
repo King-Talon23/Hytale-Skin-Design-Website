@@ -216,8 +216,15 @@ export function stage(canvas, Controls) {
   // while painting, the left button paints and the right button turns the view
   function paintMode(on) { ctl.mouseButtons.LEFT = on ? -1 : THREE.MOUSE.ROTATE; ctl.mouseButtons.RIGHT = THREE.MOUSE.ROTATE; ctl.touches.ONE = on ? -1 : THREE.TOUCH.ROTATE; canvas.style.cursor = on ? 'crosshair' : ''; }
   // the box under a screen point (first hit that passes the filter), and outlines around the boxes a filter picks
-  function drawHL() { for (const h of helpers) { scene.remove(h); h.geometry.dispose(); } helpers = []; if (!hl || !figure) return;
-    figure.updateMatrixWorld(true); figure.traverse(o => { if (o.isMesh && o.visible && hl(o)) { const h = new THREE.BoxHelper(o, 0xf4c452); h.material.depthTest = false; h.renderOrder = 10; helpers.push(h); scene.add(h); } }); }
+  // the picked box glows (its own copy of the material, lit gold) as well as getting an outline
+  let lit = []; const glow = new Map();
+  function drawHL() { for (const h of helpers) { scene.remove(h); h.geometry.dispose(); } helpers = []; for (const m of lit) if (m.userData.baseMat) { m.material = m.userData.baseMat; delete m.userData.baseMat; } lit = []; if (!hl || !figure) return;
+    figure.updateMatrixWorld(true); figure.traverse(o => { if (o.isMesh && o.visible && hl(o)) { const h = new THREE.BoxHelper(o, 0xf4c452); h.material.depthTest = false; h.renderOrder = 10; helpers.push(h); scene.add(h);
+      const base = o.material; if (!glow.has(base)) { const g = base.clone(); g.emissive = new THREE.Color(0x6a4a08); glow.set(base, g); } o.userData.baseMat = base; o.material = glow.get(base); lit.push(o); } }); }
+  // the item being edited stands out: every other part of the character turns into a faint see-through mannequin
+  const ghost = new THREE.MeshLambertMaterial({ color: 0xa9bfd6, transparent: true, opacity: 0.14, depthWrite: false }); let isoImage = null;
+  function applyIsolate() { figure?.traverse(o => { if (!o.isMesh) return; const real = o.userData.realMat || o.material, keep = !isoImage || real?.map?.image === isoImage;
+    if (keep && o.userData.realMat) { o.material = o.userData.realMat; delete o.userData.realMat; } else if (!keep && !o.userData.realMat) { o.userData.realMat = o.material; o.material = ghost; } }); }
   function pickMesh(cx, cy, keep) { if (!figure) return null; const r = canvas.getBoundingClientRect(); ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, cam);
     for (const h of ray.intersectObject(figure, true)) if (h.object.visible && keep(h.object)) return h.object; return null; }
   // the gizmo: drag arrows (move), cubes (resize) or rings (rotate) on one box, like Blockbench and Blender. The box itself
@@ -254,12 +261,12 @@ export function stage(canvas, Controls) {
     if (was !== !!root) { const k = root ? 1.6 : 1 / 1.6, ty = root ? 62 + at[1] * 0.7 : 62, off = cam.position.clone().sub(ctl.target).multiplyScalar(k);
       ctl.target.set(0, ty, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
   }
-  const api = { anim, mountAnim, mount, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
+  const api = { isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
     gizmoBusy: () => tc.dragging || tc.axis !== null,
     findMesh(keep) { let hit = null; figure?.traverse(o => { if (!hit && o.isMesh && keep(o)) hit = o; }); return hit; },
     setView(name) { const v = VIEWS[name] || VIEWS.persp; cam.position.set(...v); ctl.target.set(0, 62, 0); ctl.update(); },
     highlight(f) { hl = f; drawHL(); },
-    show(root) { if (figure) { scene.remove(figure); dispose(figure); } figure = root; scene.add(root); seatAt(); anim.setFigure(root); drawHL(); if (api.afterShow) api.afterShow(); },
+    show(root) { if (figure) { scene.remove(figure); dispose(figure); } figure = root; scene.add(root); seatAt(); anim.setFigure(root); lit = []; applyIsolate(); drawHL(); if (api.afterShow) api.afterShow(); },
     view(front) { cam.position.set(front ? 0 : -75, 95, front ? 265 : 255); ctl.target.set(0, 62, 0); ctl.update(); } };
   return api;
 }

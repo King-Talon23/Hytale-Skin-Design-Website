@@ -13,7 +13,8 @@ export async function list() { return (await db.all('assets')).filter(ok).sort((
 export async function save(a) {
   const r = { id: a.id, name: cleanName(a.name) || 'My asset', field: a.field, baseId: String(a.baseId || '').slice(0, 64), model: a.model, w: a.w, h: a.h, data: a.data, updated: Date.now(),
     flag: typeof a.flag === 'string' ? a.flag.slice(0, 80) : undefined,   // set when the asset is too close to a paid item
-    shape: okShape(a.shape) ? a.shape : undefined };   // the item's model, reshaped in the Creator (JSON text)
+    shape: okShape(a.shape) ? a.shape : undefined,
+    labels: a.labels && typeof a.labels === 'object' ? Object.fromEntries(Object.entries(a.labels).filter(([k, v]) => typeof k === 'string' && k.length <= 64 && typeof v === 'string').slice(0, 64).map(([k, v]) => [k, cleanName(v).slice(0, 30)]).filter(([, v]) => v)) : undefined };   // box names shown in the Creator   // the item's model, reshaped in the Creator (JSON text)
   if (!ok(r)) throw new Error('That asset could not be saved.');
   await db.put('assets', r.id, r); return r;
 }
