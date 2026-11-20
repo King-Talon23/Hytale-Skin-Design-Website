@@ -1,4 +1,4 @@
-// Reads single files out of a (possibly multi-gigabyte) zip in place, without loading it.
+// Reads single files out of a (possibly multi-gigabyte) zip in place, without loading it, and writes small zips (stored, no compression).
 // A source is { size, read(start, end) -> Promise<ArrayBuffer> }; a File the player picked is wrapped by fileSource().
 
 export const fileSource = file => ({ size: file.size, read: (a, b) => file.slice(a, b).arrayBuffer() });
@@ -52,4 +52,22 @@ export async function openZip(src, wanted) {
     return new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
   }
   return { names: [...entries.keys()], read };
+}
+
+// ---- writing: files = [[path, Uint8Array | string]], stored without compression (the PNGs inside are compressed already)
+const CRC = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc32 = b => { let c = 0xffffffff; for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+export function makeZip(files) {
+  const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
+  for (const [path, body] of files) {
+    const name = enc.encode(path), data = typeof body === 'string' ? enc.encode(body) : body, crc = crc32(data);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, name.length, true);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, name.length, true); c.setUint32(42, offset, true);
+    parts.push(h, name, data); central.push(c, name); offset += 30 + name.length + data.length;
+  }
+  const size = central.reduce((n, x) => n + x.byteLength, 0), end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, size, true); end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end], { type: 'application/zip' });
 }

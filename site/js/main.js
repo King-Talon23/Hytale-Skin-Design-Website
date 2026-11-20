@@ -6,6 +6,7 @@ import * as store from './store.js';
 import * as auth from './auth.js';
 import * as assets from './assets.js';
 import { createPainter, SHAPES, ONCE } from './paint.js';
+import { makeZip } from './zip.js';
 import { rules, sanitize, cleanName, parse, nice, LABEL, GROUPS, REQUIRED } from './skin.js';
 
 const $ = id => document.getElementById(id);
@@ -427,22 +428,39 @@ function bindPaint(target, toPixel, reach, onModel) { let down = false, last = n
 const urls = new Map();
 function assetPicture(a) { const k = a.id + '@' + a.updated; if (!urls.has(k)) { for (const [o, u] of urls) if (o.startsWith(a.id + '@')) { URL.revokeObjectURL(u); urls.delete(o); } urls.set(k, URL.createObjectURL(a.data)); } return el('img', { alt: '', src: urls.get(k), draggable: false }); }
 function downloadBlob(name, blob) { const a = el('a', { href: URL.createObjectURL(blob), download: name }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+// a folder asset pack for the companion mod: unzip it into a world's mods folder, then /skins list and /skins wear <id> in game
+const lockedBase = a => { const it = CAT.items[a.field].find(e => e.Id === a.baseId); return it ? tierOf(it) : 0; };
+const modReady = a => lockedBase(a) === 0;
+const modExport = guard(async list => {
+  const ok = list.filter(modReady), skipped = list.length - ok.length;
+  if (!ok.length) throw new Error('These are repaints of edition or reward items, which the mod will not wear.');
+  const dir = 'SkinEditor_MyAssets/', files = [[dir + 'manifest.json', JSON.stringify({ Group: 'SkinEditorPack', Name: 'MyAssets', Version: '1.0.0',
+    Description: 'Custom assets made on hytale-skin-editor.com, for the Skin Editor companion mod.', Authors: [{ Name: 'Skin Editor' }], ServerVersion: '*' }, null, 1)]];
+  for (const a of ok) {
+    files.push([`${dir}Server/SkinEditor/${a.id}.json`, JSON.stringify({ format: 'skin-editor-asset', version: 1, id: a.id, name: a.name, field: a.field, model: a.model }, null, 1)]);
+    files.push([`${dir}Common/Characters/SkinEditor/${a.id}.png`, new Uint8Array(await a.data.arrayBuffer())]);
+  }
+  downloadBlob('SkinEditor_MyAssets.zip', makeZip(files));
+  say(skipped ? `Pack downloaded. ${skipped} edition or reward repaint${skipped > 1 ? 's were' : ' was'} left out.` : 'Pack downloaded. Unzip it into your world’s mods folder.');
+});
 function assetCard(a) {
   const act = (label, fn, cls) => el('button', { class: 'mini ' + (cls || ''), text: label, onclick: e => { e.stopPropagation(); fn(); } });
   const worn = cur.skin[a.field] && cur.skin[a.field].startsWith('Custom_' + a.id);
   return el('div', { class: 'skin asset' + (worn ? ' on' : ''), tabIndex: 0, title: 'Open in the creator', onclick: guard(() => openAsset(a)) },
     el('div', { class: 'pic tex' }, assetPicture(a)), el('b', { text: a.name }), el('small', { text: LABEL[a.field] }),
-    el('div', { class: 'acts' }, act(worn ? 'Wearing' : 'Wear', () => setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' })), act('Export', () => downloadBlob(a.name.replace(/[^\w -]/g, '') + '.png', a.data)),
+    el('div', { class: 'acts' }, act(worn ? 'Wearing' : 'Wear', () => setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' })),
+      modReady(a) ? act('For the mod', () => modExport([a])) : null, act('Export', () => downloadBlob(a.name.replace(/[^\w -]/g, '') + '.png', a.data)),
       act('Delete', guard(async () => { if (!await confirmBox('Delete custom asset', `Delete "${a.name}"? Skins wearing it lose that part. This cannot be undone.`, 'Delete', true)) return;
         await assets.remove(a.id); ASSETS = await assets.list(); syncFolder(); registerAssets(); cur.skin = R.fit(cur.skin); pics.clear(); rebuild(); render(); }), 'danger')));
 }
-const disclosure = () => el('div', { class: 'disclose' }, el('b', { text: 'Site only' }), el('span', { text: 'Custom assets can’t be used in Hytale, in singleplayer or multiplayer, and other players never see them.' }));
+const disclosure = () => el('div', { class: 'disclose' }, el('b', { text: 'Site only' }), el('span', { text: 'Custom assets only show in Hytale in worlds that run the Skin Editor mod with your pack. Repaints of edition and reward items stay on this site.' }));
 function panelCreator() {
   if (!ED) { const worn = game.FIELDS.filter(f => R.resolve(f, cur.skin));
     const sel = el('select', {}, worn.map(f => el('option', { value: f, text: `${LABEL[f]}: ${itemName(R.find(f, cur.skin[f]))}` })));
     return [head('Asset Creator'), el('div', { class: 'pbody' }, disclosure(),
       el('h3', { text: 'Start from something you are wearing' }), el('div', { class: 'row' }, sel, el('button', { class: 'btn primary', text: 'Create', onclick: () => newAsset(sel.value) })),
       el('h3', { text: `My custom assets (${ASSETS.length} / ${assets.MAX})` }),
+      ASSETS.some(modReady) ? el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Download all for the mod', onclick: () => modExport(ASSETS) })) : null,
       ASSETS.length ? el('div', { class: 'cards' }, ASSETS.map(assetCard)) : el('p', { class: 'blank', text: 'None yet. Pick a slot above and press Create.' }))]; }
   const P = ED.painter, a = ED.asset, c = ED.canvas; c.style.width = c.width * ED.zoom + 'px';
   const tool = (id, label) => el('button', { class: 'chip' + (P.tool === id ? ' on' : ''), text: label, onclick: () => { P.tool = id; render(); } });
