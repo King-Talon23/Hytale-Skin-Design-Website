@@ -214,7 +214,7 @@ function lookCard(r, kind) { return el('button', { class: 'look ' + kind + (cur.
 function panelEditor() { return picking ? panelPicker() : panelLocker(); }
 function panelLocker() {
   const tile = f => { const it = R.find(f, cur.skin[f]), { color, variant } = parse(cur.skin[f]);
-    return el('button', { class: 'slot ' + (it ? tierClass(it) : 'none'), title: LABEL[f], onclick: () => { slot = f; picking = true; seenSlot = f; filter = ''; lockFilter = 'all'; render(); } },
+    return el('button', { class: 'slot ' + (it ? tierClass(it) : 'none'), title: LABEL[f], onclick: () => { slot = f; picking = true; seenSlot = f; filter = ''; lockFilter = 'all'; render(); for (const p of document.querySelectorAll('.pbody')) p.scrollTop = 0; } },
       it ? itemThumb(f, it, color, variant) : el('span', { class: 'nothing', text: '—' }),
       el('i', {}, icon(SLOT_ICON[f]), el('span', { text: LABEL[f] })), el('b', { text: it ? itemName(it) : 'None' })); };
   const looks = [...WARD.game.filter(Boolean).map(r => lookCard(r, 'game')), ...WARD.custom.map(r => lookCard(r, 'custom'))];
