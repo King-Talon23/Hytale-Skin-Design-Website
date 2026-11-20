@@ -770,7 +770,8 @@ function placeGizmo() {
   if (!mesh) return st.gizmo(null);
   st.gizmo({ mesh, mode: ED.stool, onEnd: ({ move, scale, turn }) => shapeEdit(() => { const sh = b.node.shape, r = (v, q) => Math.round(v / q) * q;
     if (ED.stool === 'move') sh.offset = { x: r((sh.offset?.x ?? 0) + move.x, 0.5), y: r((sh.offset?.y ?? 0) + move.y, 0.5), z: r((sh.offset?.z ?? 0) + move.z, 0.5) };
-    else if (ED.stool === 'resize') { const z = sh.settings.size; sh.settings.size = { x: Math.max(0, r(z.x * scale.x, 1)), y: Math.max(0, r(z.y * scale.y, 1)), z: Math.max(0, r((z.z ?? 0) * scale.z, 1)) }; }
+    else if (ED.stool === 'resize') { const z = sh.settings.size, f = v => Math.max(0.25, Math.min(4, v)), c = v => Math.max(0, Math.min(64, v));
+      sh.settings.size = { x: c(r(z.x * f(scale.x), 1)), y: c(r(z.y * f(scale.y), 1)), z: c(r((z.z ?? 0) * f(scale.z), 1)) }; }
     else { const k = v => Math.round(v * 1e6) / 1e6; b.node.orientation = { x: k(turn.x), y: k(turn.y), z: k(turn.z), w: k(turn.w) }; } }) });
 }
 // a number you can type, or drag left and right on its letter, like Blender and Blockbench
@@ -940,7 +941,7 @@ function shapeSide() {
     el('div', { class: 'options' }, ...[['Add box', () => addBox('add'), 'A: a new 4-block box in the brush colour'], ['Duplicate', () => addBox('dup'), 'Ctrl+D'], ['Mirror copy', () => addBox('mirror'), 'M: a copy on the other side, paint flipped'],
       ['Own paint', () => ownArea(), 'Give this box its own room on the texture, so painting it no longer paints other parts'], ['Delete', delBox, 'Del']].map(([t, fn, k]) => el('button', { class: 'chip', text: t, title: k, onclick: fn }))),
     el('div', { class: 'options' }, el('button', { class: 'chip' + (ED.sym ? ' on' : ''), text: `Symmetry: ${ED.sym ? 'on' : 'off'}`, title: 'Changes to a box also change its twin on the other side',
-      onclick: () => { ED.sym = !ED.sym; render(); } }), ED.sym ? el('small', { class: 'dim', text: twinOf(b) ? 'Twin: ' + twinOf(b).name : 'No twin for this box' }) : null),
+      onclick: () => { ED.sym = !ED.sym; render(); } }), ED.sym ? el('small', { class: 'dim', text: twinOf(b) ? 'Twin: ' + boxLabel(twinOf(b)) : 'No twin for this box' }) : null),
     el('div', { class: 'wshead', text: boxLabel(b.node) }),
     el('div', { class: 'wsgroup' }, el('b', { text: 'Position' }), axisField('X', sh, 'offset', 'x', -64, 64, 0.5), axisField('Y', sh, 'offset', 'y', -64, 64, 0.5), axisField('Z', sh, 'offset', 'z', -64, 64, 0.5)),
     el('div', { class: 'wsgroup' }, el('b', { text: 'Size' }),
@@ -1006,6 +1007,8 @@ addEventListener('keydown', e => {
   else if (ED.mode !== 'shape' && k === 'escape' && (ED.float || ED.sel)) { if (ED.float) ED.float = null; else ED.sel = null; render(); }
   else if (ED.mode !== 'shape' && (k === 'delete' || k === 'backspace') && ED.sel && !ED.float) clearSel();
   else if ((k === 'delete' || k === 'x') && ED.mode === 'shape' && !ctrl) delBox();
+  else if (ED.mode === 'shape' && !ctrl && k.startsWith('arrow') && curBox()) { const sh = curBox().node.shape, d = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, 1], arrowdown: [0, -1] }[k];
+    shapeEdit(() => { const o = { x: 0, y: 0, z: 0, ...sh.offset }; if (e.shiftKey) o.z += d[1] || -d[0]; else { o.x += d[0]; o.y += d[1]; } sh.offset = o; }); }
   else if (k === 'tab') setMode(ED.mode === 'shape' ? 'paint' : 'shape');
   else if (['1', '2', '3', '7', '5'].includes(k) && !ctrl) { st.setView({ 1: 'front', 2: 'back', 3: 'side', 7: 'top', 5: 'persp' }[k]); st.frameOn(ED.canvas); }
   else if (!ctrl && !e.altKey) { const t = (ED.mode === 'shape' ? SHAPE_TOOLS : PAINT_TOOLS).find(x => x[2] && x[2].toLowerCase() === k); if (t) pickTool(t[0]); else done = false; }
@@ -1089,23 +1092,39 @@ function mirrorNode(src, dst) {   // dst becomes src flipped across the middle (
   d.settings = { ...d.settings, size: { ...s.settings?.size } }; if (s.type === 'quad' && /X$/.test(s.settings?.normal || '')) d.settings.normal = (s.settings.normal[0] === '+' ? '-' : '+') + 'X';
   d.offset = { x: neg(o.x), y: o.y ?? 0, z: o.z ?? 0 }; dst.position = { x: neg(p.x), y: p.y ?? 0, z: p.z ?? 0 }; dst.orientation = { x: q.x ?? 0, y: neg(q.y), z: neg(q.z), w: q.w ?? 1 };
 }
-function twinOf(b) {   // the box on the other side: a sibling with the same size at the mirrored place
+// the other side's name: L-Arm <-> R-Arm, Left_Boot <-> Right_Boot, Glove_L <-> Glove_R; null for a name with no side
+function sideSwap(name) {
+  const rules = [[/^L-/, 'R-'], [/^R-/, 'L-'], [/Left/, 'Right'], [/Right/, 'Left'], [/left/, 'right'], [/right/, 'left'], [/([_-])L(?=$|[_-])/, '$1R'], [/([_-])R(?=$|[_-])/, '$1L']];
+  for (const [re, to] of rules) if (re.test(name)) return name.replace(re, to); return null;
+}
+function nodeNamed(name) { let hit = null; const walk = (list, parent) => { for (const n of list || []) { if (hit) return; if (n.name === name) { hit = { node: n, parent }; return; } walk(n.children, n); } }; walk(ED.model.nodes, null); return hit; }
+const twinParentOf = parent => { const sw = parent && sideSwap(parent.name), t = sw && nodeNamed(sw); return t ? t.node : null; };
+function twinOf(b) {   // the box on the other side: the part with the other side's name, else the mirrored box in the other side's parent or beside it
   if (!b) return null; const n = b.node, sh = n.shape, near = (a, c) => Math.abs((a ?? 0) - (c ?? 0)) < 0.01;
-  if (Math.abs((n.position?.x ?? 0) + (sh.offset?.x ?? 0)) < 0.25) return null;
-  return (b.parent ? b.parent.children : ED.model.nodes).find(t => t !== n && t.shape && t.shape.type === sh.type && ['x', 'y', 'z'].every(k => near(t.shape.settings?.size?.[k], sh.settings?.size?.[k]))
+  const sw = sideSwap(n.name), byName = sw && nodeNamed(sw); if (byName && byName.node.shape) return byName.node;
+  const tp = twinParentOf(b.parent);
+  if (!tp && Math.abs((n.position?.x ?? 0) + (sh.offset?.x ?? 0)) < 0.25) return null;
+  return (tp ? tp.children || [] : b.parent ? b.parent.children : ED.model.nodes).find(t => t !== n && t.shape && t.shape.type === sh.type && ['x', 'y', 'z'].every(k => near(t.shape.settings?.size?.[k], sh.settings?.size?.[k]))
     && near(t.shape.offset?.x, -(sh.offset?.x ?? 0)) && near(t.shape.offset?.y, sh.offset?.y) && near(t.shape.offset?.z, sh.offset?.z)
     && near(t.position?.x, -(n.position?.x ?? 0)) && near(t.position?.y, n.position?.y) && near(t.position?.z, n.position?.z)) || null;
 }
 const symTwin = () => ED.sym && ED.mode === 'shape' ? twinOf(curBox()) : null;
+function standOut(hex) {   // the brush colour, unless it would hide the new box against the item's main colour
+  const main = (ED.palette || [])[0], d = (a, b) => { const [p, q] = [hexRgb(a), hexRgb(b)]; return Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) + Math.abs(p[2] - q[2]); };
+  if (!main || d(hex, main) > 120) return hex; return d('#f4c452', main) > 160 ? '#f4c452' : '#3db7c9';
+}
+function nextBoxName() { const used = new Set(boxesOf(ED.model).map(b => boxLabel(b.node))); let k = 1; while (used.has('Box ' + k)) k++; return 'Box ' + k; }
 function addBox(kind = 'dup') {   // 'dup' a copy, 'mirror' a copy on the other side, 'add' a new 4-block box; each gets its own room on the texture
   const boxes = boxesOf(ED.model), b = boxes[ED.box || 0]; if (!b) return; if (boxes.length >= assets.MAX_BOXES) return say(`A shape can have up to ${assets.MAX_BOXES} boxes.`, true);
   const n = b.node, sh = n.shape;
-  if (kind === 'mirror' && Math.abs((n.position?.x ?? 0) + (sh.offset?.x ?? 0)) < 0.25) return say('This box sits on the middle line. Move it to one side first, then mirror it.', true);
+  const into = kind === 'mirror' ? twinParentOf(b.parent) : null;   // a box on the left arm gets its copy on the right arm
+  if (kind === 'mirror' && !into && Math.abs((n.position?.x ?? 0) + (sh.offset?.x ?? 0)) < 0.25) return say('This box sits on the middle line. Move it to one side first, then mirror it.', true);
   let paint = null;
-  shapeEdit(() => { const copy = structuredClone({ ...n, children: [] }), cs = copy.shape; copy.name = 'Box_' + Math.random().toString(36).slice(2, 7); cs.offset = { x: 0, y: 0, z: 0, ...cs.offset };
+  shapeEdit(() => { const label = nextBoxName(), copy = structuredClone({ ...n, children: [] }), cs = copy.shape; copy.name = 'Box_' + Math.random().toString(36).slice(2, 7); cs.offset = { x: 0, y: 0, z: 0, ...cs.offset };
     if (kind === 'mirror') mirrorNode(n, copy); else if (kind === 'add') { const front = (sh.offset?.z ?? 0) + Math.abs(sh.settings?.size?.z ?? 0) / 2 * (n.shape?.stretch?.z || 1); cs.settings = { ...cs.settings, size: { x: 4, y: 4, z: cs.type === 'quad' ? 0 : 4 } }; cs.stretch = { x: 1, y: 1, z: 1 }; cs.offset.z = front + 2; } else cs.offset.x += 2;
-    const lay = allocLayout(cs) || (growTexture() ? allocLayout(cs) : null); if (lay) { cs.textureLayout = lay; paint = paintFaces(cs, lay, sh.textureLayout, kind === 'mirror', kind === 'add' ? hexRgb(ED.painter.color) : null); }
-    (b.parent ? b.parent.children : ED.model.nodes).push(copy); ED.box = boxesOf(ED.model).findIndex(x => x.node === copy); });
+    const lay = allocLayout(cs) || (growTexture() ? allocLayout(cs) : null); if (lay) { cs.textureLayout = lay; paint = paintFaces(cs, lay, sh.textureLayout, kind === 'mirror', kind === 'add' ? hexRgb(standOut(ED.painter.color)) : null); }
+    if (into) (into.children ||= []).push(copy); else (b.parent ? b.parent.children : ED.model.nodes).push(copy); ED.box = boxesOf(ED.model).findIndex(x => x.node === copy);
+    ED.asset = { ...ED.asset, labels: { ...(ED.asset.labels || {}), [copy.name]: label } }; });
   if (paint) { ED.painter.write(paint); ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); render(); if (kind === 'add') say('New box added on the front, outlined in gold. Move it with the Move tool (G) or the Position numbers.'); }
   else say('The texture has no free room left, so the new box shares paint with the box it came from.', true);
 }
