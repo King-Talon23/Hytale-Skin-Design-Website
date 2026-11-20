@@ -174,12 +174,16 @@ function setTab(t) { if (t !== 'editor' && picking) leavePicker();
   // opening or leaving the Animations tab stops whatever move is playing (and drops what it holds)
   if (t !== tab && (t === 'animations' || tab === 'animations') && R && !(playing.group === 'Default' && playing.name === 'Idle')) playAnim('Default', 'Idle', 0.5);
   if (ED && t !== 'creator') closeAsset(true).then(() => { playAnim('Default', 'Idle', 0.5); rebuild(); });
-  tab = t; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t); if (R) render(); }
+  tab = t; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t);
+  const on = $('tabs').querySelector('.on'), nav = on?.parentElement;   // on a phone the tab row scrolls sideways: keep the open tab in view
+  if (nav && nav.scrollWidth > nav.clientWidth) nav.scrollTo({ left: nav.scrollLeft + on.getBoundingClientRect().left - nav.getBoundingClientRect().left - (nav.clientWidth - on.offsetWidth) / 2, behavior: 'smooth' });
+  if (R) render(); }
 let pressing = false, renderLater = false;
 const flushRender = () => { pressing = false; if (renderLater) { renderLater = false; render(); } };
 addEventListener('pointerdown', e => { if (e.target.closest?.('button, a, summary, label, select, .skin')) { pressing = true; setTimeout(flushRender, 1500); } }, true);
 for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { if (pressing) setTimeout(flushRender, 0); }, true);
 function render() { if (pressing) { renderLater = true; return; } jobGen++; plate(); drawEmotes(); drawGameSwitch(); outlineBox();
+  if (!!ED !== $('app').classList.contains('ws')) scrollTo(0, 0);   // opening or closing the Creator workspace starts at the top of the page
   $('app').classList.toggle('ws', !!ED); if (ED) return renderWorkspace(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
   p.replaceChildren(...({ editor: panelEditor, wardrobe: panelWardrobe, animations: panelAnimations, lookup: panelLookup, creator: panelCreator, help: panelHelp }[tab])());
   if (was === p.className && top) { const b = p.querySelector('.pbody'); if (b) b.scrollTop = top; } }
@@ -257,7 +261,7 @@ function panelPicker() {
         onpointerenter: ev => { hv.onpointerenter(ev); showDetail(e, e !== it); }, onpointerleave: ev => { hv.onpointerleave(ev); showDetail(it); } },
         e ? itemThumb(f, e, color, variant) : el('span', { class: 'nothing', text: '✕' }), star, bin, e && isNew(f, e) ? el('span', { class: 'new', text: 'NEW' }) : null, el('b', { text: e ? itemName(e) : 'None' })); };
     cardsBox.replaceChildren(...(REQUIRED.has(f) || lockFilter !== 'all' ? [] : [card(null)]), ...items.map(card));
-    if (!cardsBox.children.length) cardsBox.append(el('p', { class: 'blank', text: 'Nothing here.' }));
+    if (!items.length) cardsBox.append(el('p', { class: 'blank', text: filter.trim() ? `No items match "${filter.trim()}".` : 'Nothing here.' }));
   }
   drawCards(); showDetail(it);
   const search = el('input', { type: 'search', placeholder: 'Search', value: filter, maxLength: 40, oninput: e => { filter = e.target.value; drawCards(); } });
@@ -451,16 +455,19 @@ async function playAnim(g, n, speed = 1, once = false) { clearTimeout(onceT); tr
       onceT = setTimeout(() => { if (playing.group === g && playing.name === n) playAnim('Default', 'Idle', 0.5); }, ms); } st.anim.setMove(fig.motionOf(g, n)); st.anim.playing = true; drawEmotes(); } catch (e) { say('That animation could not be loaded.', true); } if (tab === 'animations') render(); }
 let animGroup = 'Emote';
 // the move groups as locker tiles: the game's 16 folders folded into a few, each tile showing its signature move
-const CATS = [['Emote', ['Emote']], ['Moves', ['Default']], ['Poses', ['Poses']], ['Taunt', ['Taunt']], ['Idle extras', ['Flavor']], ['Faces', ['Expressions']],
+// a group can be split with "Group:part": Sit and Sleep live in Flavor in the game files but players look for them under Poses
+const REST = /^(Sit|Sleep)/, PART = { rest: n => REST.test(n), idle: n => !REST.test(n) }, PARTNAME = { rest: 'Sit and lie' };
+const animsOf = spec => { const [g, part] = spec.split(':'), all = CAT.anims[g] || []; return part ? all.filter(PART[part]) : all; };
+const CATS = [['Emote', ['Emote']], ['Moves', ['Default']], ['Poses', ['Poses', 'Flavor:rest']], ['Taunt', ['Taunt']], ['Idle extras', ['Flavor:idle']], ['Faces', ['Expressions']],
   ['Travel', ['Fly', 'Glide', 'Dash', 'Roll', 'Slide', 'Swim', 'Climb', 'Mantle']], ['Mount', ['Mount']]];
 function animCats() {
-  const have = g => (CAT.anims[g] || []).length, out = CATS.map(([k, gs]) => [k, gs.filter(have)]).filter(([, gs]) => gs.length);
-  const used = new Set(out.flatMap(c => c[1])); for (const g of Object.keys(CAT.anims)) if (!used.has(g) && have(g)) out.push([nice(g), [g]]);
+  const have = g => animsOf(g).length, out = CATS.map(([k, gs]) => [k, gs.filter(have)]).filter(([, gs]) => gs.length);
+  const used = new Set(out.flatMap(c => c[1].map(g => g.split(':')[0]))); for (const g of Object.keys(CAT.anims)) if (!used.has(g) && have(g)) out.push([nice(g), [g]]);
   return out;
 }
 function panelAnimations() {
   const cats = animCats(); if (!cats.some(c => c[0] === animGroup)) animGroup = cats[0][0];
-  const gs = cats.find(c => c[0] === animGroup)[1], A = st.anim, count = list => list.reduce((t, g) => t + CAT.anims[g].length, 0);
+  const gs = cats.find(c => c[0] === animGroup)[1], A = st.anim, count = list => list.reduce((t, g) => t + animsOf(g).length, 0);
   const item = (g, n) => { const k = g + '/' + n, pinned = EMOTES && EMOTES.includes(k);
     return el('button', { class: A.anim && playing.group === g && playing.name === n ? 'on' : '', title: nice(n), onclick: () => playAnim(g, n) }, animThumb(g, n), el('span', { text: nice(n) }),
       el('i', { class: 'star' + (pinned ? ' on' : ''), title: pinned ? 'Remove from quick slots' : 'Add to quick slots', text: pinned ? '★' : '☆', onclick: e => { e.stopPropagation(); toggleEmote(g, n); render(); } })); };
@@ -471,8 +478,8 @@ function panelAnimations() {
     animGroup === 'Mount' ? el('div', { class: 'options' }, el('b', { class: 'dim', text: 'Ride:' }), Object.keys(MOUNTS).map(k => el('button', { class: 'chip' + (k === mountKind ? ' on' : ''), text: k,
       onclick: () => { mountKind = k; if (playing.group === 'Mount' && A.anim) playAnim('Mount', playing.name); else render(); } }))) : null,
     animGroup === 'Mount' && mountMsg ? el('div', { class: 'row' }, el('p', { class: 'need', text: mountMsg }), el('button', { class: 'btn ghost', text: 'Refresh game files', onclick: () => showConnect() })) : null,
-    gs.length > 1 ? gs.map(g => [el('h3', { class: 'animhead', text: nice(g) }), el('div', { class: 'animlist' }, CAT.anims[g].map(n => item(g, n)))])
-      : el('div', { class: 'animlist' }, CAT.anims[gs[0]].map(n => item(gs[0], n))))];
+    gs.length > 1 ? gs.map(spec => { const [g, part] = spec.split(':'); return [el('h3', { class: 'animhead', text: PARTNAME[part] || nice(g) }), el('div', { class: 'animlist' }, animsOf(spec).map(n => item(g, n)))]; })
+      : el('div', { class: 'animlist' }, animsOf(gs[0]).map(n => item(gs[0].split(':')[0], n))))];
 }
 
 // other players' skins
