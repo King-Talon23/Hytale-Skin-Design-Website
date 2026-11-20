@@ -489,15 +489,25 @@ const newAsset = guard(async f => {
   const a = await assets.save({ id: assets.newId(), name: itemName(it) + (it.custom ? ' copy' : ' (mine)'), field: f, baseId: it.custom ? it.baseId : it.Id, model: r.model, w: c.width, h: c.height, data });
   ASSETS = await assets.list(); registerAssets(); setSkin({ ...cur.skin, [f]: 'Custom_' + a.id + '.Mine' }); await openAsset(a);
 });
+const makePainter = (c, a) => createPainter(c, final => { fig.refreshCustom(a.id); if (final) { queueAssetSave(); recordPaint(); if (ED && !ED.replaying) render(); } }, () => render());
+// a texture with no free room grows downwards (twice as tall, up to 256): the old paint stays where it was, the new rows are empty
+function growTexture() {
+  const c = ED.canvas; if (c.height * 2 > 256) return false;
+  const x = c.getContext('2d', { willReadFrequently: true }), old = x.getImageData(0, 0, c.width, c.height), was = ED.painter;
+  c.height = c.height * 2; x.putImageData(old, 0, 0);
+  ED.painter = makePainter(c, ED.asset); for (const k of ['tool', 'color', 'size', 'opacity', 'inside']) ED.painter[k] = was[k];
+  ED.asset = { ...ED.asset, h: c.height }; ED.n = ++edN; ED.hist = ED.hist.filter(e => e.k === 's'); ED.fut = [];   // paint undo steps were for the smaller texture
+  say('The texture grew to make room. Earlier paint steps can no longer be undone.'); return true;
+}
 async function openAsset(a) {
   if (ED) await closeAsset(true);
   const bmp = await createImageBitmap(a.data), c = el('canvas', { width: bmp.width, height: bmp.height, className: 'paint' }); c.getContext('2d', { willReadFrequently: true }).drawImage(bmp, 0, 0);
   ED = { asset: a, canvas: c, n: ++edN, zoom: Math.max(2, Math.min(8, Math.floor(280 / bmp.width))), rects: [], mode: 'paint', stool: 'select', hist: [], fut: [] };
   if (a.shape) ED.model = JSON.parse(a.shape);
   try { ED.rects = fig.usedRects(ED.model || await game.json(game.common(a.model))); } catch (e) { console.warn('no drawn area for', a.model, e); }
-  ED.painter = createPainter(c, final => { fig.refreshCustom(a.id); if (final) { queueAssetSave(); recordPaint(); if (ED && !ED.replaying) render(); } }, () => render());
+  ED.painter = makePainter(c, a);
   if (ED.rects.length) { const m = new Uint8Array(c.width * c.height); for (const r of ED.rects) for (let y = Math.max(0, Math.floor(r.y)); y < Math.min(c.height, Math.ceil(r.y + r.h)); y++) for (let x = Math.max(0, Math.floor(r.x)); x < Math.min(c.width, Math.ceil(r.x + r.w)); x++) m[y * c.width + x] = 1; ED.painter.mask = m; }
-  ED.palette = ED.painter.palette(); ED.ovl = el('canvas', { className: 'limits' }); requestAnimationFrame(() => { fitTexture(); render(); });
+  ED.palette = ED.painter.palette(); ED.ovl = el('canvas', { className: 'limits' }); requestAnimationFrame(() => { fitTexture(); render(); if (!store_.get('se_tour')) setTimeout(() => tour(0), 500); });
   const flatPx = e => { const r = c.getBoundingClientRect(); return { x: Math.min(c.width - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * c.width))), y: Math.min(c.height - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * c.height))) }; };
   bindPaint(c, flatPx, 1e9); bindSelect(c, flatPx);
   c.addEventListener('pointermove', e => { if (!ED) return; ED.hover = flatPx(e); ED.hoverM = null; drawOvl(); }); c.addEventListener('pointerleave', () => { if (!ED) return; ED.hover = null; drawOvl(); });
@@ -509,7 +519,7 @@ function queueAssetSave() { markSaved(false); clearTimeout(queueAssetSave.t); qu
 async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; const e = ED, data = await new Promise(ok => e.canvas.toBlob(ok, 'image/png'));
   try { e.asset = await assets.save({ ...e.asset, data, shape: e.model && e.shapeN ? JSON.stringify(e.model) : e.asset.shape }); ASSETS = await assets.list(); syncFolder(); } finally { if (ED === e) markSaved(true); } }
 async function closeAsset(quiet) {
-  if (!ED) return; if (ED.float) placeFloat(); st.cursor(null); await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; registerAssets(); st.isolate(null); st.paintMode(false); st.highlight(null); st.gizmo(null); st.setView('persp'); pics.clear(); lastPic.clear();
+  if (!ED) return; if (ED.float) placeFloat(); tour(99); if ($('viewhint')) $('viewhint').hidden = true; st.cursor(null); await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; registerAssets(); st.highlight(null); st.isolate(null); st.paintMode(false); st.gizmo(null); st.setView('persp'); pics.clear(); lastPic.clear();
   if (!quiet) { playAnim('Default', 'Idle', 0.5); rebuild(); render(); }
 }
 // painting: the same strokes whether the pointer is on the flat texture or on the 3D model
@@ -533,11 +543,16 @@ const modReady = a => lockedBase(a) === 0 && !a.flag;
 // dark pattern around the average (a recolour). It is flagged when it matches a paid item closely and matches that item clearly
 // better than its own free base.
 const imgCache = new Map();
-async function imageData(path, w, h) {
-  const key = path + '|' + w + 'x' + h; if (imgCache.has(key)) return imgCache.get(key);
+async function imageData(path) {   // { d, w, h } of a game texture
+  if (imgCache.has(path)) return imgCache.get(path);
   let out = null;
-  try { const b = await game.bitmap(game.common(path)); if (b.width === w && b.height === h) { const c = el('canvas', { width: w, height: h }), x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(b, 0, 0); out = x.getImageData(0, 0, w, h).data; } } catch { /* not readable */ }
-  imgCache.set(key, out); return out;
+  try { const b = await game.bitmap(game.common(path)), c = el('canvas', { width: b.width, height: b.height }), x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(b, 0, 0); out = { d: x.getImageData(0, 0, b.width, b.height).data, w: b.width, h: b.height }; } catch { /* not readable */ }
+  imgCache.set(path, out); return out;
+}
+function cropTo(data, mask, W, w, h) {   // the top-left w x h of a W-wide picture and its mask
+  const d = new Uint8ClampedArray(w * h * 4), m = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) { d.set(data.subarray(y * W * 4, (y * W + w) * 4), y * w * 4); m.set(mask.subarray(y * W, y * W + w), y * w); }
+  return [d, m];
 }
 function texturesFor(item, model) {   // [path, coloured?] for every look of an item on this model
   const out = [], take = s => { if (!s || s.Model !== model) return; if (s.Textures) for (const t of Object.values(s.Textures)) if (t.Texture) out.push([t.Texture, true]); if (s.GreyscaleTexture) out.push([s.GreyscaleTexture, false]); };
@@ -556,7 +571,8 @@ function likeness(mine, other, mask, coloured) {
 async function replicaOf(a, canvas, mask) {
   const items = CAT.items[a.field].filter(e => !e.custom), paid = items.filter(e => tierOf(e) > 0 && texturesFor(e, a.model).length); if (!paid.length) return null;
   const w = canvas.width, h = canvas.height, mine = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
-  const m = mask || new Uint8Array(w * h).fill(1), best = async e => { let s = 0; for (const [p, col] of texturesFor(e, a.model)) { const d = await imageData(p, w, h); if (d) s = Math.max(s, likeness(mine, d, m, col)); } return s; };
+  const m = mask || new Uint8Array(w * h).fill(1), crops = new Map(), best = async e => { let s = 0; for (const [p, col] of texturesFor(e, a.model)) { const img = await imageData(p); if (!img || img.w > w || img.h > h) continue;
+    const k = img.w + 'x' + img.h; if (!crops.has(k)) crops.set(k, img.w === w && img.h === h ? [mine, m] : cropTo(mine, m, w, img.w, img.h)); const [mm, mk] = crops.get(k); s = Math.max(s, likeness(mm, img.d, mk, col)); } return s; };
   const base = items.find(e => e.Id === a.baseId), own = base ? await best(base) : 0;
   let hit = null, top = 0; for (const e of paid) { const s = await best(e); if (s > top) { top = s; hit = e; } }
   return top >= 0.85 && top >= own + 0.1 ? itemName(hit) : null;
@@ -659,7 +675,7 @@ function toQuat(dx, dy, dz) { const [c1, c2, c3] = [dx, dy, dz].map(d => Math.co
 // model with view buttons and, in Shape mode, a gizmo. Right: colours and brush (Paint), or the outliner and box fields (Shape).
 const PAINT_TOOLS = [['select', 'Select area', 'M', '⬚'], ['brush', 'Brush', 'B', '✎'], ['erase', 'Eraser', 'E', '⌫'], ['fill', 'Fill', 'F', '◧'], ['pick', 'Pick colour', 'I', '◉'], ['replace', 'Replace colour', 'H', '⇄'],
   ['line', 'Line', 'L', '╱'], ['box', 'Box', 'U', '▢'], ['boxfill', 'Filled box', '', '■'], ['light', 'Lighten', '', '☀'], ['dark', 'Darken', '', '☾'], ['noise', 'Noise', 'N', '░']];
-const SHORT = { select: 'Select', pick: 'Pick', replace: 'Replace', boxfill: 'Filled', light: 'Lighten', dark: 'Darken', dup: 'Copy', del: 'Delete' };   // names under the tool icons
+const SHORT = { more: 'More', select: 'Select', pick: 'Pick', replace: 'Replace', boxfill: 'Filled', light: 'Lighten', dark: 'Darken', dup: 'Copy', del: 'Delete' };   // names under the tool icons
 const SHAPE_TOOLS = [['select', 'Select', 'V', '⬚'], ['move', 'Move', 'G', '✥'], ['resize', 'Resize', 'S', '⤢'], ['rotate', 'Rotate', 'R', '⟳']];
 const recordPaint = () => { if (ED && !ED.replaying) { ED.hist.push({ k: 'p' }); ED.fut = []; } };
 function recordShape(before) { ED.hist.push({ k: 's', other: before }); ED.fut = []; }
@@ -676,7 +692,7 @@ function wsUndo(redo) {
 function shapeEdit(fn) {   // with Symmetry on, the box's twin on the other side follows the change
   const before = JSON.stringify(ED.model), b0 = curBox(), tw = symTwin(); fn();
   if (tw && b0 && b0.node !== tw && boxesOf(ED.model).some(x => x.node === b0.node) && boxesOf(ED.model).some(x => x.node === tw)) mirrorNode(b0.node, tw);
-  recordShape(before); shapeChanged(); }
+  finishShape(before); }
 async function setMode(m) { if (ED.float) placeFloat(); if (m === 'shape') { await editModel(); ED.box ||= 0; ED.stool ||= 'select'; st.cursor(null); ED.hover = ED.hoverM = null; } ED.mode = m; ED.shapeOpen = m === 'shape'; render(); placeGizmo(); }
 function pickTool(id) { if (ED.mode === 'shape') ED.stool = id; else { if (id !== 'select' && ED.float) placeFloat(); ED.painter.tool = id; } render(); placeGizmo(); }
 function curBox() { return ED.model ? boxesOf(ED.model)[ED.box || 0] : null; }
@@ -697,7 +713,7 @@ function scrub(label, get, set, step = 1, min = -64, max = 64) {
   lab.onpointerdown = e => { e.preventDefault(); const x0 = e.clientX, v0 = get(), before = JSON.stringify(ED.model), tw = symTwin(), me = curBox(); let moved = false, t = 0; lab.setPointerCapture(e.pointerId);
     lab.onpointermove = ev => { const v = clamp(v0 + Math.round((ev.clientX - x0) / 6) * step); if (v === get()) return; set(v); if (tw && me) mirrorNode(me.node, tw); inp.value = v; moved = true;
       clearTimeout(t); t = setTimeout(() => { registerAssets(); rebuild(); }, 60); };
-    lab.onpointerup = () => { lab.onpointermove = lab.onpointerup = null; if (moved) { recordShape(before); shapeChanged(); } }; };
+    lab.onpointerup = () => { lab.onpointermove = lab.onpointerup = null; if (moved) finishShape(before); }; };
   return el('label', { class: 'numfield' }, lab, inp);
 }
 function paintSide() {
@@ -709,8 +725,9 @@ function paintSide() {
   const toggle = (text, on, fn, title) => el('button', { class: 'chip' + (on ? ' on' : ''), text: `${text}: ${on ? 'on' : 'off'}`, title, onclick: fn });
   const chip = (text, fn, key, off) => el('button', { class: 'chip', text, title: key || '', disabled: !!off, onclick: () => { fn(); render(); } });
   return [el('div', { class: 'wshead', text: 'Colour' }),
-    el('div', { class: 'row' }, el('input', { type: 'color', value: P.color, oninput: e => { P.color = e.target.value; }, onchange: () => { if (P.tool === 'pick' || P.tool === 'erase') P.tool = 'brush'; render(); } }), el('code', { class: 'hex', text: P.color })),
-    el('div', { class: 'swatches' }, ED.palette.map(h => { const b = el('button', { title: h, class: h === P.color ? 'on' : '', onclick: () => { P.color = h; if (P.tool === 'pick' || P.tool === 'erase') P.tool = 'brush'; render(); } }); b.style.background = h; return b; })),
+    el('div', { class: 'row' }, el('input', { type: 'color', value: P.color, title: 'Any colour', oninput: e => { P.color = e.target.value; }, onchange: e => useColour(e.target.value) }), el('code', { class: 'hex', text: P.color })),
+    el('div', { class: 'swlabel', text: 'Basic' }), swatchRow(BASIC), el('div', { class: 'swlabel', text: 'In this item' }), swatchRow(ED.palette),
+    RECENT.length ? [el('div', { class: 'swlabel', text: 'Recent' }), swatchRow(RECENT)] : null,
     el('div', { class: 'wshead', text: 'Brush' }),
     slider('Size', 1, 8, 1, () => P.size, v => { P.size = v; }, v => v), slider('Strength', 10, 100, 10, () => Math.round(P.opacity * 100), v => { P.opacity = v / 100; }, v => v + '%'),
     el('div', { class: 'options' }, toggle('Mirror', ED.mirror, () => { ED.mirror = !ED.mirror; render(); }, 'Painting on the model also paints the matching spot on the other side')),
@@ -750,6 +767,77 @@ function bindTexView(box) {
   });
 }
 
+// ---- first-time help: a short tour of the workspace, and a hint on the model until it has been turned once
+const store_ = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* private window */ } } };
+const TOUR = [['#view', 'Paint right on the model', 'Left-drag paints. Right-drag turns the model and the mouse wheel zooms.'],
+  ['#wsleft', 'The flat texture', 'The same item laid out flat. You can paint here too. Dimmed parts never show on the model.'],
+  ['.wsmodes', 'Paint and Shape', 'Shape changes the form: make sleeves longer, add boxes, mirror them to the other side.'],
+  ['#wsdone', 'Saved as you go', 'Every change saves by itself. Press Done when you are finished.']];
+let tourLit = null;
+function tour(i = 0) {
+  document.querySelector('.tour')?.remove(); tourLit?.classList.remove('tourlit'); tourLit = null;
+  if (i >= TOUR.length || !ED) { store_.set('se_tour', '1'); return; }
+  const [sel, title, text] = TOUR[i], tg = document.querySelector(sel); if (!tg) return tour(i + 1);
+  const last = i === TOUR.length - 1, box = el('div', { class: 'tour', role: 'dialog' }, el('b', { text: title }), el('p', { text }),
+    el('div', { class: 'row' }, el('span', { class: 'dim', text: `${i + 1} of ${TOUR.length}` }), el('span', { class: 'grow' }),
+      last ? null : el('button', { class: 'btn ghost', text: 'Skip', onclick: () => tour(99) }), el('button', { class: 'btn primary', text: last ? 'Got it' : 'Next', onclick: () => tour(i + 1) })));
+  document.body.appendChild(box); tg.classList.add('tourlit'); tourLit = tg;
+  const r = tg.getBoundingClientRect(), bw = 290, bh = box.offsetHeight;
+  let x = Math.min(innerWidth - bw - 12, Math.max(12, r.left + r.width / 2 - bw / 2)), y = r.bottom + 12;
+  if (r.height > innerHeight * 0.5) y = r.top + 16; else if (y + bh > innerHeight - 12) y = Math.max(12, r.top - bh - 12);
+  box.style.left = x + 'px'; box.style.top = y + 'px';
+}
+function viewHint() {
+  let h = $('viewhint'); if (!h) { h = el('div', { id: 'viewhint', class: 'viewhint' }); $('view').parentElement.appendChild(h);
+    $('view').addEventListener('pointerdown', e => { if (e.button === 2 && ED) { store_.set('se_turned', '1'); $('viewhint').hidden = true; } }); }
+  h.hidden = !ED || !!store_.get('se_turned');
+  if (ED) h.textContent = ED.mode === 'shape' ? 'Click a box to pick it  ·  Right-drag turns  ·  Wheel zooms' : 'Left-drag paints  ·  Right-drag turns  ·  Wheel zooms';
+}
+// ---- colours: a fixed set of basics, the item's own colours and the ones used lately
+const BASIC = ['#ffffff', '#c9c9c9', '#808080', '#3d3d3d', '#000000', '#e23b3b', '#ef8a35', '#f4d24a', '#7cc444', '#2e9a58', '#3db7c9', '#3b6fe0', '#7a4fd6', '#d65ab4', '#8a5a32', '#f2c9a1'];
+let RECENT = (() => { try { const r = JSON.parse(store_.get('se_recent') || '[]'); return Array.isArray(r) ? r.filter(h => /^#[0-9a-f]{6}$/i.test(h)).slice(0, 8) : []; } catch { return []; } })();
+function useColour(h) { const P = ED.painter; P.color = h; if (P.tool === 'pick' || P.tool === 'erase' || P.tool === 'select') P.tool = 'brush';
+  RECENT = [h, ...RECENT.filter(x => x !== h)].slice(0, 8); store_.set('se_recent', JSON.stringify(RECENT)); render(); }
+const swatchRow = list => el('div', { class: 'swatches' }, list.map(h => { const b = el('button', { title: h, class: h === ED.painter.color ? 'on' : '', onclick: () => useColour(h) }); b.style.background = h; return b; }));
+// ---- the finish: after Done, say what happens next
+async function finishAsset() {
+  const a = ED.asset; await closeAsset(); const linked = FOLDER.state === 'on';
+  const text = linked ? (SHOWGAME ? 'It is on your character in your own worlds too, through the Skin Editor Sync mod.' : 'Turn on In game to wear it in your own Hytale worlds (needs the Skin Editor Sync mod).')
+    : 'To wear it in Hytale, install the Skin Editor Sync mod and pick a skins folder in the Locker.';
+  const btns = [...(linked && !SHOWGAME ? [{ label: 'Show in game', value: 'game', primary: true }] : !linked ? [{ label: 'Set up in game', value: 'setup', primary: true }] : []),
+    { label: 'Keep editing', value: 'edit' }, { label: 'Make another', value: 'another' }];
+  const v = await ask('You are wearing it', [el('div', { class: 'finishpic' }, portrait(cur.skin)), el('p', { text })], btns);
+  if (v === 'game') $('ingame').onclick(); else if (v === 'setup') setTab('wardrobe');
+  else if (v === 'edit') { const x = ASSETS.find(y => y.id === a.id); if (x) openAsset(x); }
+}
+// ---- resizing keeps the paint tidy: a box that grows gets fresh room on the texture, its old paint stretched to fit
+const sizeOf = sh => ['x', 'y', 'z'].map(k => Math.ceil(Math.abs(sh.settings?.size?.[k] ?? 0)));
+function tidyResized(beforeJson) {
+  let before; try { before = JSON.parse(beforeJson); } catch { return []; }
+  const old = new Map(); for (const b of boxesOf(before)) old.set(b.node.name, b.node.shape);
+  const paints = [];
+  for (const b of boxesOf(ED.model)) {
+    const sh = b.node.shape, o = old.get(b.node.name); if (!o || !sh.textureLayout || !o.textureLayout) continue;
+    const ns = sizeOf(sh), os = sizeOf(o); if (!ns.some((v, k) => v > os[k])) continue;   // only a box that grows can spill over other paint
+    if (JSON.stringify(sh.textureLayout) !== JSON.stringify(o.textureLayout)) continue;
+    const lay = allocLayout(sh) || (growTexture() ? allocLayout(sh) : null); if (!lay) { say('There is no free room on the texture for the bigger box, so its paint may look mixed up.', true); continue; }
+    const src = o.textureLayout; sh.textureLayout = lay;
+    paints.push((d, W, H) => { for (const [f, fu, fv] of faceDims(sh)) { const to = lay[f], from = src[f]; if (!to || !from) continue;
+      const [ua, va] = FACE_UV[f], ou = Math.max(1, os[ua]), ov = Math.max(1, os[va]);
+      for (let v = 0; v < fv; v++) for (let u = 0; u < fu; u++) { const [dx, dy] = texelAt(to, u, v); if (dx < 0 || dy < 0 || dx >= W || dy >= H) continue;
+        const [sx, sy] = texelAt(from, Math.min(ou - 1, Math.floor(u * ou / fu)), Math.min(ov - 1, Math.floor(v * ov / fv))); if (sx < 0 || sy < 0 || sx >= W || sy >= H) continue;
+        const i = (sy * W + sx) * 4, j = (dy * W + dx) * 4; d[j] = d[i]; d[j + 1] = d[i + 1]; d[j + 2] = d[i + 2]; d[j + 3] = d[i + 3]; } } });
+    ED.rects = ED.rects.concat(fig.usedRects({ nodes: [b.node] }));   // the next grown box must not take the same room
+  }
+  return paints;
+}
+function finishShape(before) {
+  const paints = tidyResized(before); recordShape(before);
+  if (paints.length) { ED.painter.write((d, W, H) => paints.forEach(p => p(d, W, H))); ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); }
+  shapeChanged();
+}
+const CORE_TOOLS = ['select', 'brush', 'erase', 'fill', 'pick'];
+
 function shapeSide() {
   const boxes = boxesOf(ED.model), i = Math.min(ED.box || 0, boxes.length - 1), b = boxes[i], sh = b.node.shape;
   const axisField = (lab, obj, key, ax, min, max, step = 1) => scrub(lab, () => obj[key]?.[ax] ?? 0, v => { obj[key] = { x: 0, y: 0, z: 0, ...obj[key], [ax]: v }; }, step, min, max);
@@ -762,7 +850,11 @@ function shapeSide() {
       onclick: () => { ED.sym = !ED.sym; render(); } }), ED.sym ? el('small', { class: 'dim', text: twinOf(b) ? 'Twin: ' + twinOf(b).name : 'No twin for this box' }) : null),
     el('div', { class: 'wshead', text: boxLabel(b.node) }),
     el('div', { class: 'wsgroup' }, el('b', { text: 'Position' }), axisField('X', sh, 'offset', 'x', -64, 64, 0.5), axisField('Y', sh, 'offset', 'y', -64, 64, 0.5), axisField('Z', sh, 'offset', 'z', -64, 64, 0.5)),
-    el('div', { class: 'wsgroup' }, el('b', { text: 'Size' }), axisField('W', sh.settings, 'size', 'x', 0, 64), axisField('H', sh.settings, 'size', 'y', 0, 64), axisField('D', sh.settings, 'size', 'z', 0, 64)),
+    el('div', { class: 'wsgroup' }, el('b', { text: 'Size' }),
+      el('div', { class: 'sizebtns' }, ...[['Longer', 'y', 2], ['Shorter', 'y', -2], ['Wider', 'x', 2], ['Narrower', 'x', -2], ['Thicker', 'z', 2], ['Thinner', 'z', -2]].map(([t, ax, d]) =>
+        el('button', { class: 'chip', text: t, title: ax === 'y' ? 'Changes the height; the top stays where it is' : '', onclick: () => shapeEdit(() => { const cur_ = sh.settings.size?.[ax] ?? 0, nv = Math.max(1, cur_ + d), dd = nv - cur_;
+          sh.settings = { ...sh.settings, size: { x: 0, y: 0, z: 0, ...sh.settings.size, [ax]: nv } }; if (ax === 'y') sh.offset = { x: 0, y: 0, z: 0, ...sh.offset, y: (sh.offset?.y ?? 0) - dd / 2 }; }) }))),
+      axisField('W', sh.settings, 'size', 'x', 0, 64), axisField('H', sh.settings, 'size', 'y', 0, 64), axisField('D', sh.settings, 'size', 'z', 0, 64)),
     el('div', { class: 'wsgroup' }, el('b', { text: 'Rotation' }), turnField('X', 0), turnField('Y', 1), turnField('Z', 2)),
     el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Reset shape', onclick: resetShape }))];
 }
@@ -782,9 +874,12 @@ function renderWorkspace() {
     el('span', { class: 'grow' }), a.flag ? el('span', { class: 'tag none', text: 'Too close to ' + a.flag }) : null,
     el('button', { class: 'btn icon', text: '↶', title: 'Undo (Ctrl+Z)', disabled: !ED.hist.length, onclick: () => wsUndo(false) }),
     el('button', { class: 'btn icon', text: '↷', title: 'Redo (Ctrl+Y)', disabled: !ED.fut.length, onclick: () => wsUndo(true) }),
-    el('button', { class: 'btn primary', text: 'Done', onclick: () => closeAsset() })].filter(Boolean));
+    el('button', { class: 'btn icon', text: '?', title: 'Show the tips again', onclick: () => tour(0) }),
+    el('button', { id: 'wsdone', class: 'btn primary', text: 'Done', onclick: () => finishAsset() })].filter(Boolean));
   const tool = (id, label, key, ic, on, fn) => el('button', { class: 'wstool' + (on ? ' on' : ''), title: label + (key ? ` (${key})` : ''), onclick: fn }, el('span', { text: ic }), el('b', { text: SHORT[id] || label }), key && key.length === 1 ? el('i', { text: key }) : null);
-  $('wstools').replaceChildren(...tools.map(([id, label, key, ic]) => tool(id, label, key, ic, active === id, () => pickTool(id))),
+  const shown = mode === 'paint' ? tools.filter(t => ED.moreTools || CORE_TOOLS.includes(t[0]) || t[0] === active) : tools;
+  $('wstools').replaceChildren(...shown.map(([id, label, key, ic]) => tool(id, label, key, ic, active === id, () => pickTool(id))),
+    ...(mode === 'paint' ? [tool('more', ED.moreTools ? 'Fewer tools' : 'More tools', '', ED.moreTools ? '−' : '⋯', false, () => { ED.moreTools = !ED.moreTools; render(); })] : []),
     ...(mode === 'shape' ? [el('hr'), tool('dup', 'Duplicate box', 'Ctrl+D', '⧉', false, dupBox), tool('del', 'Delete box', 'Del', '✕', false, delBox)] : []));
   c.style.width = c.width * ED.zoom + 'px';
   if (!ED.box_) { ED.box_ = el('div', { class: 'paintbox' }); bindTexView(ED.box_); }
@@ -796,6 +891,7 @@ function renderWorkspace() {
       ED.rects.length ? el('button', { class: 'chip' + (P.inside ? '' : ' on'), text: `Paint outside the item: ${P.inside ? 'off' : 'on'}`, title: 'The dimmed parts of the texture never show on the model. Turn this on to paint there anyway.', onclick: () => { P.inside = !P.inside; render(); } }) : null),
     ].filter(Boolean));
   $('wsright').replaceChildren(...(mode === 'paint' ? paintSide() : shapeSide()).flat(Infinity).filter(Boolean));
+  viewHint();
   $('viewbtns').replaceChildren(...[['front', 'Front', '1'], ['side', 'Side', '3'], ['top', 'Top', '7'], ['persp', 'Persp', '5']].map(([v, t, k]) => el('button', { text: t, title: `${t} view (${k})`, onclick: () => st.setView(v) })), animPicker(),
     el('button', { class: ED.iso ? 'on' : '', text: ED.iso ? 'Item only' : 'Whole body', title: 'Show only the item you are editing, or the whole character', onclick: () => { ED.iso = !ED.iso; st.isolate(ED.iso ? ED.canvas : null); render(); } }));
   const b = mode === 'shape' ? curBox() : null;
