@@ -7,7 +7,12 @@ Unofficial; not affiliated with or endorsed by Hypixel Studios.
 1. Put `SkinEditor-<version>.jar` in your mods folder and enable it for the world.
 2. On the website, Wardrobe -> **Save skins to a folder**, and pick (or make) `Documents\Hytale Skins`. Your custom assets
    are written to its `Custom assets` folder as you paint.
-3. In game: `/skins list`, `/skins wear <id>`, `/skins off`.
+3. In game: `/skins list`, `/skins look <name>` (a whole skin you saved on the website), `/skins wear <id>` (one custom
+   piece), `/skins off`.
+
+A look changes what you wear in worlds running this mod. It cannot change your 5 presets in Hytale's avatar editor: those
+live on your Hytale account, which no mod or website can write. Slots holding paid items (editions, rewards) keep your own
+part, so a look never puts a cosmetic on someone who doesn't own it.
 
 The mod copies your custom assets into a pack it keeps in the world (`mods/SkinEditor_Live`) and the game sends new textures
 to players while the world runs. What you wear stays on after dying, changing worlds or rejoining, until `/skins off`.

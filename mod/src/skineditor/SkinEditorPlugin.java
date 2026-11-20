@@ -80,7 +80,7 @@ public final class SkinEditorPlugin extends JavaPlugin {
     protected void setup() {
         dataDir = getDataDirectory().toAbsolutePath(); modsDir = dataDir.getParent();
         try { Files.createDirectories(dataDir); } catch (Exception ignored) { }
-        skinsDir = loadFolder(); loadWorn();
+        skinsDir = loadFolder(); loadWorn(); loadLooks();
         try { ensureLivePack(); syncFolder(); } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] could not prepare " + LIVE + ": " + e); }
         getCommandRegistry().registerCommand(new Skins(this));
         tick = Executors.newSingleThreadScheduledExecutor(r -> { Thread t = new Thread(r, "SkinEditor"); t.setDaemon(true); return t; });
@@ -91,17 +91,19 @@ public final class SkinEditorPlugin extends JavaPlugin {
     // ------------------------------------------------------------------ keeping custom pieces on
     /** after a respawn, a world change or a rejoin the server puts the plain skin back: take it as the new base and dress again */
     private void keepOn() {
-        for (UUID who : WORN.keySet()) {
+        java.util.Set<UUID> who0 = new java.util.HashSet<>(WORN.keySet()); who0.addAll(LOOKS.keySet());
+        for (UUID who : who0) {
             try {
                 PlayerRef pr = Universe.get().getPlayer(who); if (pr == null) continue;
                 Ref<EntityStore> ref = pr.getReference(); if (ref == null || !ref.isValid()) continue;
                 World w = ref.getStore().getExternalData().getWorld();
                 w.execute(() -> { try {
-                    if (!ref.isValid() || !WORN.containsKey(who)) return;
+                    if (!ref.isValid() || (!WORN.containsKey(who) && !LOOKS.containsKey(who))) return;
                     PlayerSkinComponent pc = ref.getStore().getComponent(ref, PlayerSkinComponent.getComponentType());
-                    if (pc == null) return;   // still dressed by us
+                    if (pc == null) return;   // still dressed by us (custom pieces)
+                    if (APPLIED.containsKey(who) && same(pc.getPlayerSkin(), APPLIED.get(who))) return;   // still the look we put on
                     ORIGINAL.put(who, new PlayerSkin(pc.getPlayerSkin()));
-                    refreshWorn(who); if (WORN.containsKey(who)) dress(ref.getStore(), ref, who);
+                    refreshWorn(who); if (WORN.containsKey(who) || LOOKS.containsKey(who)) dress(ref.getStore(), ref, who);
                 } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] could not dress " + who + ": " + e); } });
             } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] keepOn: " + e); }
         }
@@ -206,38 +208,122 @@ public final class SkinEditorPlugin extends JavaPlugin {
     }
 
     // ------------------------------------------------------------------ wearing
+    /** every skin field, in the game's order */
+    static final String[] FIELDS = { "bodyCharacteristic", "underwear", "face", "ears", "mouth", "haircut", "facialHair", "eyebrows", "eyes", "pants", "overpants",
+        "undertop", "overtop", "shoes", "headAccessory", "faceAccessory", "earAccessory", "skinFeature", "gloves", "cape" };
+    static final Pattern PART = Pattern.compile("^[A-Za-z0-9_ -]{1,64}(\\.[A-Za-z0-9_ -]{1,64}){0,2}$");
+    /** a whole skin saved on the website: its parts, and the slots that must keep the player's own part (paid items they may not own) */
+    record Look(String name, Map<String, String> parts, java.util.Set<String> keepOwn) {}
+    static final Map<UUID, Look> LOOKS = new ConcurrentHashMap<>();
+    static final Map<UUID, PlayerSkin> APPLIED = new ConcurrentHashMap<>();   // the plain skin this mod last put on a player (look without custom pieces)
+
+    static Object get(PlayerSkin s, String f) throws Exception { return PlayerSkin.class.getField(f).get(s); }
+    static void put(PlayerSkin s, String f, String v) throws Exception { PlayerSkin.class.getField(f).set(s, v); }
+    static boolean same(PlayerSkin a, PlayerSkin b) throws Exception { for (String f : FIELDS) if (!java.util.Objects.equals(get(a, f), get(b, f))) return false; return true; }
+
     static void wear(Store<EntityStore> store, Ref<EntityStore> ref, UUID who, Asset a) throws Exception {
-        PlayerSkinComponent pc = store.getComponent(ref, PlayerSkinComponent.getComponentType());
-        if (pc != null) ORIGINAL.put(who, new PlayerSkin(pc.getPlayerSkin()));   // the live skin, before anything is swapped
-        if (!ORIGINAL.containsKey(who)) throw new IllegalStateException("no skin to start from");
+        rememberOwn(store, ref, who);
         WORN.computeIfAbsent(who, k -> new ConcurrentHashMap<>()).put(a.field(), a);
         dress(store, ref, who);
     }
 
+    /** a saved website skin on the player; custom pieces in it are worn as custom assets */
+    static void wearLook(Store<EntityStore> store, Ref<EntityStore> ref, UUID who, Look look, Map<String, Asset> all) throws Exception {
+        rememberOwn(store, ref, who);
+        Map<String, Asset> worn = new ConcurrentHashMap<>();
+        for (var e : look.parts().entrySet()) { String v = e.getValue(); if (v == null || !v.startsWith("Custom_")) continue;
+            Asset a = all.get(v.substring(7).split("\\.")[0]); if (a != null && a.field().equals(e.getKey())) worn.put(e.getKey(), a); }
+        if (worn.isEmpty()) WORN.remove(who); else WORN.put(who, worn);
+        LOOKS.put(who, look);
+        dress(store, ref, who);
+    }
+
+    /** the player's own skin, taken from the live component unless it is one this mod put there */
+    static void rememberOwn(Store<EntityStore> store, Ref<EntityStore> ref, UUID who) throws Exception {
+        PlayerSkinComponent pc = store.getComponent(ref, PlayerSkinComponent.getComponentType());
+        if (pc != null && !(APPLIED.containsKey(who) && same(pc.getPlayerSkin(), APPLIED.get(who)))) ORIGINAL.put(who, new PlayerSkin(pc.getPlayerSkin()));
+        if (!ORIGINAL.containsKey(who)) throw new IllegalStateException("no skin to start from");
+    }
+
     static void takeOff(Store<EntityStore> store, Ref<EntityStore> ref, UUID who, String field) throws Exception {
         Map<String, Asset> worn = WORN.get(who);
-        if (worn != null) { if (field == null) worn.clear(); else worn.remove(field); }
-        if (worn == null || worn.isEmpty()) {   // nothing custom left: the plain skin goes back, exactly as the game had it
-            WORN.remove(who); PlayerSkin orig = ORIGINAL.remove(who); if (orig == null) return;
-            CosmeticsModule cm = CosmeticsModule.get();
-            PlayerSkinComponent psc = new PlayerSkinComponent(orig); psc.setNetworkOutdated();   // marked so it is sent to the clients again
-            store.putComponent(ref, PlayerSkinComponent.getComponentType(), psc);
-            store.putComponent(ref, ModelComponent.getComponentType(), new ModelComponent(cm.createModel(orig)));
+        if (field == null) { WORN.remove(who); LOOKS.remove(who); } else if (worn != null) { worn.remove(field); if (worn.isEmpty()) WORN.remove(who); }
+        if (!WORN.containsKey(who) && !LOOKS.containsKey(who)) {   // nothing of ours left: the plain skin goes back, exactly as the game had it
+            APPLIED.remove(who); PlayerSkin orig = ORIGINAL.remove(who); if (orig == null) return;
+            plain(store, ref, orig);
             return;
         }
         dress(store, ref, who);
     }
 
+    private static void plain(Store<EntityStore> store, Ref<EntityStore> ref, PlayerSkin skin) {
+        PlayerSkinComponent psc = new PlayerSkinComponent(skin); psc.setNetworkOutdated();   // marked so it is sent to the clients again
+        store.putComponent(ref, PlayerSkinComponent.getComponentType(), psc);
+        store.putComponent(ref, ModelComponent.getComponentType(), new ModelComponent(CosmeticsModule.get().createModel(skin)));
+    }
+
+    /** the skin to show: the player's own, with the look's parts over it (except paid slots), then custom pieces on top */
+    private static PlayerSkin base(UUID who) throws Exception {
+        PlayerSkin skin = new PlayerSkin(ORIGINAL.get(who)); Look look = LOOKS.get(who);
+        if (look != null) for (String f : FIELDS) { if (look.keepOwn().contains(f)) continue; String v = look.parts().get(f);
+            put(skin, f, v != null && v.startsWith("Custom_") ? (String) get(ORIGINAL.get(who), f) : v); }
+        return skin;
+    }
+
     private static void dress(Store<EntityStore> store, Ref<EntityStore> ref, UUID who) throws Exception {
         CosmeticsModule cm = CosmeticsModule.get();
-        PlayerSkin skin = new PlayerSkin(ORIGINAL.get(who));
+        PlayerSkin skin = base(who);
         Map<String, Asset> worn = WORN.getOrDefault(who, Map.of());
-        for (String f : worn.keySet()) PlayerSkin.class.getField(f).set(skin, null);   // the custom piece replaces the game's piece in that slot
+        if (worn.isEmpty()) {   // a look with only game parts: a normal skin, drawn by every client from its own cosmetics
+            try { cm.validateSkin(skin); } catch (Exception e) { throw new IllegalStateException("this skin has parts your game version does not have"); }
+            APPLIED.put(who, new PlayerSkin(skin)); plain(store, ref, skin); return;
+        }
+        APPLIED.remove(who);
+        for (String f : worn.keySet()) put(skin, f, null);   // the custom piece replaces the game's piece in that slot
         List<ModelAttachment> extra = new ArrayList<>();
         for (Asset a : worn.values()) extra.add(new ModelAttachment(a.model(), a.texture(), null, null, 1.0));
         Model m = skinToModel(cm, skin, cm.createModel(skin), extra);
         if (store.getComponent(ref, PlayerSkinComponent.getComponentType()) != null) store.removeComponent(ref, PlayerSkinComponent.getComponentType());
         store.putComponent(ref, ModelComponent.getComponentType(), new ModelComponent(m));
+    }
+
+    // ------------------------------------------------------------------ looks from the skins folder
+    /** every whole skin saved in the skins folder ("My skins" and "In-game slots"), by name */
+    Map<String, Look> looks() {
+        Map<String, Look> out = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        if (skinsDir == null) return out;
+        for (String sub : List.of("In-game slots", "My skins")) {
+            Path dir = skinsDir.resolve(sub); if (!Files.isDirectory(dir)) continue;
+            try (Stream<Path> files = Files.list(dir)) {
+                for (Path f : (Iterable<Path>) files::iterator) {
+                    if (!f.getFileName().toString().endsWith(".json") || Files.size(f) > 20_000) continue;
+                    String json = Files.readString(f); if (!"skin-editor-skin".equals(str(json, "format"))) continue;
+                    Look l = parseLook(json); if (l != null) out.putIfAbsent(l.name(), l);
+                }
+            } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] could not read " + dir + ": " + e); }
+        }
+        return out;
+    }
+    static Look parseLook(String json) {
+        int at = json.indexOf("\"skin\""); if (at < 0) return null; String body = json.substring(at);
+        Map<String, String> parts = new LinkedHashMap<>();
+        for (String f : FIELDS) { Matcher m = Pattern.compile("\"" + f + "\"\\s*:\\s*(null|\"([^\"]*)\")").matcher(body);
+            String v = m.find() && m.group(2) != null ? m.group(2) : null; if (v != null && !PART.matcher(v).matches()) return null; parts.put(f, v); }
+        java.util.Set<String> keep = new java.util.HashSet<>();
+        Matcher k = Pattern.compile("\"keepOwn\"\\s*:\\s*\\[([^\\]]*)\\]").matcher(json);
+        if (k.find()) for (String f : FIELDS) if (k.group(1).contains("\"" + f + "\"")) keep.add(f);
+        String name = str(json, "name"); if (name == null || name.isBlank()) return null;
+        return new Look(name.length() > 40 ? name.substring(0, 40) : name, parts, keep);
+    }
+    private Path looksFile() { return dataDir.resolve("looks.txt"); }
+    void saveLooks() {   // "<uuid>\t<look name>" per line
+        StringBuilder sb = new StringBuilder(); LOOKS.forEach((u, l) -> sb.append(u).append('\t').append(l.name()).append('\n'));
+        try { Files.writeString(looksFile(), sb.toString()); } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] could not save looks.txt: " + e); }
+    }
+    private void loadLooks() {
+        try { if (!Files.isRegularFile(looksFile())) return; Map<String, Look> all = looks();
+            for (String line : Files.readAllLines(looksFile())) { String[] p = line.split("\t", 2); if (p.length != 2) continue; Look l = all.get(p[1]); if (l != null) LOOKS.put(UUID.fromString(p[0]), l); }
+        } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] could not read looks.txt: " + e); }
     }
 
     /** a skin as the Player model with one attachment per part, resolved from the game's cosmetics list (variant, fixed texture, or greyscale + colour) */
@@ -279,7 +365,7 @@ public final class SkinEditorPlugin extends JavaPlugin {
     static final class Skins extends AbstractCommandCollection {
         Skins(SkinEditorPlugin p) {
             super("skins", "Wear custom assets made on the Skin Editor website");
-            addSubCommand(new ListCmd(p)); addSubCommand(new WearCmd(p)); addSubCommand(new OffCmd(p)); addSubCommand(new FolderCmd(p));
+            addSubCommand(new ListCmd(p)); addSubCommand(new WearCmd(p)); addSubCommand(new OffCmd(p)); addSubCommand(new FolderCmd(p)); addSubCommand(new LookCmd(p));
         }
     }
 
@@ -290,9 +376,12 @@ public final class SkinEditorPlugin extends JavaPlugin {
             Map<String, Asset> all = new LinkedHashMap<>();
             try { p.syncFolder(); } catch (Exception ignored) { }
             if (all.isEmpty()) all = p.assets();
-            if (all.isEmpty()) { ctx.sendMessage(Message.raw("No custom assets found. On the website, save your skins to " + p.folder() + " (Wardrobe, Save skins to a folder), or set the folder with /skins folder <path>.")); return; }
+            Map<String, Look> looks = p.looks(); Look on = LOOKS.get(player.getUuid());
+            if (all.isEmpty() && looks.isEmpty()) { ctx.sendMessage(Message.raw("Nothing found. On the website, save your skins to " + p.folder() + " (Wardrobe, Save skins to a folder), or set the folder with /skins folder <path>.")); return; }
             Map<String, Asset> worn = WORN.getOrDefault(player.getUuid(), Map.of());
-            StringBuilder sb = new StringBuilder("Custom assets (/skins wear <id>):");
+            StringBuilder sb = new StringBuilder();
+            if (!looks.isEmpty()) { sb.append("Saved skins (/skins look <name>):"); for (Look l : looks.values()) sb.append("\n  ").append(l.name()).append(on != null && on.name().equalsIgnoreCase(l.name()) ? "  [wearing]" : ""); sb.append('\n'); }
+            sb.append("Custom assets (/skins wear <id>):");
             for (Asset a : all.values()) sb.append("\n  ").append(a.id()).append("  ").append(a.name()).append(" (").append(SLOTS.get(a.field())).append(')')
                 .append(worn.containsKey(a.field()) && worn.get(a.field()).id().equals(a.id()) ? "  [wearing]" : "");
             ctx.sendMessage(Message.raw(sb.toString()));
@@ -311,6 +400,20 @@ public final class SkinEditorPlugin extends JavaPlugin {
         }
     }
 
+    static final class LookCmd extends AbstractPlayerCommand {
+        private final SkinEditorPlugin p; private final RequiredArg<String> name;
+        LookCmd(SkinEditorPlugin p) { super("look", "Wear a whole skin saved on the website"); this.p = p; name = withRequiredArg("name", "the skin's name from /skins list", ArgTypes.GREEDY_STRING); }
+        @Override protected void execute(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> ref, PlayerRef player, World world) {
+            String want = String.valueOf(name.get(ctx)).trim().replace("\"", "");
+            try { p.syncFolder(); } catch (Exception ignored) { }
+            Look l = p.looks().get(want);
+            if (l == null) { ctx.sendMessage(Message.raw("No saved skin called " + want + ". See /skins list.")); return; }
+            try { wearLook(store, ref, player.getUuid(), l, p.assets()); p.saveWorn(); p.saveLooks();
+                ctx.sendMessage(Message.raw("Wearing " + l.name() + (l.keepOwn().isEmpty() ? "" : " (paid items kept as your own)") + ". /skins off to go back.")); }
+            catch (Exception e) { ctx.sendMessage(Message.raw("Could not wear " + l.name() + ": " + e.getMessage())); }
+        }
+    }
+
     static final class FolderCmd extends AbstractPlayerCommand {
         private final SkinEditorPlugin p; private final RequiredArg<String> path;
         FolderCmd(SkinEditorPlugin p) { super("folder", "Set the skins folder the website saves to"); this.p = p; path = withRequiredArg("path", "the folder chosen on the website", ArgTypes.GREEDY_STRING); }
@@ -326,7 +429,7 @@ public final class SkinEditorPlugin extends JavaPlugin {
         private final SkinEditorPlugin p;
         OffCmd(SkinEditorPlugin p) { super("off", "Take off all custom assets"); this.p = p; }
         @Override protected void execute(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> ref, PlayerRef player, World world) {
-            try { takeOff(store, ref, player.getUuid(), null); p.saveWorn(); ctx.sendMessage(Message.raw("Back to your own skin.")); }
+            try { takeOff(store, ref, player.getUuid(), null); p.saveWorn(); p.saveLooks(); ctx.sendMessage(Message.raw("Back to your own skin.")); }
             catch (Exception e) { ctx.sendMessage(Message.raw("Could not take them off: " + e.getMessage())); }
         }
     }

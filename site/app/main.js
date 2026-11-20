@@ -432,6 +432,7 @@ function downloadBlob(name, blob) { const a = el('a', { href: URL.createObjectUR
 const lockedBase = a => { const it = CAT.items[a.field].find(e => e.Id === a.baseId); return it ? tierOf(it) : 0; };
 const modReady = a => lockedBase(a) === 0;
 store.setLockedOf(a => !modReady(a));
+store.setKeepOwnOf(skin => R ? game.FIELDS.filter(f => { const it = R.find(f, skin[f]); if (!it) return false; if (!it.custom) return tierOf(it) > 0; const a = ASSETS.find(x => 'Custom_' + x.id === it.Id); return !a || !modReady(a); }) : []);
 const modExport = guard(async list => {
   const ok = list.filter(modReady), skipped = list.length - ok.length;
   if (!ok.length) throw new Error('These are repaints of edition or reward items, which the mod will not wear.');
