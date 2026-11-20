@@ -126,13 +126,18 @@ function setTab(t) { tab = t; for (const b of $('tabs').children) b.classList.to
 function render() { jobGen++; plate(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
   p.replaceChildren(...({ editor: panelEditor, wardrobe: panelWardrobe, animations: panelAnimations, lookup: panelLookup, feedback: panelFeedback, help: panelHelp }[tab])());
   if (was === p.className && top) { const b = p.querySelector('.pbody'); if (b) b.scrollTop = top; } }
+// our own small symbols for the category rail (drawn here, not taken from the game)
+const ICON = { Head: 'M6 3h12v13H6zM9 8v3h2V8zM13 8v3h2V8zM9 17h6v4H9z', Body: 'M9 2h6v6H9zM7 9h10v8H7zM3 9h3v8H3zM18 9h3v8h-3zM8 18h3v4H8zM13 18h3v4h-3z',
+  Torso: 'M8 3l4 2 4-2 5 3-2 4-2-1v12H7V9l-2 1-2-4z', Legs: 'M6 3h12l1 18h-5l-2-11-2 11H5z', Capes: 'M8 3h8l4 18-4-2-4 2-4-2-4 2z' };
+function icon(d) { const NS = 'http://www.w3.org/2000/svg', s = document.createElementNS(NS, 'svg'), p = document.createElementNS(NS, 'path');
+  s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', d); p.setAttribute('fill-rule', 'evenodd'); s.append(p); return s; }
 const head = (title, right) => el('div', { class: 'phead' }, el('h2', { text: title }), right);
 
 function panelEditor() {
   const fields = GROUPS.find(g => g[0] === group)[1].filter(f => R.ITEMS[f].length); if (!fields.includes(slot)) slot = fields[0];
   const it = R.find(slot, cur.skin[slot]), { color, variant } = parse(cur.skin[slot]);
   const change = (item, c, v) => setSkin({ ...cur.skin, [slot]: R.partStr(item, c, v) });
-  const rail = el('div', { class: 'rail' }, GROUPS.map(([g]) => el('button', { class: g === group ? 'on' : '', text: g, onclick: () => { group = g; filter = ''; render(); } })));
+  const rail = el('div', { class: 'rail' }, GROUPS.map(([g]) => el('button', { class: g === group ? 'on' : '', onclick: () => { group = g; filter = ''; render(); } }, icon(ICON[g]), el('span', { text: g }))));
   const sub = el('div', { class: 'rail sub' }, fields.map(f => el('button', { class: f === slot ? 'on' : '', onclick: () => { slot = f; filter = ''; render(); } }, el('span', { text: LABEL[f] }), el('small', { text: cur.skin[f] ? nice(parse(cur.skin[f]).id) : 'None' }))));
   const q = filter.toLowerCase(), items = R.ITEMS[slot].filter(e => nice(e.Id).toLowerCase().includes(q));
   const grid = el('div', { class: 'grid' },
@@ -208,7 +213,7 @@ async function saveAs() {
 // animations
 let playing = { group: 'Default', name: 'Idle' };
 const ORDER = ['Emote', 'Default', 'Poses', 'Taunt', 'Flavor', 'Expressions'];
-async function playAnim(g, n, speed = 1) { try { const a = await fig.loadAnim(g, n); playing = { group: g, name: n }; st.anim.set(a, speed); st.anim.playing = true; } catch (e) { say('That animation could not be loaded.', true); } if (tab === 'animations') render(); }
+async function playAnim(g, n, speed = 1) { try { const a = await fig.loadAnim(g, n); playing = { group: g, name: n }; st.anim.set(a, speed); st.anim.setMove(fig.motionOf(g, n)); st.anim.playing = true; } catch (e) { say('That animation could not be loaded.', true); } if (tab === 'animations') render(); }
 let animGroup = 'Emote';
 function panelAnimations() {
   const groups = Object.keys(CAT.anims).sort((a, b) => (ORDER.indexOf(a) + 99) % 99 - (ORDER.indexOf(b) + 99) % 99 || a.localeCompare(b)); if (!groups.includes(animGroup)) animGroup = groups[0];
