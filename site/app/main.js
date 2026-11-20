@@ -555,7 +555,7 @@ function partAt(e, onModel, toPixel) {   // the box under the pointer: on the mo
 }
 function turnDrag(e) {   // drag on empty space or another body part: the model turns, like right-drag
   const v = $('view'); let x = e.clientX, y = e.clientY; try { v.setPointerCapture(e.pointerId); } catch { /* fine */ }
-  const move = ev => { st.orbit(ev.clientX - x, ev.clientY - y); x = ev.clientX; y = ev.clientY; store_.set('se_turned', '1'); if ($('viewhint')) $('viewhint').hidden = true; };
+  const move = ev => { st.orbit(ev.clientX - x, ev.clientY - y); x = ev.clientX; y = ev.clientY; };
   const up = () => { v.removeEventListener('pointermove', move); v.removeEventListener('pointerup', up); v.removeEventListener('pointercancel', up); };
   v.addEventListener('pointermove', move); v.addEventListener('pointerup', up); v.addEventListener('pointercancel', up);
 }
@@ -872,11 +872,26 @@ function tour(i = 0) {
   const x = Math.min(innerWidth - bw - 12, Math.max(12, v.left + v.width / 2 - bw / 2)), y = Math.max(12, v.bottom - bh - 14);
   box.style.left = x + 'px'; box.style.top = y + 'px';
 }
+// the tip on the model: what the picked tool does and how to use it
+const TOOL_TIPS = {
+  select: 'Select: drag over the texture to pick an area. Ctrl+C copies, Ctrl+V pastes, drag the piece and press Enter to place it.',
+  brush: 'Brush: drag on the item to paint. Size and Strength are on the right. Drag off the item to turn the model.',
+  erase: 'Eraser: drag on the item to make it see-through there.',
+  part: 'Part: click a part of the item to colour all of it, keeping its shading.',
+  fill: 'Fill: click an area to fill it. "Similar colours" on the right sets how far it spreads.',
+  pick: 'Pick colour: click the item to take a colour from it.',
+  replace: 'Replace colour: click a colour on the item to swap it everywhere for your colour.',
+  line: 'Line: drag from one point to another to draw a straight line.',
+  box: 'Box: drag to draw a rectangle outline.', boxfill: 'Filled box: drag to draw a filled rectangle.',
+  light: 'Lighten: drag on the item to make it lighter.', dark: 'Darken: drag on the item to make it darker.',
+  noise: 'Noise: drag on the item to add a rough, worn look.',
+  's-select': 'Select: click a part on the model or its area on the texture. Add box, Mirror copy and the sizes are on the right.',
+  's-move': 'Move: drag the arrows, type Position numbers, or nudge with the arrow keys (Shift: forward and back).',
+  's-resize': 'Resize: drag the handles, or use Longer, Shorter, Wider and the other size buttons.',
+  's-rotate': 'Rotate: drag a ring to tilt the part, or type the Rotation numbers. Turns go in 15° steps.' };
 function viewHint() {
-  let h = $('viewhint'); if (!h) { h = el('div', { id: 'viewhint', class: 'viewhint' }); $('view').parentElement.appendChild(h);
-    $('view').addEventListener('pointerdown', e => { if (e.button === 2 && ED) { store_.set('se_turned', '1'); $('viewhint').hidden = true; } }); }
-  h.hidden = !ED || !!store_.get('se_turned'); clearTimeout(viewHint.t); if (!h.hidden) viewHint.t = setTimeout(() => { h.hidden = true; }, 9000);
-  if (ED) h.textContent = ED.mode === 'shape' ? 'Click a box to pick it  ·  Drag empty space to turn  ·  Wheel zooms' : 'Drag on the item to paint  ·  Drag elsewhere to turn  ·  Wheel zooms';
+  let h = $('viewhint'); if (!h) { h = el('div', { id: 'viewhint', class: 'viewhint' }); $('view').parentElement.appendChild(h); }
+  h.hidden = !ED; if (ED) h.textContent = TOOL_TIPS[ED.mode === 'shape' ? 's-' + (ED.stool || 'select') : ED.painter.tool] || '';
 }
 // ---- colours: a fixed set of basics, the item's own colours and the ones used lately
 const BASIC = ['#ffffff', '#c9c9c9', '#808080', '#3d3d3d', '#000000', '#e23b3b', '#ef8a35', '#f4d24a', '#7cc444', '#2e9a58', '#3db7c9', '#3b6fe0', '#7a4fd6', '#d65ab4', '#8a5a32', '#f2c9a1'];
@@ -988,10 +1003,6 @@ function renderWorkspace() {
   viewHint();
   $('viewbtns').replaceChildren(...[['front', 'Front', '1'], ['back', 'Back', '2'], ['side', 'Side', '3'], ['top', 'Top', '7'], ['persp', 'Persp', '5']].map(([v, t, k]) => el('button', { text: t, title: `${t} view (${k})`, onclick: () => { st.setView(v); st.frameOn(ED.canvas); } })), animPicker(),
     el('button', { class: ED.iso ? 'on' : '', text: ED.iso ? 'Item only' : 'Whole body', title: 'Show only the item you are editing, or the whole character', onclick: () => { ED.iso = !ED.iso; st.isolate(ED.iso ? ED.canvas : null); render(); } }));
-  const b = mode === 'shape' ? curBox() : null;
-  $('wsstatus').textContent = mode === 'paint'
-    ? `Paint · ${PAINT_TOOLS.find(t => t[0] === P.tool)?.[1] || P.tool} · ${P.tool === 'select' ? 'drag over the texture to select · Ctrl+C copy · Ctrl+V paste · drag the piece · Enter places' : 'drag on the item paints'} · drag elsewhere to turn · M select · Ctrl+Z undo · Tab: Shape`
-    : `Shape · ${b ? boxLabel(b.node) : ''} · click a box on the model or its area on the texture · ${ED.stool === 'move' ? 'drag the arrows to move' : ED.stool === 'resize' ? 'drag the handles to resize' : ED.stool === 'rotate' ? 'drag the rings to turn' : 'G move, S resize, R rotate'} · A add · Ctrl+D duplicate · M mirror copy · Del delete · Tab: Paint`;
 }
 // shortcuts while the workspace is open (caught before the page's own Ctrl+Z, which undoes the skin)
 addEventListener('keydown', e => {
