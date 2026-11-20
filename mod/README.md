@@ -1,4 +1,4 @@
-# Skin Editor companion mod (for Hytale)
+# Skin Editor Sync (companion mod for Hytale)
 
 Shows the skin you are wearing on https://hytale-skin-editor.com on your character in your own worlds, custom assets
 included. No commands. Unofficial; not affiliated with or endorsed by Hypixel Studios.
