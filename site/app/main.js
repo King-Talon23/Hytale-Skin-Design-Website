@@ -1215,7 +1215,7 @@ addEventListener('keydown', e => { if (!R || e.target?.matches?.('input, textare
 (async function boot() {
   try {
     // Local development only: read the developer's own Assets.zip through the dev server (dev/ is never deployed).
-    if (['localhost', '127.0.0.1'].includes(location.hostname) && new URLSearchParams(location.search).has('devzip') && !(await game.status()))
+    if ((['localhost', '127.0.0.1'].includes(location.hostname) || location.hostname.endsWith('.localhost')) && new URLSearchParams(location.search).has('devzip') && !(await game.status()))
       { const { devSource } = await import('../dev/devsource.js'); showConnect(); return doConnect(async () => game.importFrom(await devSource(), { name: 'Assets.zip (dev)', size: 0, modified: 0 }, progress)); }
     if (await game.status()) await startApp(); else showConnect();
   } catch (e) { console.error(e); showConnect(); $('connerr').textContent = 'This browser blocked local storage, which the editor needs. Try a normal (not private) window.'; }
