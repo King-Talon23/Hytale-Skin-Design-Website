@@ -18,7 +18,7 @@ For servers, the website's **Download all for the mod** gives a pack to unzip in
 Everyone in the world sees what you wear, because the server sends it. Worlds and servers without the mod show your normal
 skin. Repaints of edition and reward items are skipped, so the mod never puts paid cosmetics on anyone.
 
-Known limit: earrings are not drawn while a custom piece is worn.
+Earrings, including custom ones, are drawn as normal.
 
 ## Build
 `bash build.sh` (JDK 25, compiles against your installed `HytaleServer.jar`) gives `out/SkinEditor-<version>.jar`.

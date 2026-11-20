@@ -57,7 +57,7 @@ public final class SkinEditorPlugin extends JavaPlugin {
     static {
         for (String[] s : new String[][] { {"haircut", "Haircut"}, {"facialHair", "Facial hair"}, {"eyebrows", "Eyebrows"}, {"eyes", "Eyes"}, {"face", "Face"}, {"mouth", "Mouth"},
             {"ears", "Ears"}, {"skinFeature", "Skin feature"}, {"underwear", "Underwear"}, {"undertop", "Undertop"}, {"overtop", "Overtop"}, {"pants", "Pants"},
-            {"overpants", "Legwear"}, {"shoes", "Shoes"}, {"gloves", "Gloves"}, {"cape", "Cape"}, {"headAccessory", "Headwear"}, {"faceAccessory", "Face accessory"} }) SLOTS.put(s[0], s[1]);
+            {"overpants", "Legwear"}, {"shoes", "Shoes"}, {"gloves", "Gloves"}, {"cape", "Cape"}, {"headAccessory", "Headwear"}, {"faceAccessory", "Face accessory"}, {"earAccessory", "Earring"} }) SLOTS.put(s[0], s[1]);
     }
 
     /** one custom asset from a pack */
@@ -251,8 +251,8 @@ public final class SkinEditorPlugin extends JavaPlugin {
         Object[][] parts = { {ps.face, reg.getFaces()}, {ps.ears, reg.getEars()}, {ps.mouth, reg.getMouths()}, {ps.eyes, reg.getEyes()}, {ps.eyebrows, reg.getEyebrows()},
             {ps.haircut, reg.getHaircuts()}, {ps.facialHair, reg.getFacialHairs()}, {ps.underwear, reg.getUnderwear()}, {ps.pants, reg.getPants()}, {ps.overpants, reg.getOverpants()},
             {ps.undertop, reg.getUndertops()}, {ps.overtop, reg.getOvertops()}, {ps.shoes, reg.getShoes()}, {ps.gloves, reg.getGloves()}, {ps.headAccessory, reg.getHeadAccessories()},
-            {ps.faceAccessory, reg.getFaceAccessories()}, {ps.skinFeature, reg.getSkinFeatures()}, {ps.cape, reg.getCapes()} };
-        // ear accessories are left out: their attachment points are missing from the plain Player model, and the client logs an error per rebuild
+            {ps.faceAccessory, reg.getFaceAccessories()}, {ps.earAccessory, reg.getEarAccessories()}, {ps.skinFeature, reg.getSkinFeatures()}, {ps.cape, reg.getCapes()} };
+        // earrings hang from R/L-Ear-Attachment (or Head), which every body model has, so they are drawn like the rest
         List<ModelAttachment> out = new ArrayList<>(extra);   // custom pieces first: the client draws only the first several attachments
         for (Object[] pr : parts) {
             String id = (String) pr[0]; if (id == null || id.isEmpty()) continue;
@@ -316,7 +316,7 @@ public final class SkinEditorPlugin extends JavaPlugin {
         FolderCmd(SkinEditorPlugin p) { super("folder", "Set the skins folder the website saves to"); this.p = p; path = withRequiredArg("path", "the folder chosen on the website", ArgTypes.GREEDY_STRING); }
         @Override protected void execute(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> ref, PlayerRef player, World world) {
             Path d = Path.of(String.valueOf(path.get(ctx)).trim().replace("\"", ""));
-            if (!Files.isDirectory(d)) { ctx.sendMessage(Message.raw("No such folder: " + d)); return; }
+            if (!Files.isDirectory(d)) { ctx.sendMessage(Message.raw("No such folder: " + d + ". Write the path with forward slashes, like C:/Users/you/Documents/Hytale Skins.")); return; }
             try { p.setFolder(d); ctx.sendMessage(Message.raw("Using " + d + ". /skins list to see your custom assets.")); }
             catch (Exception e) { ctx.sendMessage(Message.raw("Could not use that folder: " + e.getMessage())); }
         }
