@@ -196,7 +196,7 @@ export function stage(canvas, Controls) {
     const wy = wallG.position.y - WALL_Y - (wallOn ? wallOn[1] : 0) * dt, wx = wallG.position.x - (wallOn ? wallOn[0] : 0) * dt;
     wallG.position.set(wx % CELL, WALL_Y + wy % CELL, WALL_Z); wallG.material.opacity += ((wallOn ? 0.5 : 0) - wallG.material.opacity) * (1 - Math.exp(-dt * 6)); wallG.visible = wallG.material.opacity > 0.01; }
   let hl = null, helpers = [];   // outlines around picked boxes (see drawHL)
-  const anim = new Animator(), mountAnim = new Animator(); let figure = null, held = [], last = performance.now(), mountRoot = null, seat = null, hoverTo = 0, hoverAt = 0;
+  const anim = new Animator(), mountAnim = new Animator(); let figure = null, held = [], perchY = 0, last = performance.now(), mountRoot = null, seat = null, hoverTo = 0, hoverAt = 0;
   function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
   new ResizeObserver(fit).observe(canvas); fit();
   (function loop(now) { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000 || 0); anim.update(dt); mountAnim.playing = anim.playing; mountAnim.update(dt); travel(dt); float(dt, now); for (const h of helpers) h.update(); dropHeld(); last = now; renderer.render(scene, cam); })(last);
@@ -267,7 +267,18 @@ export function stage(canvas, Controls) {
   }
   const VIEWS = { front: [0, 62, 270], back: [0, 62, -270], side: [-270, 62, 0], top: [0, 330, 1], persp: [-75, 95, 255] };
   // a ridden animal under the figure: the figure sits at the animal's seat (in model units) and the view backs off to fit both
-  const seatAt = () => { if (figure) figure.position.set(0, (seat ? seat[1] : 0) + hoverAt, seat ? seat[2] : 0); };
+  const seatAt = () => { if (figure) figure.position.set(0, (seat ? seat[1] : 0) + hoverAt + perchY, seat ? seat[2] : 0); };
+  // scenery a move needs: boxes and planes in the scene (a chair, a bed, the water's surface); perch lifts the figure onto it
+  const setPiece = new THREE.Group(); scene.add(setPiece);
+  async function scenery(list, perch = 0) { const my = (scenery.n = (scenery.n || 0) + 1);
+    const made = await Promise.all((list || []).map(async it => { let map = null;
+      if (it.tex) { try { const T = await texture(it.tex); map = T.mat.map.clone(); map.wrapS = map.wrapT = THREE.RepeatWrapping; map.repeat.set(...(it.repeat || [1, 1])); map.needsUpdate = true; } catch (e) { console.warn(it.tex, e.message); } }
+      const mat = new THREE.MeshLambertMaterial({ map, color: it.color ?? 0xffffff, transparent: it.opacity != null, opacity: it.opacity ?? 1, depthWrite: it.opacity == null, side: THREE.DoubleSide });
+      const geo = it.plane ? new THREE.PlaneGeometry(...it.plane) : new THREE.BoxGeometry(...it.box), m = new THREE.Mesh(geo, mat);
+      if (it.plane) m.rotation.x = -Math.PI / 2; m.position.set(...it.at); return m; }));
+    if (my !== scenery.n) return made.forEach(m => { m.geometry.dispose(); m.material.map?.dispose(); m.material.dispose(); });
+    for (const m of [...setPiece.children]) { setPiece.remove(m); m.geometry.dispose(); m.material.map?.dispose(); m.material.dispose(); }
+    for (const m of made) setPiece.add(m); perchY = perch; seatAt(); }
   // flying moves: the figure rises off the ground and bobs gently, easing up and down when the move changes
   function float(dt, now) { if (!figure || (!hoverTo && !hoverAt)) return; hoverAt += (hoverTo - hoverAt) * (1 - Math.exp(-dt * 4)); if (Math.abs(hoverTo - hoverAt) < 0.05) hoverAt = hoverTo;
     seatAt(); if (hoverAt > 1 && hoverTo) figure.position.y += Math.sin(now / 1000 * 2.2) * 2.5 * Math.min(1, hoverAt / hoverTo); }
@@ -296,7 +307,7 @@ export function stage(canvas, Controls) {
     if (was !== !!root) { const k = root ? 1.6 : 1 / 1.6, ty = root ? 62 + at[1] * 0.7 : 62, off = cam.position.clone().sub(ctl.target).multiplyScalar(k);
       ctl.target.set(0, ty, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
   }
-  const api = { isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, props, lift, wall: v => { wallOn = v || null; }, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
+  const api = { isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, props, lift, scenery, wall: v => { wallOn = v || null; }, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
     gizmoBusy: () => tc.dragging || tc.axis !== null,
     // where a click lands on a box: the point and the face's outward direction, in the box's own part (node) space
     pickHit(cx, cy, keep) { if (!figure) return null; aim(cx, cy); for (const h of ray.intersectObject(figure, true)) if (h.object.visible && keep(h.object)) {

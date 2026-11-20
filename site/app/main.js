@@ -419,10 +419,20 @@ const HELD = { Glide: { '*': [['glider', 'R-Attachment']] },
     Warhammer: [['mace', 'R-Attachment']], Outlander_Sword: [['sword', 'R-Attachment']], Outlander_Archer_Bow_Charge: [['bow', 'L-Attachment']], Outlander_Archer_Bow_Pose: [['bow', 'L-Attachment']] },
   Taunt: { Staff_Helicopter: [['staff', 'R-Attachment']], Sword_Back: [['sword', 'R-Attachment']], Sword_Front: [['sword', 'R-Attachment', [0, -5, 14]]] } };   // [item, hand, shift]: Sword Front's blade would cross the face and body
 const heldBy = (g, n) => HELD[g]?.[n] || HELD[g]?.['*'] || [];
+// scenery for the moves that use something in the world, in model units (a block is 64; the figure faces +z, its pelvis rests at 51)
+const W = game.SCENERY_TEX;
+const CHAIR = [{ box: [30, 30, 30], at: [0, 15, 2], tex: W.wood }, { box: [30, 44, 6], at: [0, 52, -16], tex: W.wood }];   // seat top at 30: the sit moves drop the pelvis 45 and hang the lower legs
+const BED = [{ box: [44, 14, 132], at: [0, 7, -14], tex: W.wood, repeat: [1, 3] }, { box: [44, 3, 92], at: [0, 15.5, 6], color: 0x9b3b3b }, { box: [30, 7, 18], at: [0, 17.5, -64], color: 0xe8e2d4 }];   // lying moves drop the pelvis about 42, head towards -z
+const WATER = y => [{ plane: [900, 900], at: [0, y, 0], tex: W.water, repeat: [14, 14], color: 0x7fb2e6, opacity: 0.45 }];
+function sceneryFor(g, n) {
+  if (g === 'Flavor' && /^Sit2?$/.test(n)) return [CHAIR, 30];
+  if (g === 'Flavor' && /^Sleep/.test(n)) return [BED, 14];
+  if (g === 'Swim') return [WATER(/Dive|Sink/.test(n) ? 150 : 92), 0];
+  return [null, 0]; }
 async function setProps(g, n) { const want = heldBy(g, n);
   const built = await Promise.all(want.map(async ([k, bone, shift]) => { try { const [model, tex] = game.PROPS[k]; return { root: model ? await fig.buildCreature({ model, tex }) : await fig.buildBlock(tex), bone, shift }; } catch (e) { console.warn(k, e.message); return null; } }));
   st.props(built.filter(Boolean)); if (built.some(b => !b)) say('Your saved copy of the game files is from before held items were added. Refresh it once in the Locker to see them (your skins are kept).', true); }
-async function playAnim(g, n, speed = 1, once = false) { clearTimeout(onceT); try { await setMount(g === 'Mount' ? mountKind : null, n); await setProps(g, n); st.lift(g === 'Glide' ? 165 : 0); st.wall(g === 'Climb' ? (/_Up$/.test(n) ? [0, 55] : /_Down$/.test(n) ? [0, -55] : /_Left$/.test(n) ? [45, 0] : /_Right$/.test(n) ? [-45, 0] : [0, 0]) : null); const a = await fig.loadAnim(g, n); st.hover(g === 'Fly' ? 44 : g === 'Glide' ? 60 : 0); playing = { group: g, name: n }; st.anim.set(a, speed);
+async function playAnim(g, n, speed = 1, once = false) { clearTimeout(onceT); try { await setMount(g === 'Mount' ? mountKind : null, n); await setProps(g, n); st.lift(g === 'Glide' ? 165 : 0); st.scenery(...sceneryFor(g, n)); st.wall(g === 'Climb' ? (/_Up$/.test(n) ? [0, 55] : /_Down$/.test(n) ? [0, -55] : /_Left$/.test(n) ? [45, 0] : /_Right$/.test(n) ? [-45, 0] : [0, 0]) : null); const a = await fig.loadAnim(g, n); st.hover(g === 'Fly' ? 44 : g === 'Glide' ? 60 : 0); playing = { group: g, name: n }; st.anim.set(a, speed);
     if (once) { const still = fig.motionOf(g, n) && st.anim.still, ms = still ? 1700 : (Math.max(1, a.duration || 60) / 60 / speed) * 1000 + (a.holdLastKeyframe ? 700 : 0) + 250;
       onceT = setTimeout(() => { if (playing.group === g && playing.name === n) playAnim('Default', 'Idle', 0.5); }, ms); } st.anim.setMove(fig.motionOf(g, n)); st.anim.playing = true; drawEmotes(); } catch (e) { say('That animation could not be loaded.', true); } if (tab === 'animations') render(); }
 let animGroup = 'Emote';

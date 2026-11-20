@@ -13,7 +13,9 @@ export const PROPS = {
   staff: ['Items/Weapons/Staff/Bo_Wood.blockymodel', 'Items/Weapons/Staff/Bo_Wood_Texture.png'], sword: ['Items/Weapons/Sword/Iron.blockymodel', 'Items/Weapons/Sword/Iron_Texture.png'],
   mace: ['Items/Weapons/Mace/Iron.blockymodel', 'Items/Weapons/Mace/Iron_Texture.png'], bow: ['Items/Weapons/Bow/Bronze.blockymodel', 'Items/Weapons/Bow/Bronze_Texture.png'],
   potion: ['Items/Consumables/Potions/Potion.blockymodel', 'Items/Consumables/Potions/Potion_Textures/Pink.png'], block: [null, 'BlockTextures/Rock_Stone.png'] };   // a block is a plain cube with this texture
-const PROP_FILES = new Set(Object.values(PROPS).flat().filter(Boolean).map(p => 'Common/' + p));
+// textures for the scenery some moves need (a chair to sit on, a bed, water)
+export const SCENERY_TEX = { wood: 'BlockTextures/Wood_Softwood_Planks_Top.png', water: 'BlockTextures/Fluid_Water.png' };
+const PROP_FILES = new Set([...Object.values(PROPS).flat(), ...Object.values(SCENERY_TEX)].filter(Boolean).map(p => 'Common/' + p));
 const wanted = n => EXT.test(n) && !n.includes('..') && (PROP_FILES.has(n) ||
   n.startsWith('Cosmetics/CharacterCreator/') || n.startsWith(LANG) || n.startsWith('Common/Cosmetics/') || n.startsWith('Common/TintGradients/') ||
   (n.startsWith('Common/Characters/') && !n.includes('/Animations/Items/') && !n.endsWith('_FPS.blockyanim')) ||
