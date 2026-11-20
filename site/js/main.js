@@ -154,7 +154,7 @@ function panelEditor() {
   const swatches = el('div', { class: 'swatches' }, cols.map(([k, base]) => { const b = el('button', { title: nice(k), class: k === color ? 'on' : '', onclick: () => change(it, k, variant), ...hover(R.partStr(it, k, variant)) });
     const ok = (Array.isArray(base) ? base : [base]).filter(c => HEX.test(c)); b.style.background = ok.length > 1 ? `linear-gradient(135deg, ${ok.join(',')})` : ok[0] || '#888'; return b; }));
   const options = el('div', { class: 'options' }, vs.map(v => el('button', { class: 'chip' + (v === (variant || vs[0]) ? ' on' : ''), text: nice(v), onclick: () => change(it, color, v), ...hover(R.partStr(it, color, v)) })));
-  const body = el('div', { class: 'pbody' }, el('div', { class: 'crumb' }, el('span', { text: group }), el('i', { text: '▸' }), el('b', { text: LABEL[slot] })), search, grid,
+  const body = el('div', { class: 'pbody' }, el('div', { class: 'crumb' }, el('span', { text: group }), el('i', { text: '▸' }), el('b', { text: LABEL[slot] })), search, el('div', { class: 'row owned' }, locked('Only show what I own', 'the owned cosmetics filter', 'chip'), need('the owned cosmetics filter')), grid,
     cols.length ? [el('h3', { text: 'Color' }), swatches] : null, vs.length > 1 ? [el('h3', { text: 'Option' }), options] : null);
   return [head('Customize Avatar'), el('div', { class: 'editor' }, rail, sub, body)];
 }
@@ -162,12 +162,21 @@ function panelEditor() {
 function card(rec, kind, i) {
   if (!rec) return el('div', { class: 'skin empty ' + kind }, el('div', { class: 'pic' }, el('span', { text: '+' })), el('b', { text: 'Slot ' + (i + 1) }), el('small', { text: 'Empty' }));
   const act = (label, fn, cls) => el('button', { class: 'mini ' + (cls || ''), text: label, onclick: e => { e.stopPropagation(); fn(); } });
-  const acts = kind === 'game' ? [act('Set in game', () => checklist(rec)), act('Move out', () => moveOut(rec))]
+  const acts = kind === 'game' ? [act('Set in game', () => checklist(rec)), act('Move out', () => moveOut(rec)), locked('Send to game', 'sending this skin to your in-game preset', 'mini')]
     : kind === 'custom' ? [act('To in-game', () => toGame(rec)), act('Copy', () => duplicate(rec)), act('Export', () => download(rec.name.replace(/[^\w -]/g, '') + '.skin.json', { name: rec.name, skin: rec.skin })), act('Delete', () => removeSkin(rec), 'danger')]
     : [act('Save', () => { open(rec, true); saveAs(); })];
   return el('div', { class: 'skin ' + kind + (cur.id && cur.id === rec.id ? ' on' : ''), tabIndex: 0, title: 'Open in the editor', onclick: () => { open(rec, kind === 'found'); setTab('editor'); },
     onkeydown: e => { if (e.key === 'Enter') e.currentTarget.click(); } },
     el('div', { class: 'pic' }, portrait(rec.skin)), el('b', { text: rec.name }), kind === 'game' ? el('small', { text: 'Slot ' + (rec.slot + 1) }) : null, el('div', { class: 'acts' }, acts));
+}
+// Features that need a Hytale account. Sign in with Hytale is not available to this site yet, so they are shown greyed out.
+const NEED = f => `Must connect Hytale account to enable ${f}`;
+const locked = (label, feature, cls = 'btn ghost') => el('button', { class: cls + ' locked', disabled: true, title: NEED(feature), text: label });
+const need = feature => el('p', { class: 'need', text: NEED(feature) + '.' });
+function accountRow() {
+  return el('div', { class: 'folder account' }, el('div', {}, el('b', {}, 'Hytale account ', el('span', { class: 'tag none', text: 'WIP' })),
+    el('small', { text: 'Sign in with Hytale is not available yet. The greyed-out buttons across the site turn on when it is.' })),
+    el('button', { class: 'btn primary locked', disabled: true, title: 'Coming soon', text: 'Connect Hytale account' }));
 }
 function folderRow() {
   if (!store.folderSupported) return el('p', { class: 'note', text: 'This browser can only keep skins in its own storage. Chrome and Edge can also save them to a folder on your computer; in any browser you can download a backup from Help.' });
@@ -182,9 +191,10 @@ function folderRow() {
          btn('Stop', async () => { await store.forgetFolder(); await after(); })]);
 }
 function panelWardrobe() {
-  return [head('Wardrobe'), el('div', { class: 'pbody' }, folderRow(),
+  return [head('Wardrobe'), el('div', { class: 'pbody' }, folderRow(), accountRow(),
     el('div', { class: 'shelf game' }, el('h3', {}, el('span', { text: 'In-game slots' }), el('em', { text: `${WARD.game.filter(Boolean).length} / ${store.GAME_SLOTS}` })),
       el('p', { class: 'note', text: 'These mirror your 5 presets inside Hytale. The site cannot read or change your Hytale account, so after you move a skin here, use "Set in game" for the list of parts to pick in My Avatar.' }),
+      el('div', { class: 'row' }, locked('Load my presets', 'loading your in-game presets'), locked('Send all to game', 'sending skins to your in-game presets')), need('preset sync'),
       el('div', { class: 'cards' }, WARD.game.map((r, i) => card(r, 'game', i)))),
     el('div', { class: 'shelf custom' }, el('h3', {}, el('span', { text: 'My skins' }), el('em', { text: `${WARD.custom.length} / ${store.CUSTOM_MAX}` })),
       el('p', { class: 'note', text: 'Extra skins that exist only here, not in the game. Saved skins update by themselves as you edit them.' }),
@@ -257,6 +267,7 @@ function panelLookup() {
     el('h3', { text: 'Find a player' }), el('p', { class: 'note', text: 'Shows the skin a player has equipped right now. The name you type is sent to playerdb.co, a public community lookup service; nothing else is.' }), form, el('p', { class: 'err', text: lookupMsg }),
     el('h3', { text: 'Open skin files' }), el('p', { class: 'note', text: 'Your game keeps your equipped skin in UserData\\CachedPlayerSkins and the skins of players it has seen in UserData\\CachedAvatarPreviews (the .skin files). Choose or drop them here.' }),
     el('label', { class: 'btn ghost' }, 'Choose skin files', file),
+    el('h3', {}, 'Friends ', el('span', { class: 'tag none', text: 'WIP' })), el('div', { class: 'row' }, locked('Show my friends', 'your friends list'), locked('Friends\u2019 presets', 'viewing friends\u2019 presets')), need('your friends list'),
     found.length ? [el('h3', { text: 'Found this session' }), el('div', { class: 'cards' }, found.map(r => card(r, 'found')))] : null)];
 }
 
