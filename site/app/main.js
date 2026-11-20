@@ -1135,6 +1135,7 @@ function panelCreator() {
           el('button', { class: 'mini', text: 'Copy', title: 'Make a second version to edit', onclick: () => newAsset(f) }))
         : el('button', { class: 'mini primary', text: 'Edit a copy', onclick: () => newAsset(f) })); };
     return [head('Asset Creator'), el('div', { class: 'pbody' },
+      modLink('primary') ? el('div', { class: 'folder modrow' }, el('div', {}, el('b', { text: 'Wear your items in Hytale' }), el('small', { class: 'dim', text: 'Your custom items show in your own worlds with the free Skin Editor Sync mod.' })), modLink('primary')) : null,
       el('h3', { text: 'Make your own version of something you wear' }), el('div', { class: 'cards' }, worn.map(tile)), anyItem(),
       el('h3', { text: `My custom assets (${ASSETS.length} / ${assets.MAX})` }),
       ASSETS.length ? el('div', { class: 'cards' }, ASSETS.map(assetCard)) : el('p', { class: 'blank', text: 'None yet. Pick an item above and press Edit a copy.' }))]; }
