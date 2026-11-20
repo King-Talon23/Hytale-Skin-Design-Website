@@ -152,13 +152,15 @@ const HIDE = { haircut: ['headAccessory'], face: ['headAccessory', 'faceAccessor
 const FACE_FRAME = { face: 'face', eyes: 'face', eyebrows: 'face', mouth: 'face', facialHair: 'face', faceAccessory: 'face', ears: 'ear', earAccessory: 'ear',
   headAccessory: 'hat', haircut: 'head', pants: 'pants', overpants: 'socks', shoes: 'shoes', gloves: 'gloves', underwear: 'hips', undertop: 'top', overtop: 'top' };
 // pieces that hide the one in the picture: a coat over the gloves, boots over the socks, trousers over underwear
-function itemThumb(f, it, color, variant) {   // the current character, wearing this option
-  let s = { ...cur.skin, [f]: R.partStr(it, color, variant) }; for (const k of HIDE[f] || []) s[k] = null;
-  if (f === 'bodyCharacteristic') {   // a body is shown bare: just the body, its face, and boxers
-    const keep = new Set(['bodyCharacteristic', 'face', 'eyes', 'mouth', 'ears']), boxer = R.ITEMS.underwear.find(e => e.Id === 'Boxer');
-    s = Object.fromEntries(Object.entries(s).map(([k, v]) => [k, keep.has(k) ? v : null])); s.underwear = boxer ? R.partStr(boxer) : cur.skin.underwear; }
+function bareSkin(f, part) {   // the character stripped to the body, its face and boxers, plus one part in slot f (null for none)
+  const keep = new Set(['bodyCharacteristic', 'face', 'eyes', 'mouth', 'ears']), boxer = R.ITEMS.underwear.find(e => e.Id === 'Boxer');
+  const s = Object.fromEntries(Object.entries(cur.skin).map(([k, v]) => [k, keep.has(k) ? v : null])); s.underwear = boxer ? R.partStr(boxer) : cur.skin.underwear;
+  if (f && (part || !keep.has(f) && f !== 'underwear')) s[f] = part; return s; }
+function itemThumb(f, it, color, variant, bare) {   // the current character, wearing this option (bare: in boxers with only this option)
+  let s = { ...cur.skin, [f]: it ? R.partStr(it, color, variant) : null }; for (const k of HIDE[f] || []) s[k] = null;
+  if (bare || f === 'bodyCharacteristic') s = bareSkin(f, s[f]);   // a body is always shown bare
   const frame = FACE_FRAME[f] || (HEADF.has(f) ? 'head' : LEGF.has(f) ? 'legs' : f === 'bodyCharacteristic' || f === 'skinFeature' ? 'body' : 'torso');
-  return lazyImg('i|' + f + '|' + JSON.stringify(s), async () => fig.snapshot(await fig.build(s, R), frame, f === 'cape'), f + '|' + it.Id);
+  return lazyImg('i|' + f + '|' + JSON.stringify(s), async () => fig.snapshot(await fig.build(s, R), frame, f === 'cape'), f + '|' + (it ? it.Id : 'none') + (bare ? '|bare' : ''));
 }
 // an animation's picture: the current skin caught part-way through the move
 function animThumb(g, n) { const s = R.fit(cur.skin);
@@ -167,7 +169,8 @@ function animThumb(g, n) { const s = R.fit(cur.skin);
 const portrait = skin => { const s = R.fit(skin); return lazyImg('p|' + JSON.stringify(s), async () => fig.snapshot(await fig.build(s, R), 'full')); };
 
 // ---------------------------------------------------------------- panels
-function setTab(t) { if (t !== 'editor' && picking) leavePicker(); if (ED && t !== 'creator') closeAsset(true).then(() => { playAnim('Default', 'Idle', 0.5); rebuild(); });
+function setTab(t) { if (t !== 'editor' && picking) leavePicker();
+  if (t === 'animations' && R && !(playing.group === 'Default' && playing.name === 'Idle')) playAnim('Default', 'Idle', 0.5);   // opening the Animations tab stops whatever move is playing if (ED && t !== 'creator') closeAsset(true).then(() => { playAnim('Default', 'Idle', 0.5); rebuild(); });
   tab = t; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t); if (R) render(); }
 let pressing = false, renderLater = false;
 const flushRender = () => { pressing = false; if (renderLater) { renderLater = false; render(); } };
@@ -415,7 +418,7 @@ async function playAnim(g, n, speed = 1, once = false) { clearTimeout(onceT); tr
       onceT = setTimeout(() => { if (playing.group === g && playing.name === n) playAnim('Default', 'Idle', 0.5); }, ms); } st.anim.setMove(fig.motionOf(g, n)); st.anim.playing = true; drawEmotes(); } catch (e) { say('That animation could not be loaded.', true); } if (tab === 'animations') render(); }
 let animGroup = 'Emote';
 // the move groups as locker tiles: the game's 16 folders folded into a few, each tile showing its signature move
-const CATS = [['Emote', ['Emote']], ['Moves', ['Default']], ['Poses', ['Poses']], ['Taunt', ['Taunt']], ['Flavor', ['Flavor']], ['Faces', ['Expressions']],
+const CATS = [['Emote', ['Emote']], ['Moves', ['Default']], ['Poses', ['Poses']], ['Taunt', ['Taunt']], ['Idle extras', ['Flavor']], ['Faces', ['Expressions']],
   ['Travel', ['Fly', 'Glide', 'Dash', 'Roll', 'Slide', 'Swim', 'Climb', 'Mantle']], ['Mount', ['Mount']]];
 function animCats() {
   const have = g => (CAT.anims[g] || []).length, out = CATS.map(([k, gs]) => [k, gs.filter(have)]).filter(([, gs]) => gs.length);
@@ -713,18 +716,19 @@ function anyItem() {   // or start from any free item in the game, worn or not
   const slots = game.FIELDS.filter(f => CAT.items[f].some(e => !e.custom && !paidLocked(e))), slot = el('select', { title: 'Slot' }, slots.map(f => el('option', { value: f, text: LABEL[f] })));
   const ok = e => !e.custom && !paidLocked(e) && !/^\s*\[?tmp\]?/i.test(itemName(e)) && !/(^|_)tmp(_|$)/i.test(e.Id);
   // the item list is our own drop-down (a plain one can't tell us what the pointer is over): the picture shows the item under the pointer or arrow keys, and goes back to the chosen one
+  const edit = el('button', { class: 'btn primary', text: 'Edit a copy', onclick: () => { const [f, e] = pick(); if (e) newAsset(f, R.partStr(e)); } });
   const item = el('button', { type: 'button', class: 'anypick', title: 'Item' }), menu = el('div', { class: 'anymenu', role: 'listbox', hidden: true });
   item.setAttribute('aria-haspopup', 'listbox'); item.setAttribute('aria-expanded', 'false');
   const find_ = el('input', { type: 'search', placeholder: 'Search', class: 'anysearch' }), pic = el('div', { class: 'pic anypic' });
   let list = [], at = -1, act = -1, hov = 0;
   const pick = () => { const r = list[at]; return r ? [r[1], r[2]] : []; };
-  const draw = i => { const r = list[i]; if (!r) { pic.replaceChildren(); return; } const img = itemThumb(r[1], r[2]);
+  const draw = i => { const r = list[i], img = itemThumb(r ? r[1] : slot.value, r ? r[2] : null, undefined, undefined, true);
     if (img.src || !pic.firstChild) { pic.replaceChildren(img); return; }   // ready now: swap at once; otherwise keep the old picture until the new one is drawn
     img.classList.add('next'); img.addEventListener('load', () => { if (img.isConnected) { img.classList.remove('next'); pic.replaceChildren(img); } }, { once: true });
     [...pic.querySelectorAll('img.next')].forEach(x => x.remove()); pic.append(img); };
   const peek = i => { clearTimeout(hov); hov = setTimeout(() => draw(i), 40); };
   const mark = i => { act = i; menu.querySelectorAll('[aria-selected=true]').forEach(o => o.setAttribute('aria-selected', 'false')); const o = menu.children[i]; if (o) { o.setAttribute('aria-selected', 'true'); o.scrollIntoView({ block: 'nearest' }); } };
-  const label = () => { item.textContent = list[at]?.[0] || 'Nothing found'; };
+  const label = () => { item.textContent = list[at]?.[0] || (list.length ? 'Choose an item' : 'Nothing found'); edit.disabled = !list[at]; };
   const away = ev => { if (!menu.contains(ev.target) && ev.target !== item) close(); };
   const drift = ev => { if (!menu.contains(ev.target)) close(); };   // the list floats over the page, so it closes when the page under it scrolls
   const close = () => { if (menu.hidden) return; menu.hidden = true; if (item.isConnected) item.after(menu); else menu.remove(); item.setAttribute('aria-expanded', 'false'); peek(at); document.removeEventListener('pointerdown', away, true); removeEventListener('scroll', drift, true); removeEventListener('resize', close); };
@@ -745,11 +749,10 @@ function anyItem() {   // or start from any free item in the game, worn or not
   const fill = () => { const q = find_.value.trim().toLowerCase(), from = q ? slots : [slot.value];   // a search looks in every slot
     list = from.flatMap(f => CAT.items[f].filter(e => ok(e) && (!q || itemName(e).toLowerCase().includes(q))).map(e => [itemName(e) + (q ? ` (${LABEL[f]})` : ''), f, e])).sort((a, b) => a[0].localeCompare(b[0]));
     menu.replaceChildren(...list.map(([n], i) => el('div', { role: 'option', class: 'anyopt', text: n, data: { i } })));
-    at = list.length ? 0 : -1; act = at; label(); item.disabled = !list.length; close(); clearTimeout(hov); draw(at); };
+    const worn = !q && parse(cur.skin[slot.value]).id; at = q ? (list.length ? 0 : -1) : list.findIndex(r => r[2].Id === worn); act = Math.max(0, at); label(); item.disabled = !list.length; close(); clearTimeout(hov); draw(at); };
   slot.value = slots.includes(anyItem.slot) ? anyItem.slot : slots.includes('overtop') ? 'overtop' : slots[0]; fill(); slot.onchange = () => { anyItem.slot = slot.value; find_.value = ''; fill(); }; find_.oninput = fill;
   find_.onkeydown = ev => { if (ev.key === 'ArrowDown' && list.length) { ev.preventDefault(); item.focus(); item.onkeydown(ev); } };
-  return [el('h3', { text: 'Or start from any item' }), el('div', { class: 'row anyitem' }, pic, el('div', { class: 'anycol' }, el('div', { class: 'row' }, slot, find_), el('div', { class: 'anywrap' }, item, menu)),
-    el('button', { class: 'btn primary', text: 'Edit a copy', onclick: () => { const [f, e] = pick(); if (e) newAsset(f, R.partStr(e)); } }))];
+  return [el('h3', { text: 'Or start from any item' }), el('div', { class: 'row anyitem' }, pic, el('div', { class: 'anycol' }, el('div', { class: 'row' }, slot, find_), el('div', { class: 'anywrap' }, item, menu)), edit)];
 }
 function assetCard(a) {
   const act = (label, fn, cls) => el('button', { class: 'mini ' + (cls || ''), text: label, onclick: e => { e.stopPropagation(); fn(); } });
