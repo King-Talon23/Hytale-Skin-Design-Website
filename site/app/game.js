@@ -61,7 +61,7 @@ export async function catalog() {
     Promise.all(SLOTS.map(async ([field, file]) => ({ field, items: await cat(file) }))), cat('GradientSets'), opt('HaircutFallbacks'), opt('Emotes')]);
   // player moves only: the player folder also holds poses made for creatures and factions (Feran, Outlander, Guardian ...)
   const MOB = /^(Feran|Outlander|Guardian|Skeleton|Zombie|Trork|Goblin|Kweebec|Golem|Scarak|Void)/i, all = (await db.get('meta', 'anims')) || await listAnims();
-  const anims = Object.fromEntries(Object.entries(all).map(([g, ns]) => [g, ns.filter(n => !MOB.test(n))]).filter(([, ns]) => ns.length));
+  const anims = Object.fromEntries(await Promise.all(Object.entries(all).map(async ([g, ns]) => [g, await unique(g, ns.filter(n => !MOB.test(n)))]))); for (const g in anims) if (!anims[g].length) delete anims[g];
   const names = await langNames();
   return { names, items: Object.fromEntries(slots.map(s => [s.field, s.items])), gradients: Object.fromEntries(gradients.map(g => [g.Id, g.Gradients])),
     fallbacks: Array.isArray(fallbacks) ? {} : fallbacks, emotes, anims };
@@ -72,6 +72,13 @@ async function langNames() {   // "Cape_King.name = King's Cape" in capes.lang i
     for (const line of utf8.decode(await bytes(k)).split(/\r?\n/)) { const m = /^\s*([\w.-]+)\s*=\s*(.+?)\s*$/.exec(line); if (m && m[2].length <= 60) out[`avatarCustomization.${sect}.${m[1]}`] = m[2]; } }
   return out;
 }
+// the game ships some moves twice: the same file under two names, or a misspelt short cut ("Tounge" next to "Tongue", the same letters jumbled).
+// Keep the first of each (the list is sorted, so the right spelling).
+async function unique(g, ns) { const seen = new Set(), out = [];
+  for (const n of ns) { const b = await bytes(`Common/Characters/Animations/${g}/${n}.blockyanim`), letters = 'n:' + n.toLowerCase().split('').sort().join('');
+    const sum = b ? 'h:' + Array.from(new Uint8Array(await crypto.subtle.digest('SHA-1', b)), x => x.toString(16).padStart(2, '0')).join('') : null;
+    if (seen.has(letters) || (sum && seen.has(sum))) continue; seen.add(letters); if (sum) seen.add(sum); out.push(n); }
+  return out; }
 async function listAnims() {   // every player animation the game ships, grouped by its folder
   const out = {};
   for (const k of await db.keys('files')) { const m = /^Common\/Characters\/Animations\/([^/]+)\/([^/]+)\.blockyanim$/.exec(k); if (m) (out[m[1]] ??= []).push(m[2]); }
