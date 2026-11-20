@@ -26,8 +26,8 @@ button { cursor: pointer; }
 .brand span { font: 800 21px/1 var(--h); text-transform: uppercase; letter-spacing: .07em; white-space: nowrap; }
 .brand small { display: block; margin-top: 3px; font: 700 11px/1.3 var(--h); letter-spacing: .08em; color: var(--dim); text-transform: uppercase; }
 .brand .for { color: var(--text); font-weight: 800; }
-.brand .hy { display: inline-block; vertical-align: -8px; margin: -6px 1px -4px; }
-.brand .hy svg { display: block; height: 25px; width: auto; filter: drop-shadow(0 1px 0 #000a); }
+.brand .hy { display: inline-block; vertical-align: -12px; margin: -9px 2px -6px; }
+.brand .hy svg { display: block; height: 32px; width: auto; filter: drop-shadow(0 1px 0 #000a); }
 nav { display: flex; gap: 4px; height: 100%; }
 nav button { position: relative; background: none; border: 0; padding: 0 16px; font-size: 14px; font-weight: 700; color: #b9cbd9; }
 nav button:hover { color: #fff; }
