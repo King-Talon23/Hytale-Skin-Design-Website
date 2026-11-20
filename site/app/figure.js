@@ -228,16 +228,41 @@ async function buildWorld(sc, tint) {
     // the trunk's foot on the ground; no part of a tree within 6 blocks of the character
     const trunks = tb.filter(b => /Trunk/.test(b.name)), lift = trunks.length ? -Math.min(...trunks.map(b => b.y)) : 0;
     for (const b0 of tb) { const blk = { ...b0, y: b0.y + lift }; if (!BLOCKS[blk.name] || Math.hypot(tx + blk.x, tz + blk.z) < 6) continue; const q = blk.rotation ? turnOf(blk.rotation) : null; put(blk.name, tx + blk.x, base + blk.y, tz + blk.z, q); if (blk.y === 0) taken.add((tx + blk.x) + ',' + (tz + blk.z)); } }
-  for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) { const d = Math.hypot(x, z); if (d > R) continue; const top = h(x, z), low = Math.min(top, h(x + 1, z), h(x - 1, z), h(x, z + 1), h(x, z - 1));
+  for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) { const d = Math.hypot(x, z); if (d > R || d < FLAT - 0.75) continue; const top = h(x, z), low = Math.min(top, h(x + 1, z), h(x - 1, z), h(x, z + 1), h(x, z - 1));
     for (let y = low; y <= top; y++) put(y === top ? sc.ground : sc.under, x, y - 1, z, null, y === top ? Math.floor(rnd() * nTops) : 0);
     // near the character (inside the camera's reach) only low plants grow, so nothing tall stands between the view and the skin
-    if (d > 1.7 && !taken.has(x + ',' + z) && rnd() < sc.density) { const name = pick(d < 3.2 ? 1 : d < 8 ? 2 : 0); if (!name) continue; const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * Math.PI * 2);
+    if (d >= FLAT && !taken.has(x + ',' + z) && rnd() < sc.density) { const name = pick(0); if (!name) continue; const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * Math.PI * 2);
       put(name, x + (rnd() - 0.5) * 0.5, top, z + (rnd() - 0.5) * 0.5, yaw); } }
   const root = new THREE.Group(), M = new THREE.Matrix4(), V = new THREE.Vector3(), Q = new THREE.Quaternion(), ONE = new THREE.Vector3(1, 1, 1);
   for (const [key, list] of at) { const [name, k] = key.split('|'), parts = await blockParts(name, tint), p = parts[+k] || parts[0];
     const im = new THREE.InstancedMesh(p.geo, p.mat, list.length);
     list.forEach(([x, y, z, q], i) => im.setMatrixAt(i, M.compose(V.set(x * BLOCK, y * BLOCK, z * BLOCK), q || Q.identity(), ONE)));
     im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); root.add(im); }
+  // the clearing round the character: one floor of the zone's ground blocks and its low plants, which slide under the feet during
+  // moving animations and wrap round (period 2*FLAT blocks), so the character runs through grass and never into a hill or tree
+  const tops = BLOCKS[sc.ground].cube.top, topList = Array.isArray(tops) ? tops : [tops], b = BLOCKS[sc.ground];
+  const tiles = await Promise.all(topList.map(async t => b.tintUp ? tinted(await canvasOf(t), tint) : await canvasOf(t))), S = tiles[0].width, P = FLAT * 2;
+  const fc = document.createElement('canvas'); fc.width = fc.height = P * S; const fx = fc.getContext('2d');
+  for (let j = 0; j < P; j++) for (let i = 0; i < P; i++) fx.drawImage(tiles[Math.floor(rnd() * tiles.length)], i * S, j * S, S, S);
+  const ft = new THREE.CanvasTexture(fc); ft.colorSpace = THREE.SRGBColorSpace; ft.wrapS = ft.wrapT = THREE.RepeatWrapping; ft.magFilter = THREE.NearestFilter; ft.minFilter = THREE.NearestMipmapLinearFilter;
+  const SPAN = P * BLOCK, base = 0.5 / P;   // blocks are centred on whole numbers, so their edges sit half a block off the circle's
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(FLAT * BLOCK, 96), new THREE.MeshLambertMaterial({ map: ft, color: new THREE.Color(SHADE, SHADE, SHADE) }));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = 0.8; ft.offset.set(base, base); root.add(floor);
+  const near = [];   // [name, x, z, yaw] on the repeating tile, centred on the character
+  for (let x = -FLAT; x < FLAT; x++) for (let z = -FLAT; z < FLAT; z++) { if (rnd() >= sc.density) continue; const px = x + (rnd() - 0.5) * 0.5, pz = z + (rnd() - 0.5) * 0.5, d = Math.hypot(px, pz);
+    const name = pick(d < 3.2 ? 1 : 2); if (!name || d < 1.7) continue; near.push([name, px, pz, rnd() * Math.PI * 2]); }
+  const groups = new Map(); for (const n of near) (groups.get(n[0]) || groups.set(n[0], []).get(n[0])).push(n);
+  const movers = []; for (const [name, list] of groups) { const p = (await blockParts(name, tint))[0], im = new THREE.InstancedMesh(p.geo, p.mat, list.length); root.add(im); movers.push([im, list]); }
+  const Y = new THREE.Vector3(0, 1, 0), ZERO = new THREE.Vector3(0, 0, 0), SC = new THREE.Vector3(), wrap = v => ((v + FLAT) % P + P) % P - FLAT;
+  let ax = 0, az = 0;
+  const place = () => { ft.offset.set(base - ax / SPAN, base + az / SPAN);
+    for (const [im, list] of movers) { list.forEach(([, px, pz, yaw], i) => { const x = wrap(px + ax / BLOCK), z = wrap(pz + az / BLOCK), c = root.userData.cam, d = Math.hypot(x, z);
+        // a plant shrinks away as it nears the character (never through the legs), the camera's lens or the clearing's edge
+        const k = Math.min(1, Math.max(0, (d - (root.userData.clear || 1)) / 0.7), Math.max(0, (FLAT - 0.4 - d) / 0.6), c ? Math.max(0, (Math.hypot(x * BLOCK - c.x, z * BLOCK - c.z) / BLOCK - 1.6) / 0.8) : 1);
+        im.setMatrixAt(i, M.compose(V.set(x * BLOCK, 0, z * BLOCK), Q.setFromAxisAngle(Y, yaw), k > 0.01 ? SC.setScalar(k) : ZERO)); }); im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); } };
+  root.userData.move = (dx, dz) => { ax += dx; az += dz; place(); };   // the floor slides by this much (scene units)
+  root.userData.rest = () => { ax = az = 0; place(); };   // back to the starting layout when a move ends (and kept clear of the camera)
+  place();
   root.position.y = -0.5; return root; }
 // ---- the stage (main view) and a small off-screen renderer for thumbnails
 function lights(scene) { scene.add(new THREE.AmbientLight(0xffffff, 1.7)); const l = new THREE.DirectionalLight(0xfff4e0, 1.9); l.position.set(-60, 160, 120); scene.add(l); }
@@ -255,6 +280,8 @@ export function stage(canvas, Controls) {
   let wallOn = null; const WALL_Z = 12, WALL_Y = 70;
   const vel = new THREE.Vector2(), want = new THREE.Vector2();
   function travel(dt) { const v = anim.velocity; want.set(v ? v[0] : 0, v ? v[1] : 0); vel.lerp(want, 1 - Math.exp(-dt * 9));
+    // the clearing's floor slides with the move (a horse needs more room round it than a person)
+    if (world) { world.userData.cam = cam.position; world.userData.clear = mountRoot ? 2.3 : 1; if (anim.move) world.userData.move(-vel.x * dt, -vel.y * dt); else if (vel.lengthSq() < 1) world.userData.rest(); else world.userData.move(0, 0); }
     grid.position.x = (grid.position.x - vel.x * dt) % CELL; grid.position.z = (grid.position.z - vel.y * dt) % CELL;   // the ground runs backwards under the figure
     grid.material.opacity += ((anim.move && anim.anim && !world ? 0.5 : 0) - grid.material.opacity) * (1 - Math.exp(-dt * 6)); grid.visible = grid.material.opacity > 0.01;
     const wy = wallG.position.y - WALL_Y - (wallOn ? wallOn[1] : 0) * dt, wx = wallG.position.x - (wallOn ? wallOn[0] : 0) * dt;
@@ -424,7 +451,7 @@ export function stage(canvas, Controls) {
     if (my !== api.setBackdrop.n) { if (built) disposeTree(built); return; }
     if (sky) { scene.remove(sky); sky.geometry.dispose(); sky.material.dispose(); sky = null; }
     if (world) { scene.remove(world); disposeTree(world); world = null; } scene.fog = null;
-    disc.material.map = bd ? shadow : null; disc.material.color.set(bd ? 0xffffff : 0x0b1626); disc.material.opacity = bd ? 1 : 0.55; disc.material.needsUpdate = true;
+    disc.material.map = bd ? shadow : null; disc.material.color.set(bd ? 0xffffff : 0x0b1626); disc.material.opacity = bd ? 1 : 0.55; disc.material.needsUpdate = true; disc.position.y = bd ? 0.9 : -0.2;   // the shadow above the sliding floor
     ctl.maxPolarAngle = Math.PI * (bd ? 0.47 : 0.55); ctl.update();   // on real land the camera stays above the ground
     if (!bd) return;
     const top = new THREE.Color(bd.top), hor = new THREE.Color(bd.fog), R = 2600, g = new THREE.SphereGeometry(R, 48, 24), p = g.attributes.position, cols = [];
