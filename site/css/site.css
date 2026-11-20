@@ -169,6 +169,41 @@ input[type=color] { width: 46px; height: 38px; padding: 2px; background: #0d1826
 .disclose b { color: var(--gold); font: 700 11px var(--h); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
 .shape .nums { display: flex; gap: 8px; align-items: center; margin: 6px 0; } .shape .nums b { width: 44px; font-size: 12px; color: var(--dim); }
 .numfield { display: flex; flex: none; align-items: center; gap: 4px; margin: 0; color: var(--text); } .numfield span { font-size: 12px; width: 12px; } .numfield input { flex: none; width: 64px; color: var(--text); font: 13px var(--b); min-height: 30px; padding: 3px 6px; background: #0d1826; border: 1px solid var(--line); border-radius: 3px; }
+/* creator workspace (Blockbench-like) */
+.ws-part { display: none; }
+#app.ws { grid-template-columns: 46px minmax(230px, 300px) minmax(0, 1fr) minmax(230px, 280px); grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px;
+  grid-template-areas: "top top top top" "tools left view right" "status status status status"; }
+#app.ws > .panel, #app.ws .stage .bar, #app.ws .nameplate, #app.ws .emotes { display: none; }
+#app.ws .ws-part { display: flex; }
+#app.ws .stage { grid-area: view; border: 1px solid var(--line); background: radial-gradient(circle at 50% 60%, #1c3557, #0b1422 75%); }
+#wstop { grid-area: top; align-items: center; gap: 8px; background: #15263b; border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
+#wstop .wsname { width: 240px; min-height: 32px; } #wstop .btn { min-height: 32px; }
+.wsmodes { display: flex; gap: 2px; background: #0d1826; border: 1px solid var(--line); border-radius: 4px; padding: 2px; }
+.wsmodes button { background: none; border: 0; border-radius: 3px; padding: 5px 16px; font: 700 12px var(--h); text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+.wsmodes button.on { background: #22303f; color: var(--gold); box-shadow: inset 0 -2px 0 var(--gold); }
+#wstools { grid-area: tools; flex-direction: column; gap: 4px; align-items: center; background: #15263b; border: 1px solid var(--line); border-radius: 4px; padding: 6px 4px; overflow: auto; }
+#wstools hr { width: 70%; border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+.wstool { position: relative; width: 36px; height: 36px; flex: none; padding: 0; border-radius: 4px; border: 1px solid #2e4a6e; background: #1b2e48; color: #dce8eb; font-size: 17px; display: grid; place-items: center; }
+.wstool:hover { border-color: var(--line2); } .wstool.on { border-color: var(--gold); color: var(--gold); background: #2a3340; }
+.wstool i { position: absolute; right: 2px; bottom: 0; font: 700 9px var(--b); font-style: normal; color: var(--dim); }
+.wspanel { flex-direction: column; gap: 8px; min-height: 0; overflow: auto; background: #101d2f; border: 1px solid var(--line); border-radius: 4px; padding: 10px; }
+#wsleft { grid-area: left; } #wsright { grid-area: right; }
+.wshead { font: 700 11px var(--h); text-transform: uppercase; letter-spacing: .08em; color: var(--dim); border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: 4px; }
+#wsleft .paintbox { margin: 0; max-height: none; }
+#wsstatus { grid-area: status; background: #15263b; border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; font-size: 12.5px; color: var(--dim); }
+.viewbtns { position: absolute; top: 8px; right: 8px; gap: 3px; } .viewbtns button { background: #0b1422d0; border: 1px solid var(--line2); border-radius: 3px; padding: 3px 9px; font-size: 12px; color: #c5d6e2; }
+.viewbtns button:hover { border-color: var(--gold2); color: #fff; }
+.outliner { display: flex; flex-direction: column; gap: 2px; min-height: 110px; max-height: 220px; overflow: auto; flex: none; }
+.outliner button { text-align: left; background: none; border: 1px solid transparent; border-radius: 3px; padding: 4px 8px; font-size: 13px; color: #c5d6e2; }
+.outliner button:hover { background: #1b2e48; } .outliner button.on { background: #22303f; border-color: var(--gold2); color: var(--gold); }
+.wsgroup { display: grid; grid-template-columns: 1fr; gap: 4px; } .wsgroup b { font-size: 12px; color: var(--dim); }
+.wsgroup .numfield { width: 100%; } .wsgroup .numfield input { flex: 1; width: auto; }
+.scrub { cursor: ew-resize; user-select: none; width: 18px !important; text-align: center; border-radius: 2px; background: #22364f; font-weight: 700; padding: 3px 0; }
+.scrub:hover { background: #2e4a6e; color: var(--gold); }
+.wsslider { display: flex; flex-direction: column; gap: 2px; margin: 0; font-size: 12.5px; color: #c5d6e2; }
+.hex { width: auto; display: inline; padding: 4px 8px; }
+@media (max-width: 980px) { #app.ws { grid-template-columns: 1fr; grid-template-rows: auto auto 62vh auto auto auto; grid-template-areas: "top" "tools" "view" "left" "right" "status"; }
+  #wstools { flex-direction: row; flex-wrap: wrap; } }
 /* locker */
 .t0 { --tier: #3a5170; --tier2: #1c2c44; } .t1 { --tier: #3f7d4e; --tier2: #1a3a26; } .t2 { --tier: #3b62b4; --tier2: #1a2d5c; } .t3 { --tier: #7a52c4; --tier2: #33215e; } .t4 { --tier: #c0563f; --tier2: #5a2014; }
 .mine { --tier: #7a6230; --tier2: #2e2716; } .none { --tier: #22364f; --tier2: #14243a; }

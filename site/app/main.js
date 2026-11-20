@@ -65,9 +65,10 @@ async function startApp() {
   META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); SHOWGAME = !!(await db.get('meta', 'showInGame').catch(() => false));
   $('connect').hidden = true; $('app').hidden = false;
   if (!st) { st = fig.stage($('view'), OrbitControls); bindPaint($('view'), e => ED && !ED.shapeOpen ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true);
-    $('view').addEventListener('pointerdown', e => { if (!ED || !ED.shapeOpen || e.button !== 0) return;
+    st.afterShow = () => { outlineBox(); placeGizmo(); };
+    $('view').addEventListener('pointerdown', e => { if (!ED || !ED.shapeOpen || e.button !== 0 || st.gizmoBusy()) return;
       const hit = st.pickMesh(e.clientX, e.clientY, o => o.material?.map?.image === ED.canvas); if (!hit) return;
-      const k = boxesOf(ED.model).findIndex(b => b.node.name === hit.userData.nodeName); if (k >= 0 && k !== ED.box) { ED.box = k; render(); } }); }
+      const k = boxesOf(ED.model).findIndex(b => b.node.name === hit.userData.nodeName); if (k >= 0 && k !== ED.box) { ED.box = k; render(); placeGizmo(); } }); }
   try { if (await store.resumeFolder(false)) await reloadAssets(); } catch (e) { console.warn(e); }
   FOLDER = await store.folderState(); WARD = await store.list(); ACCOUNT = await auth.account().catch(() => null);
   const draft = await db.get('meta', 'draft'), ds = sanitize(draft?.skin);
@@ -144,7 +145,8 @@ const portrait = skin => { const s = R.fit(skin); return lazyImg('p|' + JSON.str
 // ---------------------------------------------------------------- panels
 function setTab(t) { if (t !== 'editor' && picking) leavePicker(); if (ED && t !== 'creator') closeAsset(true).then(() => { playAnim('Default', 'Idle', 0.5); rebuild(); });
   tab = t; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t); if (R) render(); }
-function render() { jobGen++; plate(); drawEmotes(); drawGameSwitch(); outlineBox(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
+function render() { jobGen++; plate(); drawEmotes(); drawGameSwitch(); outlineBox();
+  $('app').classList.toggle('ws', !!ED); if (ED) return renderWorkspace(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
   p.replaceChildren(...({ editor: panelEditor, wardrobe: panelWardrobe, animations: panelAnimations, lookup: panelLookup, feedback: panelFeedback, creator: panelCreator, help: panelHelp }[tab])());
   if (was === p.className && top) { const b = p.querySelector('.pbody'); if (b) b.scrollTop = top; } }
 // our own small symbols for the category rail (drawn here, not taken from the game)
@@ -417,10 +419,10 @@ const newAsset = guard(async f => {
 async function openAsset(a) {
   if (ED) await closeAsset(true);
   const bmp = await createImageBitmap(a.data), c = el('canvas', { width: bmp.width, height: bmp.height, className: 'paint' }); c.getContext('2d', { willReadFrequently: true }).drawImage(bmp, 0, 0);
-  ED = { asset: a, canvas: c, n: ++edN, zoom: Math.max(2, Math.min(8, Math.floor(440 / bmp.width))), rects: [] };
+  ED = { asset: a, canvas: c, n: ++edN, zoom: Math.max(2, Math.min(8, Math.floor(280 / bmp.width))), rects: [], mode: 'paint', stool: 'select', hist: [], fut: [] };
   if (a.shape) ED.model = JSON.parse(a.shape);
   try { ED.rects = fig.usedRects(ED.model || await game.json(game.common(a.model))); } catch (e) { console.warn('no drawn area for', a.model, e); }
-  ED.painter = createPainter(c, final => { fig.refreshCustom(a.id); if (final) queueAssetSave(); }, () => render());
+  ED.painter = createPainter(c, final => { fig.refreshCustom(a.id); if (final) { queueAssetSave(); recordPaint(); if (ED && !ED.replaying) render(); } }, () => render());
   if (ED.rects.length) { const m = new Uint8Array(c.width * c.height); for (const r of ED.rects) for (let y = Math.max(0, Math.floor(r.y)); y < Math.min(c.height, Math.ceil(r.y + r.h)); y++) for (let x = Math.max(0, Math.floor(r.x)); x < Math.min(c.width, Math.ceil(r.x + r.w)); x++) m[y * c.width + x] = 1; ED.painter.mask = m; }
   ED.palette = ED.painter.palette(); bindPaint(c, e => { const r = c.getBoundingClientRect(); return { x: Math.min(c.width - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * c.width))), y: Math.min(c.height - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * c.height))) }; }, 1e9);
   registerAssets(); if (!(cur.skin[a.field] || '').startsWith('Custom_' + a.id)) setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' });
@@ -430,7 +432,7 @@ function queueAssetSave() { clearTimeout(queueAssetSave.t); queueAssetSave.t = s
 async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; const e = ED, data = await new Promise(ok => e.canvas.toBlob(ok, 'image/png'));
   e.asset = await assets.save({ ...e.asset, data, shape: e.model && e.shapeN ? JSON.stringify(e.model) : e.asset.shape }); ASSETS = await assets.list(); syncFolder(); }
 async function closeAsset(quiet) {
-  if (!ED) return; await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; registerAssets(); st.paintMode(false); st.highlight(null); pics.clear(); lastPic.clear();
+  if (!ED) return; await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; registerAssets(); st.paintMode(false); st.highlight(null); st.gizmo(null); st.setView('persp'); pics.clear(); lastPic.clear();
   if (!quiet) { playAnim('Default', 'Idle', 0.5); rebuild(); render(); }
 }
 // painting: the same strokes whether the pointer is on the flat texture or on the 3D model
@@ -572,32 +574,121 @@ function toEuler(q) { const { x = 0, y = 0, z = 0, w = 1 } = q || {};
   return [far ? Math.atan2(m32, m22) : Math.atan2(-m23, m33), ey, far ? 0 : Math.atan2(-m12, m11)].map(r => Math.round(r / D2R * 10) / 10); }
 function toQuat(dx, dy, dz) { const [c1, c2, c3] = [dx, dy, dz].map(d => Math.cos(d * D2R / 2)), [s1, s2, s3] = [dx, dy, dz].map(d => Math.sin(d * D2R / 2)), r = v => Math.round(v * 1e6) / 1e6;
   return { x: r(s1 * c2 * c3 + c1 * s2 * s3), y: r(c1 * s2 * c3 - s1 * c2 * s3), z: r(c1 * c2 * s3 + s1 * s2 * c3), w: r(c1 * c2 * c3 - s1 * s2 * s3) }; }
-function shapePanel() {
-  if (!ED.shapeOpen) return el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Edit shape', onclick: guard(async () => { await editModel(); ED.shapeOpen = true; ED.box = 0; render(); }) }));
-  const boxes = boxesOf(ED.model), i = Math.min(ED.box || 0, boxes.length - 1), b = boxes[i], sh = b.node.shape;
-  const num = (label, obj, key, axis, min, max) => el('label', { class: 'numfield' }, el('span', { text: label }),
-    el('input', { type: 'number', step: 1, min, max, value: Math.round((obj[key]?.[axis] ?? 0) * 10) / 10, onchange: e => { const v = Math.max(min, Math.min(max, Number(e.target.value) || 0)); obj[key] = { x: 0, y: 0, z: 0, ...obj[key], [axis]: v }; shapeChanged(); } }));
-  const nudge = (axis, d) => el('button', { class: 'chip', text: (d > 0 ? '+' : '−') + axis, onclick: () => { sh.offset = { x: 0, y: 0, z: 0, ...sh.offset, [axis]: (sh.offset?.[axis] ?? 0) + d }; shapeChanged(); } });
-  const dup = () => { if (boxes.length >= assets.MAX_BOXES) return say(`A shape can have up to ${assets.MAX_BOXES} boxes.`, true);
-    const copy = structuredClone({ ...b.node, children: [] }); copy.name = 'Box_' + Math.random().toString(36).slice(2, 7); copy.shape.offset = { x: 0, y: 0, z: 0, ...copy.shape.offset }; copy.shape.offset.x += 2;
-    (b.parent ? b.parent.children : ED.model.nodes).push(copy); ED.box = boxesOf(ED.model).findIndex(x => x.node === copy); shapeChanged(); };
-  const del = () => { if (boxes.length <= 1) return say('A shape needs at least one box.', true); if ((b.node.children || []).length) return say('This box holds other boxes. Delete those first.', true);
-    const list = b.parent ? b.parent.children : ED.model.nodes; list.splice(list.indexOf(b.node), 1); ED.box = Math.max(0, i - 1); shapeChanged(); };
-  const reset = guard(async () => { if (!await confirmBox('Reset shape', 'Go back to the item’s original shape? Your shape changes are lost.', 'Reset', true)) return;
-    ED.model = structuredClone(await game.json(game.common(ED.asset.model))); ED.asset = { ...ED.asset, shape: undefined }; ED.box = 0; shapeChanged(); });
-  return el('div', { class: 'shape' },
-    el('div', { class: 'row' }, el('select', { onchange: e => { ED.box = +e.target.value; render(); } }, boxes.map((x, k) => el('option', { value: k, selected: k === i, text: `${k + 1}. ${x.node.name}` }))),
-      el('button', { class: 'btn ghost', text: 'Duplicate', onclick: dup }), el('button', { class: 'btn ghost', text: 'Delete', onclick: del })),
-    el('div', { class: 'nums' }, el('b', { text: 'Size' }), num('W', sh.settings, 'size', 'x', 0, 64), num('H', sh.settings, 'size', 'y', 0, 64), num('D', sh.settings, 'size', 'z', 0, 64)),
-    el('div', { class: 'nums' }, el('b', { text: 'Move' }), num('X', sh, 'offset', 'x', -64, 64), num('Y', sh, 'offset', 'y', -64, 64), num('Z', sh, 'offset', 'z', -64, 64)),
-    el('div', { class: 'options' }, nudge('x', -1), nudge('x', 1), nudge('y', -1), nudge('y', 1), nudge('z', -1), nudge('z', 1)),
-    el('div', { class: 'nums' }, el('b', { text: 'Turn' }), ...['X', 'Y', 'Z'].map((ax, k) => el('label', { class: 'numfield' }, el('span', { text: ax }),
-      el('input', { type: 'number', step: 15, min: -180, max: 180, value: toEuler(b.node.orientation)[k], onchange: e => { const d = toEuler(b.node.orientation); d[k] = Math.max(-180, Math.min(180, Number(e.target.value) || 0)); b.node.orientation = toQuat(...d); shapeChanged(); } })))),
-    el('div', { class: 'options' }, ...['x', 'y', 'z'].flatMap((ax, k) => [-15, 15].map(st => el('button', { class: 'chip', text: (st > 0 ? '↻' : '↺') + ax + ' 15°',
-      onclick: () => { const d = toEuler(b.node.orientation); d[k] = ((d[k] + st + 540) % 360) - 180; b.node.orientation = toQuat(...d); shapeChanged(); } })))),
-    el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Reset shape', onclick: reset }), el('button', { class: 'btn ghost', text: 'Close shape', onclick: () => { ED.shapeOpen = false; render(); } })),
-    el('p', { class: 'need', text: 'Click a box on the model to pick it. Right-drag turns the model.' }));
+// ---------------------------------------------------------------- the creator workspace, laid out like Blockbench
+// top: name, Paint/Shape tabs, undo, redo, Done. Left edge: tools with their shortcut keys. Left panel: the texture. Middle: the
+// model with view buttons and, in Shape mode, a gizmo. Right: colours and brush (Paint), or the outliner and box fields (Shape).
+const PAINT_TOOLS = [['brush', 'Brush', 'B', '✎'], ['erase', 'Eraser', 'E', '⌫'], ['fill', 'Fill', 'F', '◧'], ['pick', 'Pick colour', 'I', '◉'], ['replace', 'Replace colour', 'H', '⇄'],
+  ['line', 'Line', 'L', '╱'], ['box', 'Box', 'U', '▢'], ['boxfill', 'Filled box', '', '■'], ['light', 'Lighten', '', '☀'], ['dark', 'Darken', '', '☾'], ['noise', 'Noise', 'N', '░']];
+const SHAPE_TOOLS = [['select', 'Select', 'V', '⬚'], ['move', 'Move', 'G', '✥'], ['resize', 'Resize', 'S', '⤢'], ['rotate', 'Rotate', 'R', '⟳']];
+const recordPaint = () => { if (ED && !ED.replaying) { ED.hist.push({ k: 'p' }); ED.fut = []; } };
+function recordShape(before) { ED.hist.push({ k: 's', other: before }); ED.fut = []; }
+function wsUndo(redo) {
+  if (!ED) return; const from = redo ? ED.fut : ED.hist, to = redo ? ED.hist : ED.fut, e = from.pop(); if (!e) return;
+  if (e.k === 'p') { ED.replaying = true; redo ? ED.painter.redo() : ED.painter.undo(); ED.replaying = false; to.push(e); }
+  else { const now = JSON.stringify(ED.model); ED.model = JSON.parse(e.other); to.push({ k: 's', other: now }); ED.box = Math.min(ED.box || 0, boxesOf(ED.model).length - 1); shapeChanged(); }
+  render();
 }
+function shapeEdit(fn) { const before = JSON.stringify(ED.model); fn(); recordShape(before); shapeChanged(); }
+async function setMode(m) { if (m === 'shape') { await editModel(); ED.box ||= 0; ED.stool ||= 'select'; } ED.mode = m; render(); placeGizmo(); }
+function pickTool(id) { if (ED.mode === 'shape') ED.stool = id; else ED.painter.tool = id; render(); placeGizmo(); }
+function curBox() { return ED.model ? boxesOf(ED.model)[ED.box || 0] : null; }
+function placeGizmo() {
+  if (!st) return; const b = ED && ED.mode === 'shape' && ['move', 'resize', 'rotate'].includes(ED.stool) ? curBox() : null;
+  const mesh = b && st.findMesh(o => o.material?.map?.image === ED.canvas && o.userData.nodeName === b.node.name);
+  if (!mesh) return st.gizmo(null);
+  st.gizmo({ mesh, mode: ED.stool, onEnd: ({ move, scale, turn }) => shapeEdit(() => { const sh = b.node.shape, r = (v, q) => Math.round(v / q) * q;
+    if (ED.stool === 'move') sh.offset = { x: r((sh.offset?.x ?? 0) + move.x, 0.5), y: r((sh.offset?.y ?? 0) + move.y, 0.5), z: r((sh.offset?.z ?? 0) + move.z, 0.5) };
+    else if (ED.stool === 'resize') { const z = sh.settings.size; sh.settings.size = { x: Math.max(0, r(z.x * scale.x, 1)), y: Math.max(0, r(z.y * scale.y, 1)), z: Math.max(0, r((z.z ?? 0) * scale.z, 1)) }; }
+    else { const k = v => Math.round(v * 1e6) / 1e6; b.node.orientation = { x: k(turn.x), y: k(turn.y), z: k(turn.z), w: k(turn.w) }; } }) });
+}
+// a number you can type, or drag left and right on its letter, like Blender and Blockbench
+function scrub(label, get, set, step = 1, min = -64, max = 64) {
+  const clamp = v => Math.max(min, Math.min(max, Math.round(v / step) * step));
+  const inp = el('input', { type: 'number', step, min, max, value: Math.round(get() * 100) / 100, onchange: e => shapeEdit(() => set(clamp(Number(e.target.value) || 0))) });
+  const lab = el('span', { class: 'scrub', text: label, title: 'Drag left or right' });
+  lab.onpointerdown = e => { e.preventDefault(); const x0 = e.clientX, v0 = get(), before = JSON.stringify(ED.model); let moved = false, t = 0; lab.setPointerCapture(e.pointerId);
+    lab.onpointermove = ev => { const v = clamp(v0 + Math.round((ev.clientX - x0) / 6) * step); if (v === get()) return; set(v); inp.value = v; moved = true;
+      clearTimeout(t); t = setTimeout(() => { registerAssets(); rebuild(); }, 60); };
+    lab.onpointerup = () => { lab.onpointermove = lab.onpointerup = null; if (moved) { recordShape(before); shapeChanged(); } }; };
+  return el('label', { class: 'numfield' }, lab, inp);
+}
+function paintSide() {
+  const P = ED.painter, adj = { h: 0, s: 0, l: 0 };
+  const slider = (label, min, max, step, get, set, fmt) => { const lab = el('span', { text: `${label} ${fmt(get())}` });
+    return el('label', { class: 'wsslider' }, lab, el('input', { type: 'range', min, max, step, value: get(), oninput: e => { set(+e.target.value); lab.textContent = `${label} ${fmt(get())}`; } })); };
+  const adjRow = (key, label, min, max) => slider(label, min, max, 1, () => adj[key], v => { adj[key] = v; P.adjust(adj.h, adj.s / 100, adj.l / 100, false); }, v => v);
+  const endAdjust = keep => { if (!keep) adj.h = adj.s = adj.l = 0; P.adjust(adj.h, adj.s / 100, adj.l / 100, true); ED.palette = P.palette(); render(); if (keep) checkReplica(); };
+  const toggle = (text, on, fn, title) => el('button', { class: 'chip' + (on ? ' on' : ''), text: `${text}: ${on ? 'on' : 'off'}`, title, onclick: fn });
+  return [el('div', { class: 'wshead', text: 'Colour' }),
+    el('div', { class: 'row' }, el('input', { type: 'color', value: P.color, oninput: e => { P.color = e.target.value; }, onchange: () => { if (P.tool === 'pick' || P.tool === 'erase') P.tool = 'brush'; render(); } }), el('code', { class: 'hex', text: P.color })),
+    el('div', { class: 'swatches' }, ED.palette.map(h => { const b = el('button', { title: h, class: h === P.color ? 'on' : '', onclick: () => { P.color = h; if (P.tool === 'pick' || P.tool === 'erase') P.tool = 'brush'; render(); } }); b.style.background = h; return b; })),
+    el('div', { class: 'wshead', text: 'Brush' }),
+    slider('Size', 1, 8, 1, () => P.size, v => { P.size = v; }, v => v), slider('Strength', 10, 100, 10, () => Math.round(P.opacity * 100), v => { P.opacity = v / 100; }, v => v + '%'),
+    el('div', { class: 'options' }, toggle('Mirror', ED.mirror, () => { ED.mirror = !ED.mirror; render(); }, 'Painting on the model also paints the matching spot on the other side')),
+    el('div', { class: 'wshead', text: 'Recolour whole item' }), adjRow('h', 'Hue', -180, 180), adjRow('s', 'Saturation', -100, 100), adjRow('l', 'Brightness', -100, 100),
+    el('div', { class: 'row' }, el('button', { class: 'btn primary', text: 'Keep', onclick: () => endAdjust(true) }), el('button', { class: 'btn ghost', text: 'Cancel', onclick: () => endAdjust(false) }))];
+}
+function shapeSide() {
+  const boxes = boxesOf(ED.model), i = Math.min(ED.box || 0, boxes.length - 1), b = boxes[i], sh = b.node.shape;
+  const axisField = (lab, obj, key, ax, min, max, step = 1) => scrub(lab, () => obj[key]?.[ax] ?? 0, v => { obj[key] = { x: 0, y: 0, z: 0, ...obj[key], [ax]: v }; }, step, min, max);
+  const turnField = (lab, k) => scrub(lab, () => toEuler(b.node.orientation)[k], v => { const d = toEuler(b.node.orientation); d[k] = v; b.node.orientation = toQuat(...d); }, 15, -180, 180);
+  return [el('div', { class: 'wshead', text: 'Outliner' }),
+    el('div', { class: 'outliner' }, boxes.map((x, k) => el('button', { class: k === i ? 'on' : '', text: x.node.name, onclick: () => { ED.box = k; render(); placeGizmo(); } }))),
+    el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Duplicate', title: 'Ctrl+D', onclick: dupBox }), el('button', { class: 'btn ghost', text: 'Delete', title: 'Delete', onclick: delBox })),
+    el('div', { class: 'wshead', text: b.node.name }),
+    el('div', { class: 'wsgroup' }, el('b', { text: 'Position' }), axisField('X', sh, 'offset', 'x', -64, 64, 0.5), axisField('Y', sh, 'offset', 'y', -64, 64, 0.5), axisField('Z', sh, 'offset', 'z', -64, 64, 0.5)),
+    el('div', { class: 'wsgroup' }, el('b', { text: 'Size' }), axisField('W', sh.settings, 'size', 'x', 0, 64), axisField('H', sh.settings, 'size', 'y', 0, 64), axisField('D', sh.settings, 'size', 'z', 0, 64)),
+    el('div', { class: 'wsgroup' }, el('b', { text: 'Rotation' }), turnField('X', 0), turnField('Y', 1), turnField('Z', 2)),
+    el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Reset shape', onclick: resetShape }))];
+}
+function dupBox() { const boxes = boxesOf(ED.model), b = boxes[ED.box || 0]; if (boxes.length >= assets.MAX_BOXES) return say(`A shape can have up to ${assets.MAX_BOXES} boxes.`, true);
+  shapeEdit(() => { const copy = structuredClone({ ...b.node, children: [] }); copy.name = 'Box_' + Math.random().toString(36).slice(2, 7); copy.shape.offset = { x: 0, y: 0, z: 0, ...copy.shape.offset }; copy.shape.offset.x += 2;
+    (b.parent ? b.parent.children : ED.model.nodes).push(copy); ED.box = boxesOf(ED.model).findIndex(x => x.node === copy); }); }
+function delBox() { const boxes = boxesOf(ED.model), i = ED.box || 0, b = boxes[i]; if (boxes.length <= 1) return say('A shape needs at least one box.', true);
+  if ((b.node.children || []).length) return say('This box holds other boxes. Delete those first.', true);
+  shapeEdit(() => { const list = b.parent ? b.parent.children : ED.model.nodes; list.splice(list.indexOf(b.node), 1); ED.box = Math.max(0, i - 1); }); }
+const resetShape = guard(async () => { if (!await confirmBox('Reset shape', 'Go back to the item’s original shape? You can undo this.', 'Reset', true)) return;
+  const orig = structuredClone(await game.json(game.common(ED.asset.model))); shapeEdit(() => { ED.model = orig; ED.box = 0; }); });
+function renderWorkspace() {
+  const P = ED.painter, a = ED.asset, c = ED.canvas, mode = ED.mode || 'paint'; ED.shapeOpen = mode === 'shape';
+  const tools = mode === 'paint' ? PAINT_TOOLS : SHAPE_TOOLS, active = mode === 'paint' ? P.tool : ED.stool || 'select';
+  const file = el('input', { type: 'file', accept: 'image/png', hidden: true, onchange: guard(async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; if (f.size > 2_000_000) throw new Error('That image is too large.');
+    const bmp = await createImageBitmap(f); if (bmp.width !== c.width || bmp.height !== c.height) throw new Error(`The image must be ${c.width} by ${c.height} pixels, the size of this texture.`); P.replace(bmp); ED.palette = P.palette(); render(); await checkReplica(); }) });
+  $('wstop').replaceChildren(...[
+    el('input', { type: 'text', class: 'wsname', value: a.name, maxLength: 40, title: 'Name', onchange: e => { ED.asset = { ...ED.asset, name: cleanName(e.target.value) || a.name }; queueAssetSave(); } }),
+    el('div', { class: 'wsmodes' }, [['paint', 'Paint'], ['shape', 'Shape']].map(([m, t]) => el('button', { class: mode === m ? 'on' : '', text: t, title: 'Tab switches', onclick: guard(() => setMode(m)) }))),
+    el('span', { class: 'grow' }), a.flag ? el('span', { class: 'tag none', text: 'Too close to ' + a.flag }) : null,
+    el('button', { class: 'btn icon', text: '↶', title: 'Undo (Ctrl+Z)', disabled: !ED.hist.length, onclick: () => wsUndo(false) }),
+    el('button', { class: 'btn icon', text: '↷', title: 'Redo (Ctrl+Y)', disabled: !ED.fut.length, onclick: () => wsUndo(true) }),
+    el('button', { class: 'btn primary', text: 'Done', onclick: () => closeAsset() })].filter(Boolean));
+  $('wstools').replaceChildren(...tools.map(([id, label, key, ic]) => el('button', { class: 'wstool' + (active === id ? ' on' : ''), title: label + (key ? ` (${key})` : ''), onclick: () => pickTool(id) }, el('span', { text: ic }), key ? el('i', { text: key }) : null)),
+    ...(mode === 'shape' ? [el('hr'), el('button', { class: 'wstool', title: 'Duplicate box (Ctrl+D)', onclick: dupBox }, el('span', { text: '⧉' })), el('button', { class: 'wstool', title: 'Delete box (Del)', onclick: delBox }, el('span', { text: '✕' }))] : []));
+  c.style.width = c.width * ED.zoom + 'px';
+  $('wsleft').replaceChildren(el('div', { class: 'wshead', text: 'Texture' }), el('div', { class: 'paintbox' }, el('div', { class: 'paintwrap' }, c, limits(c))),
+    el('div', { class: 'row' }, el('button', { class: 'btn icon', text: '−', title: 'Zoom out', onclick: () => { ED.zoom = Math.max(1, ED.zoom - 1); render(); } }), el('button', { class: 'btn icon', text: '+', title: 'Zoom in', onclick: () => { ED.zoom = Math.min(16, ED.zoom + 1); render(); } }),
+      ED.rects.length ? el('button', { class: 'chip' + (P.inside ? ' on' : ''), text: `Inside only: ${P.inside ? 'on' : 'off'}`, title: 'Only paint the parts of the texture the model shows', onclick: () => { P.inside = !P.inside; render(); } }) : null),
+    el('div', { class: 'row' }, el('label', { class: 'btn ghost' }, 'Import PNG', file), modReady(a) ? el('button', { class: 'btn ghost', text: 'Export PNG', onclick: () => c.toBlob(b => downloadBlob(a.name.replace(/[^\w -]/g, '') + '.png', b), 'image/png') }) : null),
+    el('p', { class: 'need', text: 'Shows in Hytale in your own worlds with the Skin Editor mod and In game on. Repaints of paid items stay on this site.' }));
+  $('wsright').replaceChildren(...(mode === 'paint' ? paintSide() : shapeSide()));
+  $('viewbtns').replaceChildren(...[['front', 'Front', '1'], ['side', 'Side', '3'], ['top', 'Top', '7'], ['persp', 'Persp', '5']].map(([v, t, k]) => el('button', { text: t, title: `${t} view (${k})`, onclick: () => st.setView(v) })));
+  const b = mode === 'shape' ? curBox() : null;
+  $('wsstatus').textContent = mode === 'paint'
+    ? `Paint · ${PAINT_TOOLS.find(t => t[0] === P.tool)?.[1] || P.tool} · left-drag paints on the texture or the model · right-drag orbits · wheel zooms · Ctrl+Z undo · Tab: Shape`
+    : `Shape · ${b ? b.node.name : ''} · click a box to select · ${ED.stool === 'move' ? 'drag the arrows to move' : ED.stool === 'resize' ? 'drag the handles to resize' : ED.stool === 'rotate' ? 'drag the rings to turn' : 'G move, S resize, R rotate'} · drag a field's letter to change it · Ctrl+D duplicate · Del delete · Tab: Paint`;
+}
+// shortcuts while the workspace is open (caught before the page's own Ctrl+Z, which undoes the skin)
+addEventListener('keydown', e => {
+  if (!ED || e.target?.matches?.('input, textarea, select') || $('dlg').open) return;
+  const k = e.key.toLowerCase(), ctrl = e.ctrlKey || e.metaKey; let done = true;
+  if (ctrl && k === 'z') wsUndo(e.shiftKey); else if (ctrl && k === 'y') wsUndo(true);
+  else if (ctrl && k === 'd' && ED.mode === 'shape') dupBox();
+  else if ((k === 'delete' || k === 'x') && ED.mode === 'shape' && !ctrl) delBox();
+  else if (k === 'tab') setMode(ED.mode === 'shape' ? 'paint' : 'shape');
+  else if (['1', '3', '7', '5'].includes(k) && !ctrl) st.setView({ 1: 'front', 3: 'side', 7: 'top', 5: 'persp' }[k]);
+  else if (!ctrl && !e.altKey) { const t = (ED.mode === 'shape' ? SHAPE_TOOLS : PAINT_TOOLS).find(x => x[2] && x[2].toLowerCase() === k); if (t) pickTool(t[0]); else done = false; }
+  else done = false;
+  if (done) { e.preventDefault(); e.stopImmediatePropagation(); }
+}, true);
 
 function panelCreator() {
   if (!ED) { const worn = game.FIELDS.filter(f => R.resolve(f, cur.skin));
@@ -608,32 +699,7 @@ function panelCreator() {
       el('h3', { text: 'Start from something you are wearing' }), el('div', { class: 'row' }, sel, el('button', { class: 'btn primary', text: 'Create', onclick: () => newAsset(sel.value) })),
       el('h3', { text: `My custom assets (${ASSETS.length} / ${assets.MAX})` }),
       ASSETS.length ? el('div', { class: 'cards' }, ASSETS.map(assetCard)) : el('p', { class: 'blank', text: 'None yet. Pick a slot above and press Create.' }))]; }
-  const P = ED.painter, a = ED.asset, c = ED.canvas; c.style.width = c.width * ED.zoom + 'px';
-  const tool = (id, label) => el('button', { class: 'chip' + (P.tool === id ? ' on' : ''), text: label, onclick: () => { P.tool = id; render(); } });
-  const btn = (t, fn, cls = 'ghost') => el('button', { class: 'btn ' + cls, text: t, onclick: fn });
-  const sizeLabel = el('label', { text: `Brush size ${P.size}` }), opLabel = el('label', { text: `Strength ${Math.round(P.opacity * 100)}%` });
-  // recolour the whole item: three sliders that preview live and are kept or dropped together
-  const adj = { h: 0, s: 0, l: 0 }, adjRow = (key, label, min, max) => { const lab = el('label', { text: `${label} 0` });
-    return el('div', { class: 'grow' }, lab, el('input', { type: 'range', min, max, step: 1, value: 0, 'data-adj': key, oninput: e => { adj[key] = +e.target.value; lab.textContent = `${label} ${e.target.value}`; P.adjust(adj.h, adj.s / 100, adj.l / 100, false); } })); };
-  const endAdjust = keep => { if (!keep) adj.h = adj.s = adj.l = 0; P.adjust(adj.h, adj.s / 100, adj.l / 100, true); ED.palette = P.palette(); render(); if (keep) checkReplica(); };
-  const file = el('input', { type: 'file', accept: 'image/png', hidden: true, onchange: guard(async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; if (f.size > 2_000_000) throw new Error('That image is too large.');
-    const bmp = await createImageBitmap(f); if (bmp.width !== c.width || bmp.height !== c.height) throw new Error(`The image must be ${c.width} by ${c.height} pixels, the size of this texture.`); P.replace(bmp); ED.palette = P.palette(); render(); await checkReplica(); }) });
-  return [head('Asset Creator'), el('div', { class: 'pbody' }, disclosure(),
-    el('div', { class: 'row' }, el('input', { type: 'text', value: a.name, maxLength: 40, onchange: e => { ED.asset = { ...ED.asset, name: cleanName(e.target.value) || a.name }; queueAssetSave(); } }), btn('Done', () => closeAsset(), 'primary')),
-    el('div', { class: 'options' }, tool('brush', 'Brush'), tool('erase', 'Eraser'), tool('fill', 'Fill'), tool('replace', 'Replace colour'), tool('pick', 'Pick colour'), tool('light', 'Lighten'), tool('dark', 'Darken'), tool('noise', 'Noise'),
-      tool('line', 'Line'), tool('box', 'Box'), tool('boxfill', 'Filled box'),
-      ED.rects.length ? el('button', { class: 'chip' + (P.inside ? ' on' : ''), text: 'Inside only: ' + (P.inside ? 'on' : 'off'), title: 'Only paint the parts of the texture the model shows', onclick: () => { P.inside = !P.inside; render(); } }) : null,
-      el('button', { class: 'chip' + (ED.mirror ? ' on' : ''), text: 'Mirror: ' + (ED.mirror ? 'on' : 'off'), title: 'When painting on the model, paint the matching spot on the other side too', onclick: () => { ED.mirror = !ED.mirror; render(); } })),
-    el('div', { class: 'row tools' }, el('input', { type: 'color', value: P.color, title: 'Colour', oninput: e => { P.color = e.target.value; }, onchange: () => { if (P.tool === 'pick' || P.tool === 'erase') P.tool = 'brush'; render(); } }),
-      el('div', { class: 'grow' }, sizeLabel, el('input', { type: 'range', min: 1, max: 8, step: 1, value: P.size, oninput: e => { P.size = +e.target.value; sizeLabel.textContent = `Brush size ${P.size}`; } })),
-      el('div', { class: 'grow' }, opLabel, el('input', { type: 'range', min: 10, max: 100, step: 10, value: Math.round(P.opacity * 100), oninput: e => { P.opacity = +e.target.value / 100; opLabel.textContent = `Strength ${e.target.value}%`; } }))),
-    el('div', { class: 'swatches' }, ED.palette.map(h => { const b = el('button', { title: h, class: h === P.color ? 'on' : '', onclick: () => { P.color = h; if (P.tool === 'pick' || P.tool === 'erase') P.tool = 'brush'; render(); } }); b.style.background = h; return b; })),
-    el('div', { class: 'row' }, btn('Undo', () => P.undo()), btn('Redo', () => P.redo()), btn('Zoom −', () => { ED.zoom = Math.max(1, ED.zoom - 1); render(); }), btn('Zoom +', () => { ED.zoom = Math.min(16, ED.zoom + 1); render(); }),
-      el('label', { class: 'btn ghost' }, 'Import PNG', file), btn('Export PNG', () => c.toBlob(b => downloadBlob(a.name.replace(/[^\w -]/g, '') + '.png', b), 'image/png'))),
-    el('h3', { text: 'Shape' }), shapePanel(),
-    el('h3', { text: 'Recolour the whole item' }), el('div', { class: 'row tools' }, adjRow('h', 'Hue', -180, 180), adjRow('s', 'Saturation', -100, 100), adjRow('l', 'Brightness', -100, 100)),
-    el('div', { class: 'row' }, btn('Keep recolour', () => endAdjust(true), 'primary'), btn('Cancel recolour', () => endAdjust(false))),
-    el('div', { class: 'paintbox' }, el('div', { class: 'paintwrap' }, c, limits(c))))];
+  return [];
 }
 
 // ---------------------------------------------------------------- wiring
@@ -645,7 +711,7 @@ $('new').onclick = () => { flush(); cur = { id: null, kind: null, slot: null, na
 $('front').onclick = () => st.view(true);
 $('ingame').onclick = async () => { SHOWGAME = !SHOWGAME; await db.put('meta', 'showInGame', SHOWGAME).catch(() => {}); drawGameSwitch(); pushWearing(); say(SHOWGAME ? 'Showing in game' : 'Your own skin is back in game'); };
 $('save').onclick = save; $('saveas').onclick = saveAs;
-addEventListener('keydown', e => { if (!R || e.target.matches('input, textarea, select') || $('dlg').open) return;
+addEventListener('keydown', e => { if (!R || e.target?.matches?.('input, textarea, select') || $('dlg').open) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); step(e.shiftKey ? 1 : -1); } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); step(1); } });
 
 (async function boot() {

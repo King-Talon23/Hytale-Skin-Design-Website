@@ -1,5 +1,6 @@
 // Builds the character in 3D from the game's own model and texture files, and plays the game's own animations on it.
 import * as THREE from '../vendor/three.module.min.js';
+import { TransformControls } from '../vendor/TransformControls.js';
 import * as game from './game.js';
 import { FIELDS } from './game.js';
 
@@ -190,9 +191,36 @@ export function stage(canvas, Controls) {
     figure.updateMatrixWorld(true); figure.traverse(o => { if (o.isMesh && o.visible && hl(o)) { const h = new THREE.BoxHelper(o, 0xf4c452); h.material.depthTest = false; h.renderOrder = 10; helpers.push(h); scene.add(h); } }); }
   function pickMesh(cx, cy, keep) { if (!figure) return null; const r = canvas.getBoundingClientRect(); ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, cam);
     for (const h of ray.intersectObject(figure, true)) if (h.object.visible && keep(h.object)) return h.object; return null; }
-  return { anim, pick, pickMesh, paintMode, highlight(f) { hl = f; drawHL(); },
-    show(root) { if (figure) { scene.remove(figure); dispose(figure); } figure = root; scene.add(root); anim.setFigure(root); drawHL(); },
+  // the gizmo: drag arrows (move), cubes (resize) or rings (rotate) on one box, like Blockbench and Blender. The box itself
+  // follows live; on release onEnd gets the change in the box's own axes, and the caller rebuilds the model from its data.
+  const tc = new TransformControls(cam, canvas); tc.setSize(0.85); tc.setTranslationSnap(0.5); tc.setRotationSnap(THREE.MathUtils.degToRad(15)); tc.setScaleSnap(0.05); scene.add(tc);
+  const handle = new THREE.Object3D(); scene.add(handle);
+  let gz = null, start = null;
+  tc.addEventListener('dragging-changed', e => { ctl.enabled = !e.value; });
+  tc.addEventListener('objectChange', () => { if (!gz) return; const g = gz.mesh.parent;
+    if (gz.mode === 'move') gz.mesh.position.copy(handle.position.clone().sub(start.p).applyQuaternion(start.q.clone().invert()));
+    else if (gz.mode === 'resize') gz.mesh.scale.copy(handle.scale);
+    else g.quaternion.copy(g.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(handle.quaternion)); });
+  tc.addEventListener('mouseUp', () => { if (!gz) return; const g = gz.mesh.parent;
+    gz.onEnd({ move: handle.position.clone().sub(start.p).applyQuaternion(start.q.clone().invert()), scale: handle.scale.clone(),
+      turn: g.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(handle.quaternion) }); });
+  function gizmo(o) {
+    gz = o; if (!o) { tc.detach(); return; }
+    const g = o.mesh.parent; g.updateMatrixWorld(true);
+    handle.position.copy(o.mode === 'rotate' ? g.getWorldPosition(new THREE.Vector3()) : new THREE.Box3().setFromObject(o.mesh).getCenter(new THREE.Vector3()));
+    handle.quaternion.copy(g.getWorldQuaternion(new THREE.Quaternion())); handle.scale.set(1, 1, 1);
+    start = { p: handle.position.clone(), q: handle.quaternion.clone() };
+    tc.setMode(o.mode === 'move' ? 'translate' : o.mode === 'resize' ? 'scale' : 'rotate'); tc.setSpace('local'); tc.attach(handle);
+  }
+  const VIEWS = { front: [0, 62, 270], back: [0, 62, -270], side: [-270, 62, 0], top: [0, 330, 1], persp: [-75, 95, 255] };
+  const api = { anim, pick, pickMesh, paintMode, gizmo, afterShow: null,
+    gizmoBusy: () => tc.dragging || tc.axis !== null,
+    findMesh(keep) { let hit = null; figure?.traverse(o => { if (!hit && o.isMesh && keep(o)) hit = o; }); return hit; },
+    setView(name) { const v = VIEWS[name] || VIEWS.persp; cam.position.set(...v); ctl.target.set(0, 62, 0); ctl.update(); },
+    highlight(f) { hl = f; drawHL(); },
+    show(root) { if (figure) { scene.remove(figure); dispose(figure); } figure = root; scene.add(root); anim.setFigure(root); drawHL(); if (api.afterShow) api.afterShow(); },
     view(front) { cam.position.set(front ? 0 : -75, 95, front ? 265 : 255); ctl.target.set(0, 62, 0); ctl.update(); } };
+  return api;
 }
 let TR, tscene, tcam;
 // [look-at height, half size, sideways camera offset, camera height above the target]
