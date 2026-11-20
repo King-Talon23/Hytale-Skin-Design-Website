@@ -11,7 +11,8 @@ const ok = a => a && ID.test(a.id) && FIELDS.includes(a.field) && typeof a.model
 export const newId = () => [...crypto.getRandomValues(new Uint8Array(4))].map(b => b.toString(16).padStart(2, '0')).join('');
 export async function list() { return (await db.all('assets')).filter(ok).sort((a, b) => b.updated - a.updated); }
 export async function save(a) {
-  const r = { id: a.id, name: cleanName(a.name) || 'My asset', field: a.field, baseId: String(a.baseId || '').slice(0, 64), model: a.model, w: a.w, h: a.h, data: a.data, updated: Date.now() };
+  const r = { id: a.id, name: cleanName(a.name) || 'My asset', field: a.field, baseId: String(a.baseId || '').slice(0, 64), model: a.model, w: a.w, h: a.h, data: a.data, updated: Date.now(),
+    flag: typeof a.flag === 'string' ? a.flag.slice(0, 80) : undefined };   // set when the asset is too close to a paid item
   if (!ok(r)) throw new Error('That asset could not be saved.');
   await db.put('assets', r.id, r); return r;
 }
