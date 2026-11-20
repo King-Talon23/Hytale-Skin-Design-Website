@@ -78,26 +78,41 @@ function span(keys, T, dur, loop) {   // the two keyframes around T and how far 
   }
   let i = 1; while (keys[i].time < T) i++; const a = keys[i - 1], b = keys[i]; return [a, b, (T - a.time) / (b.time - a.time || 1)];
 }
+const BLEND = 0.28, HOLD = 1.4;   // seconds to ease into a new move; seconds a one-shot move rests on its last frame before it replays
 export class Animator {
-  constructor() { this.anim = null; this.t = 0; this.speed = 1; this.playing = true; this.figure = null; }
-  setFigure(root) { this.figure = root; this.apply(); }
-  set(anim, speed = 1) {
+  constructor() { this.anim = null; this.t = 0; this.speed = 1; this.playing = true; this.figure = null; this.blend = 1; this.held = 0; }
+  setFigure(root) { this.figure = root; this.blend = 1; this.apply(); }
+  set(anim, speed = 1, instant = false) {
     if (anim) for (const tr of Object.values(anim.nodeAnimations || {})) for (const k of ['position', 'orientation', 'shapeVisible']) (tr[k] ||= []).sort((a, b) => a.time - b.time);
-    this.anim = anim; this.baseSpeed = speed; this.t = 0; this.rest(); this.apply();
+    const times = new Set(); if (anim) for (const tr of Object.values(anim.nodeAnimations || {})) for (const ks of Object.values(tr)) if (Array.isArray(ks)) for (const k of ks) times.add(k.time);
+    this.blendTime = anim && times.size <= 1 ? 0.5 : BLEND;   // a move that is one held pose gets a slower, visible ease into it
+    this.capture(instant); this.anim = anim; this.baseSpeed = speed; this.t = 0; this.held = 0; this.apply();
   }
-  rest() { this.figure?.userData.parts.forEach(gs => gs.forEach(g => { g.position.copy(g.userData.rest.p); g.quaternion.copy(g.userData.rest.q); if (g.userData.mesh) g.userData.mesh.visible = true; })); }
+  // remember the pose the figure is in now, so the next move eases out of it instead of snapping
+  capture(instant) { this.blend = instant || !this.figure ? 1 : 0; if (this.blend) return;
+    this.figure.userData.parts.forEach(gs => gs.forEach(g => { const f = g.userData.from ||= { p: new THREE.Vector3(), q: new THREE.Quaternion() }; f.p.copy(g.position); f.q.copy(g.quaternion); })); }
   get duration() { return Math.max(1, this.anim?.duration || 1); }
-  update(dt) { if (!this.anim || !this.playing) return; this.t += dt * 60 * this.speed * (this.baseSpeed || 1);
-    if (this.t >= this.duration) this.t = this.anim.holdLastKeyframe && !this.loop ? this.duration : this.t % this.duration; this.apply(); }
+  update(dt) {
+    if (this.blend < 1) this.blend = Math.min(1, this.blend + dt / (this.blendTime || BLEND));
+    const A = this.anim;
+    if (A && this.playing) { const end = this.duration;
+      if (this.t < end) this.t += dt * 60 * this.speed * (this.baseSpeed || 1);
+      if (this.t >= end) { if (!A.holdLastKeyframe) this.t %= end;
+        else { this.t = end; this.held += dt; if (this.held > HOLD) { this.capture(false); this.t = 0; this.held = 0; } } } }   // a one-shot move plays again after a rest
+    this.apply();
+  }
   apply() {
-    const A = this.anim, parts = this.figure?.userData.parts; if (!A || !parts) return; const dur = this.duration, loop = !A.holdLastKeyframe, T = Math.min(this.t, dur);
-    for (const [name, tr] of Object.entries(A.nodeAnimations || {})) { const gs = parts.get(name); if (!gs) continue;
-      const o = span(tr.orientation, T, dur, loop), p = span(tr.position, T, dur, loop), v = tr.shapeVisible.length ? span(tr.shapeVisible, T, dur, loop) : null;
-      for (const g of gs) { const r = g.userData.rest;
-        if (o) { const a = o[0].delta, b = o[1].delta; q0.set(a.x ?? 0, a.y ?? 0, a.z ?? 0, a.w ?? 1); q1.set(b.x ?? 0, b.y ?? 0, b.z ?? 0, b.w ?? 1); g.quaternion.copy(r.q).multiply(q0.slerp(q1, o[2])); }
-        if (p) { const a = p[0].delta, b = p[1].delta, u = p[2], L = k => (a[k] ?? 0) + ((b[k] ?? 0) - (a[k] ?? 0)) * u; g.position.set(r.p.x + L('x'), r.p.y + L('y'), r.p.z + L('z')); }
-        if (v && g.userData.mesh) g.userData.mesh.visible = v[0].delta !== false; }
-    }
+    const A = this.anim, parts = this.figure?.userData.parts; if (!parts) return;
+    parts.forEach(gs => gs.forEach(g => { g.position.copy(g.userData.rest.p); g.quaternion.copy(g.userData.rest.q); if (g.userData.mesh) g.userData.mesh.visible = true; }));
+    if (A) { const dur = this.duration, loop = !A.holdLastKeyframe, T = Math.min(this.t, dur);
+      for (const [name, tr] of Object.entries(A.nodeAnimations || {})) { const gs = parts.get(name); if (!gs) continue;
+        const o = span(tr.orientation, T, dur, loop), p = span(tr.position, T, dur, loop), v = tr.shapeVisible.length ? span(tr.shapeVisible, T, dur, loop) : null;
+        for (const g of gs) { const r = g.userData.rest;
+          if (o) { const a = o[0].delta, b = o[1].delta; q0.set(a.x ?? 0, a.y ?? 0, a.z ?? 0, a.w ?? 1); q1.set(b.x ?? 0, b.y ?? 0, b.z ?? 0, b.w ?? 1); g.quaternion.copy(r.q).multiply(q0.slerp(q1, o[2])); }
+          if (p) { const a = p[0].delta, b = p[1].delta, u = p[2], L = k => (a[k] ?? 0) + ((b[k] ?? 0) - (a[k] ?? 0)) * u; g.position.set(r.p.x + L('x'), r.p.y + L('y'), r.p.z + L('z')); }
+          if (v && g.userData.mesh) g.userData.mesh.visible = v[0].delta !== false; } } }
+    if (this.blend < 1) { const k = this.blend * this.blend * (3 - 2 * this.blend);
+      parts.forEach(gs => gs.forEach(g => { const f = g.userData.from; if (!f) return; g.position.lerpVectors(f.p, g.position, k); q0.copy(f.q).slerp(g.quaternion, k); g.quaternion.copy(q0); })); }
   }
 }
 export async function loadAnim(group, name) { return game.json(`Common/Characters/Animations/${group}/${name}.blockyanim`); }
