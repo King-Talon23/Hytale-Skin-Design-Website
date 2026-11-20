@@ -196,10 +196,10 @@ export function stage(canvas, Controls) {
     const wy = wallG.position.y - WALL_Y - (wallOn ? wallOn[1] : 0) * dt, wx = wallG.position.x - (wallOn ? wallOn[0] : 0) * dt;
     wallG.position.set(wx % CELL, WALL_Y + wy % CELL, WALL_Z); wallG.material.opacity += ((wallOn ? 0.5 : 0) - wallG.material.opacity) * (1 - Math.exp(-dt * 6)); wallG.visible = wallG.material.opacity > 0.01; }
   let hl = null, helpers = [];   // outlines around picked boxes (see drawHL)
-  const anim = new Animator(), mountAnim = new Animator(); let figure = null, last = performance.now(), mountRoot = null, seat = null, hoverTo = 0, hoverAt = 0;
+  const anim = new Animator(), mountAnim = new Animator(); let figure = null, held = [], last = performance.now(), mountRoot = null, seat = null, hoverTo = 0, hoverAt = 0;
   function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
   new ResizeObserver(fit).observe(canvas); fit();
-  (function loop(now) { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000 || 0); anim.update(dt); mountAnim.playing = anim.playing; mountAnim.update(dt); travel(dt); float(dt, now); for (const h of helpers) h.update(); last = now; renderer.render(scene, cam); })(last);
+  (function loop(now) { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000 || 0); anim.update(dt); mountAnim.playing = anim.playing; mountAnim.update(dt); travel(dt); float(dt, now); for (const h of helpers) h.update(); dropHeld(); last = now; renderer.render(scene, cam); })(last);
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   // the texel of `image` under a screen point, for painting straight on the model
   function texel(image) { for (const h of ray.intersectObject(figure, true)) { if (!h.uv || !h.object.visible || h.object.material?.map?.image !== image) continue;
@@ -272,7 +272,10 @@ export function stage(canvas, Controls) {
   function float(dt, now) { if (!figure || (!hoverTo && !hoverAt)) return; hoverAt += (hoverTo - hoverAt) * (1 - Math.exp(-dt * 4)); if (Math.abs(hoverTo - hoverAt) < 0.05) hoverAt = hoverTo;
     seatAt(); if (hoverAt > 1 && hoverTo) figure.position.y += Math.sin(now / 1000 * 2.2) * 2.5 * Math.min(1, hoverAt / hoverTo); }
   // things held in the hands (a glider, a sword ...): each hangs on a bone of the figure and moves with it; re-hung when the figure is rebuilt
-  let held = [];
+  // a held thing can sit a little away from where the move puts it (shift: [x, y, z] in model units in the scene, the figure faces +z, whatever the hand's turn)
+  const dq = new THREE.Quaternion(), dv = new THREE.Vector3(), ds = new THREE.Vector3();
+  function dropHeld() { for (const h of held) { const b = h.root.parent; if (!h.shift || !b) continue; b.updateWorldMatrix(true, false); b.getWorldQuaternion(dq).invert(); b.getWorldScale(ds);
+    h.root.position.copy(dv.set(...h.shift).applyQuaternion(dq).divide(ds)); } }
   // the moves animate the held thing's own parts too (the glider's frame and flaps), so those parts join the figure's while it is held;
   // parts sharing a name with the body (the item's root is named after the hand's attachment) stay out, or the move would apply twice
   const unhang = () => { for (const h of held) { h.root.parent?.remove(h.root); const fp = h.on?.userData.parts; if (fp) for (const [k, g] of h.added || []) { const gs = fp.get(k); if (gs) { const i = gs.indexOf(g); if (i >= 0) gs.splice(i, 1); if (!gs.length) fp.delete(k); } } h.on = null; h.added = []; } };

@@ -417,10 +417,10 @@ async function setMount(kind, move) {
 const HELD = { Glide: { '*': [['glider', 'R-Attachment']] },
   Poses: { BattleAxe: [['battleaxe', 'R-Attachment']], Book_Read: [['book', 'L-Attachment']], Show_Block: [['block', 'R-Attachment']], Show_Item: [['potion', 'R-Attachment']], Pickaxe: [['pickaxe', 'R-Attachment']], Staff: [['staff', 'R-Attachment']], Sword: [['sword', 'R-Attachment']],
     Warhammer: [['mace', 'R-Attachment']], Outlander_Sword: [['sword', 'R-Attachment']], Outlander_Archer_Bow_Charge: [['bow', 'L-Attachment']], Outlander_Archer_Bow_Pose: [['bow', 'L-Attachment']] },
-  Taunt: { Staff_Helicopter: [['staff', 'R-Attachment']], Sword_Back: [['sword', 'R-Attachment']], Sword_Front: [['sword', 'R-Attachment']] } };
+  Taunt: { Staff_Helicopter: [['staff', 'R-Attachment']], Sword_Back: [['sword', 'R-Attachment']], Sword_Front: [['sword', 'R-Attachment', [0, -5, 14]]] } };   // [item, hand, shift]: Sword Front's blade would cross the face and body
 const heldBy = (g, n) => HELD[g]?.[n] || HELD[g]?.['*'] || [];
 async function setProps(g, n) { const want = heldBy(g, n);
-  const built = await Promise.all(want.map(async ([k, bone]) => { try { const [model, tex] = game.PROPS[k]; return { root: model ? await fig.buildCreature({ model, tex }) : await fig.buildBlock(tex), bone }; } catch (e) { console.warn(k, e.message); return null; } }));
+  const built = await Promise.all(want.map(async ([k, bone, shift]) => { try { const [model, tex] = game.PROPS[k]; return { root: model ? await fig.buildCreature({ model, tex }) : await fig.buildBlock(tex), bone, shift }; } catch (e) { console.warn(k, e.message); return null; } }));
   st.props(built.filter(Boolean)); if (built.some(b => !b)) say('Your saved copy of the game files is from before held items were added. Refresh it once in the Locker to see them (your skins are kept).', true); }
 async function playAnim(g, n, speed = 1, once = false) { clearTimeout(onceT); try { await setMount(g === 'Mount' ? mountKind : null, n); await setProps(g, n); st.lift(g === 'Glide' ? 165 : 0); st.wall(g === 'Climb' ? (/_Up$/.test(n) ? [0, 55] : /_Down$/.test(n) ? [0, -55] : /_Left$/.test(n) ? [45, 0] : /_Right$/.test(n) ? [-45, 0] : [0, 0]) : null); const a = await fig.loadAnim(g, n); st.hover(g === 'Fly' ? 44 : g === 'Glide' ? 60 : 0); playing = { group: g, name: n }; st.anim.set(a, speed);
     if (once) { const still = fig.motionOf(g, n) && st.anim.still, ms = still ? 1700 : (Math.max(1, a.duration || 60) / 60 / speed) * 1000 + (a.holdLastKeyframe ? 700 : 0) + 250;
