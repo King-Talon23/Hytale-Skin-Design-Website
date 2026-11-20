@@ -3,6 +3,7 @@ import * as game from './game.js';
 import * as db from './db.js';
 import * as fig from './figure.js';
 import * as store from './store.js';
+import * as auth from './auth.js';
 import { rules, sanitize, cleanName, parse, nice, LABEL, GROUPS, REQUIRED } from './skin.js';
 
 const $ = id => document.getElementById(id);
@@ -55,7 +56,7 @@ function setConn(meta) { const c = $('conn'); c.classList.toggle('ok', !!meta); 
 // ---------------------------------------------------------------- app state
 let CAT, R, st, META, tab = 'editor', group = 'Head', slot = 'haircut', filter = '';
 let cur = { id: null, kind: null, slot: null, name: '', skin: null }, hist = [], hpos = -1, dirty = false, WARD = { game: [], custom: [] };
-let FOLDER = { state: 'none' };
+let FOLDER = { state: 'none' }, ACCOUNT = null;
 let found = [];   // skins brought in this session by a lookup or from files; not saved until the player saves them
 
 async function startApp() {
@@ -63,7 +64,7 @@ async function startApp() {
   $('connect').hidden = true; $('app').hidden = false;
   st ??= fig.stage($('view'), OrbitControls);
   try { await store.resumeFolder(false); } catch (e) { console.warn(e); }
-  FOLDER = await store.folderState(); WARD = await store.list();
+  FOLDER = await store.folderState(); WARD = await store.list(); ACCOUNT = await auth.account().catch(() => null);
   const draft = await db.get('meta', 'draft'), ds = sanitize(draft?.skin);
   cur = ds ? { id: draft.id || null, kind: draft.kind || null, slot: draft.slot ?? null, name: cleanName(draft.name), skin: R.fit(ds) } : { id: null, kind: null, slot: null, name: '', skin: R.blank() };
   if (cur.id && ![...WARD.game, ...WARD.custom].some(r => r && r.id === cur.id)) { cur.id = null; cur.kind = null; }
@@ -170,13 +171,19 @@ function card(rec, kind, i) {
     el('div', { class: 'pic' }, portrait(rec.skin)), el('b', { text: rec.name }), kind === 'game' ? el('small', { text: 'Slot ' + (rec.slot + 1) }) : null, el('div', { class: 'acts' }, acts));
 }
 // Features that need a Hytale account. Sign in with Hytale is not available to this site yet, so they are shown greyed out.
-const NEED = f => `Must connect Hytale account to enable ${f}`;
+const NEED = f => ACCOUNT ? `Hytale does not offer ${f} to other apps yet` : `Must connect Hytale account to enable ${f}`;
 const locked = (label, feature, cls = 'btn ghost') => el('button', { class: cls + ' locked', disabled: true, title: NEED(feature), text: label });
 const need = feature => el('p', { class: 'need', text: NEED(feature) + '.' });
 function accountRow() {
-  return el('div', { class: 'folder account' }, el('div', {}, el('b', {}, 'Hytale account ', el('span', { class: 'tag none', text: 'WIP' })),
+  if (!auth.enabled) return el('div', { class: 'folder account' }, el('div', {}, el('b', {}, 'Hytale account ', el('span', { class: 'tag none', text: 'WIP' })),
     el('small', { text: 'Sign in with Hytale is not available yet. The greyed-out buttons across the site turn on when it is.' })),
     el('button', { class: 'btn primary locked', disabled: true, title: 'Coming soon', text: 'Connect Hytale account' }));
+  if (!ACCOUNT) return el('div', { class: 'folder account' }, el('div', {}, el('b', { text: 'Hytale account' }),
+    el('small', { text: 'Sign in on Hytale’s own page to show your equipped skin without typing your name. The site receives only the game profile you pick (username and ID) and keeps it in this browser.' })),
+    el('button', { class: 'btn primary', text: 'Connect Hytale account', onclick: guard(() => auth.start()) }));
+  return el('div', { class: 'folder account on' }, el('div', {}, el('b', { text: 'Signed in as ' + ACCOUNT.username }), el('small', { text: 'Kept in this browser only. Presets and friends still wait on Hytale offering them.' })),
+    el('button', { class: 'btn ghost', text: 'Show my skin', onclick: () => { setTab('lookup'); lookup(ACCOUNT.username); } }),
+    el('button', { class: 'btn ghost', text: 'Sign out', onclick: guard(async () => { await auth.signOut(); ACCOUNT = null; render(); }) }));
 }
 function folderRow() {
   if (!store.folderSupported) return el('p', { class: 'note', text: 'This browser can only keep skins in its own storage. Chrome and Edge can also save them to a folder on your computer; in any browser you can download a backup from Help.' });
@@ -246,12 +253,12 @@ function panelAnimations() {
 // other players' skins
 let lookupMsg = '';
 const lookup = guard(async name => {
-  name = name.trim(); if (!/^[A-Za-z0-9_-]{2,36}$/.test(name)) { lookupMsg = 'Type a Hytale username (letters, digits, _).'; return render(); }
+  name = name.trim(); if (!/^[A-Za-z0-9_-]{2,36}$/.test(name)) { lookupMsg = 'Type a Hytale username or a player UUID.'; return render(); }
   lookupMsg = 'Looking…'; render();
   try {
     const r = await fetch('https://playerdb.co/api/player/hytale/' + encodeURIComponent(name), { credentials: 'omit', referrerPolicy: 'no-referrer' });
     const j = r.ok ? await r.json() : null, p = j?.data?.player, s = sanitize(p?.skin);
-    if (!s) lookupMsg = r.status === 429 ? 'Too many lookups for now. Try again in a minute.' : 'No player with that name was found.';
+    if (!s) lookupMsg = r.status === 429 ? 'Too many lookups for now. Try again in a minute.' : 'No player with that name or UUID was found.';
     else { const nm = cleanName(p.username) || name; found = [{ name: nm, skin: s }, ...found.filter(f => f.name !== nm)].slice(0, 60); lookupMsg = ''; }
   } catch { lookupMsg = 'The lookup service could not be reached.'; }
   render();
@@ -260,14 +267,13 @@ async function importSkinFiles(files) { let n = 0;
   for (const f of [...files].slice(0, 200)) { try { const j = await readJsonFile(f), s = sanitize(j?.skin || j); if (s) { found.unshift({ name: cleanName(j?.name || f.name.replace(/(_portrait\.png)?\.(skin|json)+$/gi, '')).slice(0, 40) || 'Imported', skin: s }); n++; } } catch { /* not a skin file */ } }
   found = found.slice(0, 200); say(n ? `Brought in ${n} skin${n > 1 ? 's' : ''}` : 'No skins were found in those files.', !n); tab = 'lookup'; setTab('lookup'); }
 function panelLookup() {
-  const input = el('input', { type: 'text', placeholder: 'Hytale username', maxLength: 36, autocomplete: 'off', spellcheck: false });
+  const input = el('input', { type: 'text', placeholder: 'Username or UUID', maxLength: 36, autocomplete: 'off', spellcheck: false });
   const form = el('form', { class: 'row', onsubmit: e => { e.preventDefault(); lookup(input.value); } }, input, el('button', { class: 'btn primary', text: 'Find' }));
   const file = el('input', { type: 'file', accept: '.json,.skin,application/json', multiple: true, hidden: true, onchange: e => { importSkinFiles(e.target.files); e.target.value = ''; } });
   return [head('Players'), el('div', { class: 'pbody' },
-    el('h3', { text: 'Find a player' }), el('p', { class: 'note', text: 'Shows the skin a player has equipped right now. The name you type is sent to playerdb.co, a public community lookup service; nothing else is.' }), form, el('p', { class: 'err', text: lookupMsg }),
+    el('h3', { text: 'Find a player' }), el('p', { class: 'note', text: 'Look up any player by username or UUID to see the skin they have equipped right now. Saved presets are private to each player’s Hytale account, so only the equipped skin can be shown. What you type is sent to playerdb.co, a public community lookup service; nothing else is.' }), form, el('p', { class: 'err', text: lookupMsg }),
     el('h3', { text: 'Open skin files' }), el('p', { class: 'note', text: 'Your game keeps your equipped skin in UserData\\CachedPlayerSkins and the skins of players it has seen in UserData\\CachedAvatarPreviews (the .skin files). Choose or drop them here.' }),
     el('label', { class: 'btn ghost' }, 'Choose skin files', file),
-    el('h3', {}, 'Friends ', el('span', { class: 'tag none', text: 'WIP' })), el('div', { class: 'row' }, locked('Show my friends', 'your friends list'), locked('Friends\u2019 skins', 'viewing your friends\u2019 skins')), need('your friends list'),
     found.length ? [el('h3', { text: 'Found this session' }), el('div', { class: 'cards' }, found.map(r => card(r, 'found')))] : null)];
 }
 
