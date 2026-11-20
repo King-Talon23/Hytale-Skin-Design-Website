@@ -73,6 +73,8 @@ export async function modSeen() {
   try { const j = JSON.parse(await (await (await dir.getFileHandle('Skin Editor Sync.json')).getFile()).text());
     return j && j.format === 'skin-editor-sync' && /^\d{4}-\d{2}-\d{2}$/.test(j.seen) ? { version: String(j.version || '').slice(0, 20), seen: j.seen } : null; } catch { return null; }
 }
+// the connected skins folder (or one of its subfolders), for a file picker to open in; null when none is connected
+export async function skinsFolder(sub) { if (!dir) return null; if (!sub) return dir; try { return await dir.getDirectoryHandle(sub); } catch { return dir; } }
 export let lockedOf = () => false;   // set by the page: repaints of edition and reward items, which the mod will not wear
 export const setLockedOf = f => { lockedOf = f; };
 export let keepOwnOf = () => [];   // set by the page: slots holding paid items, which the mod keeps as the player's own

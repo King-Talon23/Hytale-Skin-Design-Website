@@ -443,6 +443,12 @@ async function loadPublished(name, id) {
 async function importSkinFiles(files) { let n = 0;
   for (const f of [...files].slice(0, 200)) { try { const j = await readJsonFile(f), s = sanitize(j?.skin || j); if (s) { found.unshift({ name: cleanName(j?.name || f.name.replace(/(_portrait\.png)?\.(skin|json)+$/gi, '')).slice(0, 40) || 'Imported', skin: s }); n++; } } catch { /* not a skin file */ } }
   found = found.slice(0, 200); say(n ? `Brought in ${n} skin${n > 1 ? 's' : ''}` : 'No skins were found in those files.', !n); tab = 'lookup'; setTab('lookup'); }
+// opens in your skins folder when one is connected, else in Documents; browsers without the picker fall back to the plain file box
+async function pickSkinFiles(fallback) {
+  if (typeof self.showOpenFilePicker !== 'function') return fallback.click();
+  try { const start = await store.skinsFolder('My skins'), hs = await showOpenFilePicker({ id: 'skinfiles', multiple: true, startIn: start || 'documents', types: [{ description: 'Skin files', accept: { 'application/json': ['.json', '.skin'] } }] });
+    importSkinFiles(await Promise.all(hs.map(h => h.getFile()))); } catch (e) { if (e.name !== 'AbortError') say(e.message, true); }
+}
 function panelLookup() {
   const input = el('input', { type: 'text', placeholder: 'Username or UUID', maxLength: 36, autocomplete: 'off', spellcheck: false });
   const form = el('form', { class: 'row', onsubmit: e => { e.preventDefault(); lookup(input.value); } }, input, el('button', { class: 'btn primary', text: 'Find' }));
@@ -451,7 +457,8 @@ function panelLookup() {
     el('h3', { text: 'Find a player' }), form, el('p', { class: 'err', text: lookupMsg }),
     shown ? [el('h3', {}, 'Published by ' + shown.name, shown.supporter ? el('span', { class: 'tag supporter', title: 'Supports the site on Ko-fi', text: 'Supporter' }) : null), shown.skins === null ? el('p', { class: 'need', text: 'Looking…' })
       : shown.skins.length ? el('div', { class: 'cards' }, shown.skins.map(r => card(r, 'pub'))) : el('p', { class: 'need', text: shown.failed ? 'Published skins could not be loaded.' : `${shown.name} has not published any skins here yet.` })] : null,
-    el('h3', { text: 'Open skin files' }), el('label', { class: 'btn ghost' }, 'Choose skin files', file),
+    el('h3', { text: 'Open skin files' }), el('p', { class: 'dim', text: 'Skins saved by this site (.json files in your skins folder or a backup), or skins Hytale keeps on this PC in %APPDATA%\\Hytale\\UserData\\CachedPlayerSkins.' }),
+    el('button', { class: 'btn ghost', text: 'Choose skin files', onclick: () => pickSkinFiles(file) }), file,
     found.length ? [el('h3', { text: 'Found this session' }), el('div', { class: 'cards' }, found.map(r => card(r, 'found')))] : null)];
 }
 
@@ -1179,7 +1186,7 @@ function panelCreator() {
           el('button', { class: 'mini', text: 'Copy', title: 'Make a second version to edit', onclick: () => newAsset(f) }))
         : el('button', { class: 'mini primary', text: 'Edit a copy', onclick: () => newAsset(f) })); };
     return [head('Asset Creator'), el('div', { class: 'pbody' },
-      modLink('primary') && !FOLDER.mod ? el('div', { class: 'folder modrow' }, el('div', {}, el('b', { text: 'Wear your items in Hytale' }), el('small', { class: 'dim', text: 'Your custom items show in your own worlds with the free Skin Editor Sync mod.' })), modLink('primary')) : null,
+      modLink('primary') && !FOLDER.mod ? el('div', { class: 'folder modrow' }, el('div', {}, el('b', { text: 'Wear your items in Hytale' }), el('small', { class: 'dim', text: 'Your custom items show in your own worlds with our Skin Editor Sync mod.' })), modLink('primary')) : null,
       el('h3', { text: 'Make your own version of something you wear' }), el('div', { class: 'cards' }, worn.map(tile)), anyItem(),
       el('h3', { text: `My custom assets (${ASSETS.length} / ${assets.MAX})` }),
       ASSETS.length ? el('div', { class: 'cards' }, ASSETS.map(assetCard)) : el('p', { class: 'blank', text: 'None yet. Pick an item above and press Edit a copy.' }))]; }
