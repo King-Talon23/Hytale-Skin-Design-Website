@@ -5,7 +5,7 @@ Unofficial; not affiliated with or endorsed by Hypixel Studios.
 
 ## Use
 1. Put `SkinEditor-<version>.jar` in your mods folder and enable it for the world.
-2. On the website, Wardrobe -> **Save skins to a folder**, and pick (or make) `Documents\Hytale Skins`. Your custom assets
+2. On the website, Locker -> **Save skins to a folder**, and pick (or make) `Documents\Hytale Skins`. Your custom assets
    are written to its `Custom assets` folder as you paint.
 3. In game: `/skins list`, `/skins look <name>` (a whole skin you saved on the website), `/skins wear <id>` (one custom
    piece), `/skins off`.

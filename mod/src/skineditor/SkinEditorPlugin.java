@@ -129,7 +129,7 @@ public final class SkinEditorPlugin extends JavaPlugin {
     }
 
     // ------------------------------------------------------------------ the website's skins folder
-    /** the folder the website writes to (Wardrobe -> Save skins to a folder); "Hytale Skins" in Documents unless /skins folder set another */
+    /** the folder the website writes to (Locker -> Save skins to a folder); "Hytale Skins" in Documents unless /skins folder set another */
     private Path loadFolder() {
         try { Path f = dataDir.resolve("folder.txt"); if (Files.isRegularFile(f)) { String s = Files.readString(f).trim(); if (!s.isEmpty()) return Path.of(s); } } catch (Exception ignored) { }
         Path home = Path.of(System.getProperty("user.home"));
@@ -377,7 +377,7 @@ public final class SkinEditorPlugin extends JavaPlugin {
             try { p.syncFolder(); } catch (Exception ignored) { }
             if (all.isEmpty()) all = p.assets();
             Map<String, Look> looks = p.looks(); Look on = LOOKS.get(player.getUuid());
-            if (all.isEmpty() && looks.isEmpty()) { ctx.sendMessage(Message.raw("Nothing found. On the website, save your skins to " + p.folder() + " (Wardrobe, Save skins to a folder), or set the folder with /skins folder <path>.")); return; }
+            if (all.isEmpty() && looks.isEmpty()) { ctx.sendMessage(Message.raw("Nothing found. On the website, save your skins to " + p.folder() + " (Locker, Save skins to a folder), or set the folder with /skins folder <path>.")); return; }
             Map<String, Asset> worn = WORN.getOrDefault(player.getUuid(), Map.of());
             StringBuilder sb = new StringBuilder();
             if (!looks.isEmpty()) { sb.append("Saved skins (/skins look <name>):"); for (Look l : looks.values()) sb.append("\n  ").append(l.name()).append(on != null && on.name().equalsIgnoreCase(l.name()) ? "  [wearing]" : ""); sb.append('\n'); }

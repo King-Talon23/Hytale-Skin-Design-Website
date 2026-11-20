@@ -153,13 +153,13 @@ function icon(d) { const NS = 'http://www.w3.org/2000/svg', s = document.createE
 const head = (title, right) => el('div', { class: 'phead' }, el('h2', { text: title }), right);
 
 // ---------------------------------------------------------------- the locker: every slot at a glance, and a picker per slot
-const TIERS = ['Standard', 'Base edition', 'Deluxe', 'Founder', 'Event reward'];
+const TIERS = ['Standard', 'Base', 'Supporter', 'Cursebreaker', 'Event'];
 function tierOf(e) {   // from how the game unlocks the item (its entitlements), standing in for rarity
   if (!e || e.custom) return 0; const t = Array.isArray(e.Entitlements) ? e.Entitlements : []; if (!t.length) return 0;
   if (t.some(x => !String(x).startsWith('game.'))) return 4; if (t.includes('game.base')) return 1; if (t.includes('game.deluxe')) return 2; return 3;
 }
 const tierClass = e => e && e.custom ? 'mine' : 't' + tierOf(e);
-let LOCK = { favs: new Set(), seen: null }, picking = false, seenSlot = null, lockFilter = 'all', lockSort = 'default';
+let LOCK = { favs: new Set(), seen: null }, picking = false, seenSlot = null, lockFilter = 'all', lockSort = 'up';
 const favKey = (f, e) => f + '|' + e.Id, isNew = (f, e) => !e.custom && LOCK.seen && !LOCK.seen.has(favKey(f, e));
 const saveLock = () => db.put('meta', 'locker', { favs: [...LOCK.favs], seen: [...LOCK.seen] }).catch(() => {});
 async function loadLock() {
@@ -176,7 +176,7 @@ function panelLocker() {
       it ? itemThumb(f, it, color, variant) : el('span', { class: 'nothing', text: '—' }),
       el('i', {}, icon(SLOT_ICON[f]), el('span', { text: LABEL[f] })), el('b', { text: it ? itemName(it) : 'None' })); };
   const looks = [...WARD.game.filter(Boolean).map(r => lookCard(r, 'game')), ...WARD.custom.map(r => lookCard(r, 'custom'))];
-  return [head('Locker'), el('div', { class: 'pbody locker' },
+  return [head('Wardrobe'), el('div', { class: 'pbody locker' },
     GROUPS.map(([g, fs]) => { const fields = fs.filter(f => R.ITEMS[f].length); return fields.length ? [el('h3', { text: g }), el('div', { class: 'slots' }, fields.map(tile))] : null; }),
     el('h3', { text: 'Saved looks' }), el('div', { class: 'looks' }, looks, el('button', { class: 'look add', title: 'Save this look', text: '+', onclick: saveAs })))];
 }
@@ -185,10 +185,12 @@ function panelPicker() {
   const change = (item, c, v) => setSkin({ ...cur.skin, [f]: R.partStr(item, c, v) });
   const all = R.ITEMS[f], tiersHere = [...new Set(all.filter(e => !e.custom).map(tierOf))].sort();
   const counts = { fav: all.filter(e => LOCK.favs.has(favKey(f, e))).length, new: all.filter(e => isNew(f, e)).length, mine: all.filter(e => e.custom).length };
-  const chip = (id, label) => el('button', { class: 'chip' + (lockFilter === id ? ' on' : ''), text: label, onclick: () => { lockFilter = id; drawCards(); for (const c of bar.querySelectorAll('.chip[data-f]')) c.classList.toggle('on', c.dataset.f === id); }, data: { f: id } });
+  const chip = (id, label) => el('button', { class: 'chip' + (lockFilter === id ? ' on' : ''), text: label, onclick: () => { lockFilter = id; sortBox.hidden = id !== 'all'; drawCards(); for (const c of bar.querySelectorAll('.chip[data-f]')) c.classList.toggle('on', c.dataset.f === id); }, data: { f: id } });
+  const sortBox = el('select', { class: 'sort', title: 'Order', hidden: lockFilter !== 'all', onchange: e => { lockSort = e.target.value; drawCards(); } },
+    [['up', 'Standard first'], ['down', 'Event first']].map(([v, t]) => el('option', { value: v, text: t, selected: v === lockSort })));
   const bar = el('div', { class: 'options lockbar' }, chip('all', 'All'), counts.fav ? chip('fav', `Favourites ${counts.fav}`) : null, counts.new ? chip('new', `New ${counts.new}`) : null,
     tiersHere.length > 1 ? tiersHere.map(t => chip('t' + t, TIERS[t])) : null, counts.mine ? chip('mine', 'Mine') : null,
-    el('select', { class: 'sort', title: 'Sort', onchange: e => { lockSort = e.target.value; drawCards(); } }, [['default', 'Game order'], ['name', 'Name'], ['tier', 'Tier']].map(([v, t]) => el('option', { value: v, text: t, selected: v === lockSort }))));
+    sortBox);
   const detail = el('div', { class: 'detail' }), showDetail = e => { const t = e ? (e.custom ? 'Custom asset · site only' : TIERS[tierOf(e)]) : '';
     detail.replaceChildren(el('b', { text: e ? itemName(e) : 'None' }), el('span', { text: ' · ' + LABEL[f] }), el('em', { class: e ? tierClass(e) : '', text: t })); };
   const cardsBox = el('div', { class: 'cards lcards' });
@@ -196,7 +198,8 @@ function panelPicker() {
     const q = filter.toLowerCase(); let items = all.filter(e => itemName(e).toLowerCase().includes(q));
     if (lockFilter === 'fav') items = items.filter(e => LOCK.favs.has(favKey(f, e))); else if (lockFilter === 'new') items = items.filter(e => isNew(f, e));
     else if (lockFilter === 'mine') items = items.filter(e => e.custom); else if (/^t\d$/.test(lockFilter)) items = items.filter(e => !e.custom && 't' + tierOf(e) === lockFilter);
-    if (lockSort === 'name') items = [...items].sort((a, b) => itemName(a).localeCompare(itemName(b))); else if (lockSort === 'tier') items = [...items].sort((a, b) => tierOf(b) - tierOf(a));
+    const dir = lockFilter === 'all' && lockSort === 'down' ? -1 : 1, rank = e => e.custom ? 5 : tierOf(e);   // the game's order inside each tier; custom assets last
+    items = items.map((e, i) => [e, i]).sort((a, b) => (rank(a[0]) - rank(b[0])) * dir || a[1] - b[1]).map(x => x[0]);
     const card = e => { const part = e ? R.partStr(e, color, variant) : null, hv = hover(part), k = e && favKey(f, e), fav = e && LOCK.favs.has(k);
       const star = e ? el('span', { class: 'star' + (fav ? ' on' : ''), role: 'button', title: fav ? 'Remove from favourites' : 'Add to favourites', text: fav ? '★' : '☆',
         onclick: ev => { ev.stopPropagation(); LOCK.favs.has(k) ? LOCK.favs.delete(k) : LOCK.favs.add(k); saveLock(); render(); } }) : null;
@@ -212,8 +215,8 @@ function panelPicker() {
   const swatches = el('div', { class: 'swatches' }, cols.map(([k, base]) => { const b = el('button', { title: nice(k), class: k === color ? 'on' : '', onclick: () => change(it, k, variant), ...hover(R.partStr(it, k, variant)) });
     const ok = (Array.isArray(base) ? base : [base]).filter(c => HEX.test(c)); b.style.background = ok.length > 1 ? `linear-gradient(135deg, ${ok.join(',')})` : ok[0] || '#888'; return b; }));
   const options = el('div', { class: 'options' }, vs.map(v => el('button', { class: 'chip' + (v === (variant || vs[0]) ? ' on' : ''), text: variantName(it, v), onclick: () => change(it, color, v), ...hover(R.partStr(it, color, v)) })));
-  return [head('Locker'), el('div', { class: 'pbody' },
-    el('div', { class: 'pickhead' }, el('button', { class: 'btn ghost', text: '‹ Locker', onclick: () => { leavePicker(); render(); } }), icon(SLOT_ICON[f]), el('b', { text: LABEL[f] })),
+  return [head('Wardrobe'), el('div', { class: 'pbody' },
+    el('div', { class: 'pickhead' }, el('button', { class: 'btn ghost', text: '‹ Wardrobe', onclick: () => { leavePicker(); render(); } }), icon(SLOT_ICON[f]), el('b', { text: LABEL[f] })),
     el('div', { class: 'row' }, search, locked('Owned only', 'the owned cosmetics filter', 'chip')), bar, cardsBox, detail,
     cols.length ? [el('h3', { text: 'Colour' }), swatches] : null, vs.length > 1 ? [el('h3', { text: 'Option' }), options] : null)];
 }
@@ -266,7 +269,7 @@ function folderRow() {
          btn('Stop', async () => { await store.forgetFolder(); await after(); })]);
 }
 function panelWardrobe() {
-  return [head('Wardrobe'), el('div', { class: 'pbody' }, folderRow(), accountRow(),
+  return [head('Locker'), el('div', { class: 'pbody' }, folderRow(), accountRow(),
     el('div', { class: 'shelf game' }, el('h3', {}, el('span', { text: 'In-game slots' }), el('em', { text: `${WARD.game.filter(Boolean).length} / ${store.GAME_SLOTS}` })),
       el('div', { class: 'row' }, locked('Load my presets', 'loading your in-game presets'), locked('Send all to game', 'sending skins to your in-game presets')), need('preset sync'),
       el('div', { class: 'cards' }, WARD.game.map((r, i) => card(r, 'game', i)))),
@@ -358,7 +361,7 @@ function panelHelp() {
       el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Connect again', onclick: showConnect }),
         el('button', { class: 'btn danger', text: 'Forget game files', onclick: guard(async () => { if (!await confirmBox('Forget game files', 'Removes the copy of your game files from this browser. Your saved skins stay.', 'Forget', true)) return; await game.forget(); R = null; pics.clear(); fig.clearCache(); showConnect(); }) }))),
     sec('In-game slots and My skins', 'In-game slots (gold) mirror the 5 presets inside Hytale. My skins (blue) are up to 45 extra skins that exist only here. Hytale offers no way for other sites to read or change your presets, so you keep the gold slots in step yourself: "Set in game" lists exactly which parts to pick.'),
-    sec('Back up your skins', 'Skins are kept in this browser, and in your skins folder if you chose one in the Wardrobe. Without a folder, clearing site data or switching browser starts empty, so keep a backup file.',
+    sec('Back up your skins', 'Skins are kept in this browser, and in your skins folder if you chose one in the Locker. Without a folder, clearing site data or switching browser starts empty, so keep a backup file.',
       el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Download backup', onclick: guard(async () => download('skin-editor-backup.json', await store.exportAll())) }), el('label', { class: 'btn ghost' }, 'Restore backup', backupFile))),
     sec('Privacy', 'No account, no cookies, no analytics, no ads. The only request this site makes to another server is the player lookup, and only when you press Find.'),
     sec('About', 'An unofficial fan tool. Not affiliated with or endorsed by Hypixel Studios. Hytale is a trademark of Hypixel Studios; the cosmetics you see come from your own game.'))];
@@ -455,7 +458,7 @@ function assetCard(a) {
       act('Delete', guard(async () => { if (!await confirmBox('Delete custom asset', `Delete "${a.name}"? Skins wearing it lose that part. This cannot be undone.`, 'Delete', true)) return;
         await assets.remove(a.id); ASSETS = await assets.list(); syncFolder(); registerAssets(); cur.skin = R.fit(cur.skin); pics.clear(); rebuild(); render(); }), 'danger')));
 }
-const disclosure = () => el('div', { class: 'disclose' }, el('b', { text: 'Site only' }), el('span', { text: 'Custom assets show in Hytale in worlds running the Skin Editor mod. Save your skins to a folder (Wardrobe) and the mod picks them up. Repaints of edition and reward items stay on this site.' }));
+const disclosure = () => el('div', { class: 'disclose' }, el('b', { text: 'Site only' }), el('span', { text: 'Custom assets show in Hytale in worlds running the Skin Editor mod. Save your skins to a folder (Locker) and the mod picks them up. Repaints of edition and reward items stay on this site.' }));
 function panelCreator() {
   if (!ED) { const worn = game.FIELDS.filter(f => R.resolve(f, cur.skin));
     const sel = el('select', {}, worn.map(f => el('option', { value: f, text: `${LABEL[f]}: ${itemName(R.find(f, cur.skin[f]))}` })));

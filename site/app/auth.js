@@ -22,7 +22,7 @@ export async function start() {   // leaves the site for Hytale's own sign-in an
 }
 
 const ERRORS = { access_denied: 'You chose not to share on the Hytale screen. Nothing was shared.', invalid_scope: 'This site is not approved for what it asked Hytale for.' };
-const AGAIN = 'That sign-in is not valid any more. Start again from the Wardrobe.';
+const AGAIN = 'That sign-in is not valid any more. Start again from the Locker.';
 export async function finish(query) {   // runs on /auth/callback
   let saved = null; try { saved = JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch { /* treated as missing */ }
   sessionStorage.removeItem(KEY); history.replaceState(null, '', location.pathname);   // the one-time code leaves the address bar straight away
