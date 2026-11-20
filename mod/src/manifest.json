@@ -1,8 +1,8 @@
 {
   "Group": "KingTalon23",
   "Name": "SkinEditor",
-  "Version": "0.3.0",
-  "Description": "Wear the custom assets you made on hytale-skin-editor.com. Unofficial; not affiliated with Hypixel Studios.",
+  "Version": "0.4.0",
+  "Description": "Shows the skin and custom assets you are wearing on hytale-skin-editor.com in your own worlds. Unofficial; not affiliated with Hypixel Studios.",
   "Authors": [{ "Name": "KingTalon23" }],
   "Website": "https://hytale-skin-editor.com",
   "Main": "skineditor.SkinEditorPlugin",

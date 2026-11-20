@@ -6,7 +6,6 @@ import * as store from './store.js';
 import * as auth from './auth.js';
 import * as assets from './assets.js';
 import { createPainter, SHAPES, ONCE } from './paint.js';
-import { makeZip } from './zip.js';
 import { rules, sanitize, cleanName, parse, nice, LABEL, GROUPS, REQUIRED } from './skin.js';
 
 const $ = id => document.getElementById(id);
@@ -59,11 +58,11 @@ function setConn(meta) { const c = $('conn'); c.classList.toggle('ok', !!meta); 
 // ---------------------------------------------------------------- app state
 let CAT, R, st, META, tab = 'editor', group = 'Head', slot = 'haircut', filter = '';
 let cur = { id: null, kind: null, slot: null, name: '', skin: null }, hist = [], hpos = -1, dirty = false, WARD = { game: [], custom: [] };
-let FOLDER = { state: 'none' }, ACCOUNT = null;
+let FOLDER = { state: 'none' }, ACCOUNT = null, SHOWGAME = false;
 let found = [];   // skins brought in this session by a lookup or from files; not saved until the player saves them
 
 async function startApp() {
-  META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes();
+  META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); SHOWGAME = !!(await db.get('meta', 'showInGame').catch(() => false));
   $('connect').hidden = true; $('app').hidden = false;
   if (!st) { st = fig.stage($('view'), OrbitControls); bindPaint($('view'), e => ED ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true); }
   try { if (await store.resumeFolder(false)) await reloadAssets(); } catch (e) { console.warn(e); }
@@ -72,15 +71,21 @@ async function startApp() {
   cur = ds ? { id: draft.id || null, kind: draft.kind || null, slot: draft.slot ?? null, name: cleanName(draft.name), skin: R.fit(ds) } : { id: null, kind: null, slot: null, name: '', skin: R.blank() };
   if (cur.id && ![...WARD.game, ...WARD.custom].some(r => r && r.id === cur.id)) { cur.id = null; cur.kind = null; }
   hist = [JSON.stringify(cur.skin)]; hpos = 0; dirty = false;
-  playAnim('Default', 'Idle', 0.5); render(); rebuild();
+  playAnim('Default', 'Idle', 0.5); render(); rebuild(); pushWearing();
 }
 function open(rec, asNew) {   // put a skin on the stage: a wardrobe record, or a found skin (asNew)
   flush();
   cur = asNew ? { id: null, kind: null, slot: null, name: cleanName(rec.name), skin: R.fit(rec.skin) } : { id: rec.id, kind: rec.kind, slot: rec.slot ?? null, name: rec.name, skin: R.fit(rec.skin) };
-  hist = [JSON.stringify(cur.skin)]; hpos = 0; dirty = !!asNew; keepDraft(); rebuild(); plate();
+  hist = [JSON.stringify(cur.skin)]; hpos = 0; dirty = !!asNew; keepDraft(); rebuild(); plate(); pushWearing();
 }
-function setSkin(s) { cur.skin = s; autosave(); hist = hist.slice(0, hpos + 1); hist.push(JSON.stringify(s)); if (hist.length > 200) hist.shift(); hpos = hist.length - 1; dirty = true; keepDraft(); rebuild(); render(); }
-function step(d) { const p = hpos + d; if (p < 0 || p >= hist.length) return; hpos = p; cur.skin = JSON.parse(hist[p]); dirty = true; autosave(); keepDraft(); rebuild(); render(); }
+function setSkin(s) { cur.skin = s; autosave(); pushWearing(); hist = hist.slice(0, hpos + 1); hist.push(JSON.stringify(s)); if (hist.length > 200) hist.shift(); hpos = hist.length - 1; dirty = true; keepDraft(); rebuild(); render(); }
+function step(d) { const p = hpos + d; if (p < 0 || p >= hist.length) return; hpos = p; cur.skin = JSON.parse(hist[p]); dirty = true; autosave(); pushWearing(); keepDraft(); rebuild(); render(); }
+// the companion mod dresses you in game from "<skins folder>/Wearing.json"
+function pushWearing() { clearTimeout(pushWearing.t); pushWearing.t = setTimeout(async () => {
+  if (FOLDER.state !== 'on') return;
+  try { await store.writeWearing(SHOWGAME ? { on: true, name: cur.name || 'New skin', keepOwn: store.keepOwnOf(cur.skin), skin: cur.skin } : { on: false }); } catch (e) { console.warn(e); } }, 400); }
+function drawGameSwitch() { const b = $('ingame'); if (!b) return; b.hidden = FOLDER.state !== 'on'; b.classList.toggle('primary', SHOWGAME); b.classList.toggle('ghost', !SHOWGAME);
+  b.textContent = SHOWGAME ? 'In game: on' : 'In game: off'; b.title = SHOWGAME ? 'Your character in your own worlds wears this (Skin Editor mod)' : 'Show this skin on your character in your own worlds (needs the Skin Editor mod)'; }
 const persist = c => c.kind === 'game' ? store.saveGame(c.slot, c.name, c.skin) : store.saveCustom(c.name, c.skin, c.id);
 function autosave() { if (!cur.id) return; clearTimeout(autosave.t); autosave.t = setTimeout(flush, 700); }   // a saved skin saves itself as it changes
 async function flush() { clearTimeout(autosave.t); if (!cur.id || !dirty) return; const c = { ...cur };
@@ -136,7 +141,7 @@ const portrait = skin => { const s = R.fit(skin); return lazyImg('p|' + JSON.str
 // ---------------------------------------------------------------- panels
 function setTab(t) { if (t !== 'editor' && picking) leavePicker(); if (ED && t !== 'creator') closeAsset(true).then(() => { playAnim('Default', 'Idle', 0.5); rebuild(); });
   tab = t; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t); if (R) render(); }
-function render() { jobGen++; plate(); drawEmotes(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
+function render() { jobGen++; plate(); drawEmotes(); drawGameSwitch(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
   p.replaceChildren(...({ editor: panelEditor, wardrobe: panelWardrobe, animations: panelAnimations, lookup: panelLookup, feedback: panelFeedback, creator: panelCreator, help: panelHelp }[tab])());
   if (was === p.className && top) { const b = p.querySelector('.pbody'); if (b) b.scrollTop = top; } }
 // our own small symbols for the category rail (drawn here, not taken from the game)
@@ -258,7 +263,7 @@ function accountRow() {
 }
 function folderRow() {
   if (!store.folderSupported) return el('p', { class: 'note', text: 'Saving to a folder needs Chrome or Edge.' });
-  const after = async r => { FOLDER = await store.folderState(); await reloadAssets(); await refreshWard(); if (r) say(r.imported ? `Folder connected, ${r.imported} skin${r.imported > 1 ? 's' : ''} brought in` : 'Folder connected'); };
+  const after = async r => { FOLDER = await store.folderState(); await reloadAssets(); await refreshWard(); pushWearing(); if (r) say(r.imported ? `Folder connected, ${r.imported} skin${r.imported > 1 ? 's' : ''} brought in` : 'Folder connected'); };
   const btn = (t, fn, c = 'ghost') => el('button', { class: 'btn ' + c, text: t, onclick: guard(fn) });
   const [title, text] = FOLDER.state === 'on' ? ['Saving to folder: ' + FOLDER.name, 'Every skin and custom asset is a small file in this folder and updates as you edit.']
     : FOLDER.state === 'ask' ? ['Folder paused: ' + FOLDER.name, 'Your browser needs your OK again before it can write to the folder. Until then, changes are kept in the browser.']
@@ -383,7 +388,7 @@ function panelFeedback() {
 let ASSETS = [], ED = null, edN = 0;
 const itemName = e => e && e.custom ? e.Name : (e && CAT.names && CAT.names[e.Name]) || nice(e ? e.Id : '');
 const hasCustom = skin => Object.values(skin).some(v => typeof v === 'string' && v.startsWith('Custom_'));
-async function reloadAssets() { ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); cur.skin = R.fit(cur.skin); }
+async function reloadAssets() { ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); SHOWGAME = !!(await db.get('meta', 'showInGame').catch(() => false)); cur.skin = R.fit(cur.skin); }
 const syncFolder = () => store.sync().catch(e => say(e.message, true));
 function registerAssets() {   // custom assets join the catalogue as extra items in their slot, so the editor treats them like any other
   for (const f of game.FIELDS) { const arr = CAT.items[f]; for (let i = arr.length - 1; i >= 0; i--) if (arr[i].custom) arr.splice(i, 1); }
@@ -431,41 +436,25 @@ function bindPaint(target, toPixel, reach, onModel) { let down = false, last = n
 const urls = new Map();
 function assetPicture(a) { const k = a.id + '@' + a.updated; if (!urls.has(k)) { for (const [o, u] of urls) if (o.startsWith(a.id + '@')) { URL.revokeObjectURL(u); urls.delete(o); } urls.set(k, URL.createObjectURL(a.data)); } return el('img', { alt: '', src: urls.get(k), draggable: false }); }
 function downloadBlob(name, blob) { const a = el('a', { href: URL.createObjectURL(blob), download: name }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
-// a folder asset pack for the companion mod: unzip it into a world's mods folder, then /skins list and /skins wear <id> in game
 const lockedBase = a => { const it = CAT.items[a.field].find(e => e.Id === a.baseId); return it ? tierOf(it) : 0; };
 const modReady = a => lockedBase(a) === 0;
-store.setLockedOf(a => !modReady(a));
-store.setKeepOwnOf(skin => R ? game.FIELDS.filter(f => { const it = R.find(f, skin[f]); if (!it) return false; if (!it.custom) return tierOf(it) > 0; const a = ASSETS.find(x => 'Custom_' + x.id === it.Id); return !a || !modReady(a); }) : []);
-const modExport = guard(async list => {
-  const ok = list.filter(modReady), skipped = list.length - ok.length;
-  if (!ok.length) throw new Error('These are repaints of edition or reward items, which the mod will not wear.');
-  const dir = 'SkinEditor_MyAssets/', files = [[dir + 'manifest.json', JSON.stringify({ Group: 'SkinEditorPack', Name: 'MyAssets', Version: '1.0.0',
-    Description: 'Custom assets made on hytale-skin-editor.com, for the Skin Editor companion mod.', Authors: [{ Name: 'Skin Editor' }], ServerVersion: '*' }, null, 1)]];
-  for (const a of ok) {
-    files.push([`${dir}Server/SkinEditor/${a.id}.json`, JSON.stringify({ format: 'skin-editor-asset', version: 1, id: a.id, name: a.name, field: a.field, model: a.model }, null, 1)]);
-    files.push([`${dir}Common/Characters/SkinEditor/${a.id}.png`, new Uint8Array(await a.data.arrayBuffer())]);
-  }
-  downloadBlob('SkinEditor_MyAssets.zip', makeZip(files));
-  say(skipped ? `Pack downloaded. ${skipped} edition or reward repaint${skipped > 1 ? 's were' : ' was'} left out.` : 'Pack downloaded. Unzip it into your world’s mods folder.');
-});
 function assetCard(a) {
   const act = (label, fn, cls) => el('button', { class: 'mini ' + (cls || ''), text: label, onclick: e => { e.stopPropagation(); fn(); } });
   const worn = cur.skin[a.field] && cur.skin[a.field].startsWith('Custom_' + a.id);
   return el('div', { class: 'skin asset' + (worn ? ' on' : ''), tabIndex: 0, title: 'Open in the creator', onclick: guard(() => openAsset(a)) },
     el('div', { class: 'pic tex' }, assetPicture(a)), el('b', { text: a.name }), el('small', { text: LABEL[a.field] }),
     el('div', { class: 'acts' }, act(worn ? 'Wearing' : 'Wear', () => setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' })),
-      modReady(a) ? act('For the mod', () => modExport([a])) : null, act('Export', () => downloadBlob(a.name.replace(/[^\w -]/g, '') + '.png', a.data)),
+      act('Export', () => downloadBlob(a.name.replace(/[^\w -]/g, '') + '.png', a.data)),
       act('Delete', guard(async () => { if (!await confirmBox('Delete custom asset', `Delete "${a.name}"? Skins wearing it lose that part. This cannot be undone.`, 'Delete', true)) return;
         await assets.remove(a.id); ASSETS = await assets.list(); syncFolder(); registerAssets(); cur.skin = R.fit(cur.skin); pics.clear(); rebuild(); render(); }), 'danger')));
 }
-const disclosure = () => el('div', { class: 'disclose' }, el('b', { text: 'Site only' }), el('span', { text: 'Custom assets show in Hytale in worlds running the Skin Editor mod. Save your skins to a folder (Locker) and the mod picks them up. Repaints of edition and reward items stay on this site.' }));
+const disclosure = () => el('div', { class: 'disclose' }, el('b', { text: 'Site only' }), el('span', { text: 'With the Skin Editor mod installed and Show in game on, your character in your own worlds wears what you have on here, custom assets included. Repaints of edition and reward items stay on this site.' }));
 function panelCreator() {
   if (!ED) { const worn = game.FIELDS.filter(f => R.resolve(f, cur.skin));
     const sel = el('select', {}, worn.map(f => el('option', { value: f, text: `${LABEL[f]}: ${itemName(R.find(f, cur.skin[f]))}` })));
     return [head('Asset Creator'), el('div', { class: 'pbody' }, disclosure(),
       el('h3', { text: 'Start from something you are wearing' }), el('div', { class: 'row' }, sel, el('button', { class: 'btn primary', text: 'Create', onclick: () => newAsset(sel.value) })),
       el('h3', { text: `My custom assets (${ASSETS.length} / ${assets.MAX})` }),
-      ASSETS.some(modReady) ? el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Download all for the mod', onclick: () => modExport(ASSETS) })) : null,
       ASSETS.length ? el('div', { class: 'cards' }, ASSETS.map(assetCard)) : el('p', { class: 'blank', text: 'None yet. Pick a slot above and press Create.' }))]; }
   const P = ED.painter, a = ED.asset, c = ED.canvas; c.style.width = c.width * ED.zoom + 'px';
   const tool = (id, label) => el('button', { class: 'chip' + (P.tool === id ? ' on' : ''), text: label, onclick: () => { P.tool = id; render(); } });
@@ -500,6 +489,7 @@ $('undo').onclick = () => step(-1); $('redo').onclick = () => step(1);
 $('random').onclick = () => setSkin(R.random());
 $('new').onclick = () => { flush(); cur = { id: null, kind: null, slot: null, name: '', skin: R.blank() }; hist = [JSON.stringify(cur.skin)]; hpos = 0; dirty = false; keepDraft(); rebuild(); render(); };
 $('front').onclick = () => st.view(true);
+$('ingame').onclick = async () => { SHOWGAME = !SHOWGAME; await db.put('meta', 'showInGame', SHOWGAME).catch(() => {}); drawGameSwitch(); pushWearing(); say(SHOWGAME ? 'Showing in game' : 'Your own skin is back in game'); };
 $('save').onclick = save; $('saveas').onclick = saveAs;
 addEventListener('keydown', e => { if (!R || e.target.matches('input, textarea, select') || $('dlg').open) return;
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); step(e.shiftKey ? 1 : -1); } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); step(1); } });

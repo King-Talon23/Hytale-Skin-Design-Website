@@ -61,6 +61,12 @@ export async function importAll(data) {   // adds to what is there; never overwr
 export const folderSupported = typeof self.showDirectoryPicker === 'function';
 const SUB = { custom: 'My skins', game: 'In-game slots' }, ASSET_DIR = 'Custom assets';
 export const sync = () => mirror();
+// what the player is wearing, for the companion mod: "<skins folder>/Wearing.json" (on:false when Show in game is off)
+let lastWearing = null;
+export async function writeWearing(data) {
+  if (!dir) return false; const text = JSON.stringify({ format: 'skin-editor-wearing', version: 1, ...data }, null, 1); if (text === lastWearing) return true;
+  const w = await (await dir.getFileHandle('Wearing.json', { create: true })).createWritable(); await w.write(text); await w.close(); lastWearing = text; return true;
+}
 export let lockedOf = () => false;   // set by the page: repaints of edition and reward items, which the mod will not wear
 export const setLockedOf = f => { lockedOf = f; };
 export let keepOwnOf = () => [];   // set by the page: slots holding paid items, which the mod keeps as the player's own
@@ -73,7 +79,7 @@ export async function folderState() {
   return { state: dir && (await h.queryPermission({ mode: 'readwrite' })) === 'granted' ? 'on' : 'ask', name: h.name };
 }
 export async function chooseFolder() { return useFolder(await self.showDirectoryPicker({ id: 'skins', mode: 'readwrite', startIn: 'documents' })); }
-export async function useFolder(h) { await db.put('meta', 'folder', h); dir = h; written.clear(); known.clear(); return attach(); }
+export async function useFolder(h) { await db.put('meta', 'folder', h); dir = h; written.clear(); known.clear(); lastWearing = null; return attach(); }
 export async function resumeFolder(ask) {
   if (!folderSupported) return null; const h = await db.get('meta', 'folder'); if (!h) return null;
   let p = await h.queryPermission({ mode: 'readwrite' }); if (p !== 'granted' && ask) p = await h.requestPermission({ mode: 'readwrite' });
