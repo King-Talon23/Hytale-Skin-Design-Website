@@ -256,7 +256,7 @@ input[type=color] { width: 46px; height: 38px; padding: 2px; background: #0d1826
 .slot i { position: absolute; top: 4px; left: 5px; display: flex; gap: 4px; align-items: center; font: 700 10px var(--h); letter-spacing: .06em; text-transform: uppercase; color: #ffffffd0; text-shadow: 0 1px 2px #000; font-style: normal; }
 .slot i svg { width: 13px; height: 13px; fill: currentColor; }
 .slot b, .lcard b { display: block; background: #0b1626d8; font-size: 12px; font-weight: 700; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.slot:hover, .lcard:hover { border-color: var(--line2); filter: brightness(1.12); }
+.slot:hover, .lcard:hover { border-color: var(--gold); filter: brightness(1.12); }
 .slot.on, .lcard.on { border-color: var(--gold); box-shadow: 0 0 12px #f4c45266; }
 .mine { border-style: dashed; }
 .lcard .bin { position: absolute; top: 3px; left: 4px; font-size: 13px; line-height: 1; padding: 3px 4px; border-radius: 3px; background: #0b1626b0; cursor: pointer; filter: grayscale(1) brightness(1.6); }
@@ -287,7 +287,7 @@ input[type=color] { width: 46px; height: 38px; padding: 2px; background: #0d1826
 .cattile.on svg { color: var(--gold); }
 .cattile b { font: 700 12px var(--h); text-transform: uppercase; letter-spacing: .06em; margin-top: 2px; }
 .cattile small { position: absolute; top: 3px; right: 5px; font: 700 10px var(--h); color: #7f97b5; }
-.cattile:hover { border-color: var(--line2); }
+.cattile:hover { border-color: var(--gold); }
 .cattile.on { background: linear-gradient(#4a3a14, #2a2110); border-color: var(--gold); border-bottom-color: #8a6a1c; color: var(--gold); }
 .cattile.on small { color: #c9a24a; }
 .animhead { margin: 10px 0 6px; font: 700 11px var(--h); text-transform: uppercase; letter-spacing: .1em; color: var(--dim); }
@@ -295,7 +295,7 @@ input[type=color] { width: 46px; height: 38px; padding: 2px; background: #0d1826
 .animlist button { display: flex; flex-direction: column; padding: 0; background: linear-gradient(#2a4160, #1a2c45); border: 2px solid #22364f; border-radius: 3px; overflow: hidden; font-size: 12px; }
 .animlist img { width: 100%; aspect-ratio: 1; image-rendering: pixelated; display: block; }
 .animlist span { padding: 4px 4px 5px; background: #0d1826; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.animlist button:hover { border-color: var(--line2); } .animlist button.on { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 10px #f4c45255; }
+.animlist button:hover { border-color: var(--gold); } .animlist button.on { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 10px #f4c45255; }
 .prose p { margin: 0 0 10px; color: #c5d6e2; max-width: 62ch; }
 
 /* dialog, drop, footer */
