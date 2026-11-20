@@ -335,3 +335,6 @@ input.hex { width: 84px; font: 600 12px ui-monospace, Consolas, monospace; backg
 .detail.trying b { color: var(--gold); font-style: italic; }
 
 .howto { margin: 0 0 10px; padding-left: 18px; color: #c5d6e2; } .howto li { margin: 0 0 6px; } .howto b { color: var(--gold); }
+
+/* the picked item's info, colours and options stay in view at the bottom while the item list scrolls (wide screens) */
+@media (min-width: 981px) { .pickfoot { position: sticky; bottom: -18px; z-index: 2; margin: 0 -16px -18px; padding: 0 16px 14px; background: linear-gradient(#0f1d30f0, #0f1d30); box-shadow: 0 -8px 14px #0008; max-height: 42vh; overflow: auto; } }

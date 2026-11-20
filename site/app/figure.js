@@ -344,7 +344,7 @@ export function stage(canvas, Controls) {
     setView(name) { const v = VIEWS[name] || VIEWS.persp; cam.position.set(...v); ctl.target.set(0, 62, 0); ctl.update(); },
     highlight(f) { hl = f; drawHL(); },
     show(root) { if (figure) { unhang(); scene.remove(figure); dispose(figure); } figure = root; scene.add(root); seatAt(); anim.setFigure(root); hang(); lit = []; applyIsolate(); drawHL(); if (api.afterShow) api.afterShow(); },
-    view(front) { cam.position.set(front ? 0 : -75, 95, front ? 265 : 255); ctl.target.set(0, 62, 0); ctl.update(); } };
+    view(front) { lifted = null; cam.position.set(front ? 0 : -75, 95, front ? 265 : 255); ctl.target.set(0, 62, 0); ctl.update(); } };
   return api;
 }
 let TR, tscene, tcam;
