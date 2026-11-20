@@ -36,15 +36,18 @@ const S = 0.7071068, QUADROT = { '+Z': [0, 0, 0, 1], '-Z': [0, 1, 0, 0], '+Y': [
 const xyz = (o, d = 0) => [o?.x ?? d, o?.y ?? d, o?.z ?? d];
 export function usedRects(modelJson) {
   const out = [];
-  const walk = n => { const sh = n.shape || {};
-    if ((sh.type === 'box' || sh.type === 'quad') && sh.visible !== false) { const size = xyz(sh.settings?.size), lay = sh.textureLayout || {};
+  // each rect is named by the way that face really points on the model (a quad's 'front' may face sideways, a turned part's faces turn with it)
+  const DIR = [['right', 'left'], ['top', 'bottom'], ['front', 'back']], facing = (name, q) => { const [ax, sg] = FACES[name], v = new THREE.Vector3(); v.setComponent(ax, sg); v.applyQuaternion(q);
+    const a = [v.x, v.y, v.z].map(Math.abs), k = a.indexOf(Math.max(...a)); return DIR[k][v.getComponent(k) > 0 ? 0 : 1]; };
+  const walk = (n, pq = new THREE.Quaternion()) => { const sh = n.shape || {}, o = n.orientation, q = pq.clone().multiply(new THREE.Quaternion(o?.x ?? 0, o?.y ?? 0, o?.z ?? 0, o?.w ?? 1));
+    if ((sh.type === 'box' || sh.type === 'quad') && sh.visible !== false) { const size = xyz(sh.settings?.size), lay = sh.textureLayout || {}, fq = sh.type === 'quad' ? q.clone().multiply(new THREE.Quaternion(...(QUADROT[sh.settings?.normal] || QUADROT['+Z']))) : q;
       for (const [name, [, , ua, , va]] of Object.entries(sh.type === 'quad' ? { front: FACES.front } : FACES)) {
         const fl = lay[name]; if (!fl) continue; const fu = size[ua], fv = size[va]; if (fu <= 0 || fv <= 0) continue;
         const ox = fl.offset?.x ?? 0, oy = fl.offset?.y ?? 0, a = ((fl.angle | 0) % 360 + 360) % 360, xs = [], ys = [];
         for (const [su, sv] of [[0, 0], [1, 0], [1, 1], [0, 1]]) { const pu = su * fu * (fl.mirror?.x ? -1 : 1), pv = sv * fv * (fl.mirror?.y ? -1 : 1);
           const [X, Y] = a === 90 ? [ox - pv, oy + pu] : a === 180 ? [ox - pu, oy - pv] : a === 270 ? [ox + pv, oy - pu] : [ox + pu, oy + pv]; xs.push(X); ys.push(Y); }
-        out.push({ x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys), face: name, node: n.name }); } }
-    for (const c of n.children || []) walk(c); };
+        out.push({ x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys), face: facing(name, fq), node: n.name }); } }
+    for (const c of n.children || []) walk(c, q); };
   for (const n of modelJson.nodes || []) walk(n);
   return out;
 }
