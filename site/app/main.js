@@ -393,7 +393,8 @@ const syncFolder = () => store.sync().catch(e => say(e.message, true));
 function registerAssets() {   // custom assets join the catalogue as extra items in their slot, so the editor treats them like any other
   for (const f of game.FIELDS) { const arr = CAT.items[f]; for (let i = arr.length - 1; i >= 0; i--) if (arr[i].custom) arr.splice(i, 1); }
   for (const a of ASSETS) { const base = CAT.items[a.field].find(e => e.Id === a.baseId) || {};
-    CAT.items[a.field].push({ ...base, Id: 'Custom_' + a.id, custom: true, baseId: a.baseId, Name: a.name, Model: a.model, Variants: undefined, GradientSet: undefined, GreyscaleTexture: undefined, IsDefaultAsset: false,
+    CAT.items[a.field].push({ ...base, Id: 'Custom_' + a.id, custom: true, baseId: a.baseId, Name: a.name,
+      Model: (ED && ED.asset.id === a.id ? ED.model : a.shape) ? `shape:${a.id}@${ED && ED.asset.id === a.id ? 'e' + ED.n + '.' + (ED.shapeN || 0) : a.updated}` : a.model, Variants: undefined, GradientSet: undefined, GreyscaleTexture: undefined, IsDefaultAsset: false,
       Textures: { Mine: { Texture: `custom:${a.id}@${ED && ED.asset.id === a.id ? 'live' + ED.n : a.updated}`, BaseColor: ['#f4c452'] } } }); }
 }
 fig.setCustomSource(async id => {
@@ -414,15 +415,17 @@ async function openAsset(a) {
   if (ED) await closeAsset(true);
   const bmp = await createImageBitmap(a.data), c = el('canvas', { width: bmp.width, height: bmp.height, className: 'paint' }); c.getContext('2d', { willReadFrequently: true }).drawImage(bmp, 0, 0);
   ED = { asset: a, canvas: c, n: ++edN, zoom: Math.max(2, Math.min(8, Math.floor(440 / bmp.width))), rects: [] };
-  try { ED.rects = fig.usedRects(await game.json(game.common(a.model))); } catch (e) { console.warn('no drawn area for', a.model, e); }
+  if (a.shape) ED.model = JSON.parse(a.shape);
+  try { ED.rects = fig.usedRects(ED.model || await game.json(game.common(a.model))); } catch (e) { console.warn('no drawn area for', a.model, e); }
   ED.painter = createPainter(c, final => { fig.refreshCustom(a.id); if (final) queueAssetSave(); }, () => render());
   if (ED.rects.length) { const m = new Uint8Array(c.width * c.height); for (const r of ED.rects) for (let y = Math.max(0, Math.floor(r.y)); y < Math.min(c.height, Math.ceil(r.y + r.h)); y++) for (let x = Math.max(0, Math.floor(r.x)); x < Math.min(c.width, Math.ceil(r.x + r.w)); x++) m[y * c.width + x] = 1; ED.painter.mask = m; }
   ED.palette = ED.painter.palette(); bindPaint(c, e => { const r = c.getBoundingClientRect(); return { x: Math.min(c.width - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * c.width))), y: Math.min(c.height - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * c.height))) }; }, 1e9);
-  registerAssets(); st.anim.set(null); st.paintMode(true); tab = 'creator'; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === 'creator'); render(); rebuild();
+  registerAssets(); if (!(cur.skin[a.field] || '').startsWith('Custom_' + a.id)) setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' });
+  st.anim.set(null); st.paintMode(true); tab = 'creator'; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === 'creator'); render(); rebuild();
 }
 function queueAssetSave() { clearTimeout(queueAssetSave.t); queueAssetSave.t = setTimeout(() => flushAsset().catch(e => say(e.message, true)), 900); }
 async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; const e = ED, data = await new Promise(ok => e.canvas.toBlob(ok, 'image/png'));
-  e.asset = await assets.save({ ...e.asset, data }); ASSETS = await assets.list(); syncFolder(); }
+  e.asset = await assets.save({ ...e.asset, data, shape: e.model && e.shapeN ? JSON.stringify(e.model) : e.asset.shape }); ASSETS = await assets.list(); syncFolder(); }
 async function closeAsset(quiet) {
   if (!ED) return; await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; registerAssets(); st.paintMode(false); pics.clear(); lastPic.clear();
   if (!quiet) { playAnim('Default', 'Idle', 0.5); rebuild(); render(); }
@@ -508,6 +511,42 @@ function limits(c) {
     for (const r of ED.rects) if (r.w * z > 34 && r.h * z > 14) x.fillText(r.face, r.x * z + 3, r.y * z + 11); }
   return o;
 }
+// ---------------------------------------------------------------- shapes: an asset's own copy of its item's 3D model
+fig.setShapeSource(async id => {
+  if (ED && ED.asset.id === id && ED.model) return ED.model;
+  const a = ASSETS.find(x => x.id === id); if (!a || !a.shape) throw new Error('that shape is gone'); return JSON.parse(a.shape);
+});
+const boxesOf = m => { const out = []; const walk = (n, parent) => { const s = n.shape || {}; if ((s.type === 'box' || s.type === 'quad') && s.visible !== false) out.push({ node: n, parent }); for (const c of n.children || []) walk(c, n); }; for (const n of m.nodes) walk(n, null); return out; };
+async function editModel() { if (!ED.model) ED.model = ED.asset.shape ? JSON.parse(ED.asset.shape) : structuredClone(await game.json(game.common(ED.asset.model))); return ED.model; }
+function shapeChanged() {   // the preview, the drawn-area guide and the saved copy follow every edit
+  ED.shapeN = (ED.shapeN || 0) + 1; ED.rects = fig.usedRects(ED.model); maskFromRects();
+  registerAssets(); rebuild(); queueAssetSave(); render();
+}
+function maskFromRects() { const c = ED.canvas, m = new Uint8Array(c.width * c.height);
+  for (const r of ED.rects) for (let y = Math.max(0, Math.floor(r.y)); y < Math.min(c.height, Math.ceil(r.y + r.h)); y++) for (let x = Math.max(0, Math.floor(r.x)); x < Math.min(c.width, Math.ceil(r.x + r.w)); x++) m[y * c.width + x] = 1;
+  ED.painter.mask = ED.rects.length ? m : null; }
+function shapePanel() {
+  if (!ED.shapeOpen) return el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Edit shape', onclick: guard(async () => { await editModel(); ED.shapeOpen = true; ED.box = 0; render(); }) }));
+  const boxes = boxesOf(ED.model), i = Math.min(ED.box || 0, boxes.length - 1), b = boxes[i], sh = b.node.shape;
+  const num = (label, obj, key, axis, min, max) => el('label', { class: 'numfield' }, el('span', { text: label }),
+    el('input', { type: 'number', step: 1, min, max, value: Math.round((obj[key]?.[axis] ?? 0) * 10) / 10, onchange: e => { const v = Math.max(min, Math.min(max, Number(e.target.value) || 0)); obj[key] = { x: 0, y: 0, z: 0, ...obj[key], [axis]: v }; shapeChanged(); } }));
+  const nudge = (axis, d) => el('button', { class: 'chip', text: (d > 0 ? '+' : '−') + axis, onclick: () => { sh.offset = { x: 0, y: 0, z: 0, ...sh.offset, [axis]: (sh.offset?.[axis] ?? 0) + d }; shapeChanged(); } });
+  const dup = () => { if (boxes.length >= assets.MAX_BOXES) return say(`A shape can have up to ${assets.MAX_BOXES} boxes.`, true);
+    const copy = structuredClone({ ...b.node, children: [] }); copy.name = 'Box_' + Math.random().toString(36).slice(2, 7); copy.shape.offset = { x: 0, y: 0, z: 0, ...copy.shape.offset }; copy.shape.offset.x += 2;
+    (b.parent ? b.parent.children : ED.model.nodes).push(copy); ED.box = boxesOf(ED.model).findIndex(x => x.node === copy); shapeChanged(); };
+  const del = () => { if (boxes.length <= 1) return say('A shape needs at least one box.', true); if ((b.node.children || []).length) return say('This box holds other boxes. Delete those first.', true);
+    const list = b.parent ? b.parent.children : ED.model.nodes; list.splice(list.indexOf(b.node), 1); ED.box = Math.max(0, i - 1); shapeChanged(); };
+  const reset = guard(async () => { if (!await confirmBox('Reset shape', 'Go back to the item’s original shape? Your shape changes are lost.', 'Reset', true)) return;
+    ED.model = structuredClone(await game.json(game.common(ED.asset.model))); ED.asset = { ...ED.asset, shape: undefined }; ED.box = 0; shapeChanged(); });
+  return el('div', { class: 'shape' },
+    el('div', { class: 'row' }, el('select', { onchange: e => { ED.box = +e.target.value; render(); } }, boxes.map((x, k) => el('option', { value: k, selected: k === i, text: `${k + 1}. ${x.node.name}` }))),
+      el('button', { class: 'btn ghost', text: 'Duplicate', onclick: dup }), el('button', { class: 'btn ghost', text: 'Delete', onclick: del })),
+    el('div', { class: 'nums' }, el('b', { text: 'Size' }), num('W', sh.settings, 'size', 'x', 0, 64), num('H', sh.settings, 'size', 'y', 0, 64), num('D', sh.settings, 'size', 'z', 0, 64)),
+    el('div', { class: 'nums' }, el('b', { text: 'Move' }), num('X', sh, 'offset', 'x', -64, 64), num('Y', sh, 'offset', 'y', -64, 64), num('Z', sh, 'offset', 'z', -64, 64)),
+    el('div', { class: 'options' }, nudge('x', -1), nudge('x', 1), nudge('y', -1), nudge('y', 1), nudge('z', -1), nudge('z', 1)),
+    el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Reset shape', onclick: reset }), el('button', { class: 'btn ghost', text: 'Close shape', onclick: () => { ED.shapeOpen = false; render(); } })));
+}
+
 function panelCreator() {
   if (!ED) { const worn = game.FIELDS.filter(f => R.resolve(f, cur.skin));
     const paidIn = f => { const it = R.find(f, cur.skin[f]), b = it && it.custom ? CAT.items[f].find(e => e.Id === it.baseId) : it; return b && tierOf(b) > 0; };
@@ -539,6 +578,7 @@ function panelCreator() {
     el('div', { class: 'swatches' }, ED.palette.map(h => { const b = el('button', { title: h, class: h === P.color ? 'on' : '', onclick: () => { P.color = h; if (P.tool === 'pick' || P.tool === 'erase') P.tool = 'brush'; render(); } }); b.style.background = h; return b; })),
     el('div', { class: 'row' }, btn('Undo', () => P.undo()), btn('Redo', () => P.redo()), btn('Zoom −', () => { ED.zoom = Math.max(1, ED.zoom - 1); render(); }), btn('Zoom +', () => { ED.zoom = Math.min(16, ED.zoom + 1); render(); }),
       el('label', { class: 'btn ghost' }, 'Import PNG', file), btn('Export PNG', () => c.toBlob(b => downloadBlob(a.name.replace(/[^\w -]/g, '') + '.png', b), 'image/png'))),
+    el('h3', { text: 'Shape' }), shapePanel(),
     el('h3', { text: 'Recolour the whole item' }), el('div', { class: 'row tools' }, adjRow('h', 'Hue', -180, 180), adjRow('s', 'Saturation', -100, 100), adjRow('l', 'Brightness', -100, 100)),
     el('div', { class: 'row' }, btn('Keep recolour', () => endAdjust(true), 'primary'), btn('Cancel recolour', () => endAdjust(false))),
     el('div', { class: 'paintbox' }, el('div', { class: 'paintwrap' }, c, limits(c))))];

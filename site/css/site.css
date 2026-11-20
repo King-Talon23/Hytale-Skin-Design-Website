@@ -167,6 +167,8 @@ input[type=color] { width: 46px; height: 38px; padding: 2px; background: #0d1826
 .skin .pic.tex { background: repeating-conic-gradient(#1b2b40 0% 25%, #223650 0% 50%) 50% / 12px 12px; } .skin .pic.tex img { object-fit: contain; }
 .disclose { display: flex; gap: 8px; align-items: baseline; border: 1px solid var(--gold2); border-left-width: 4px; border-radius: 0; padding: 7px 10px; margin-bottom: 12px; background: #2a231255; font-size: 13px; }
 .disclose b { color: var(--gold); font: 700 11px var(--h); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+.shape .nums { display: flex; gap: 8px; align-items: center; margin: 6px 0; } .shape .nums b { width: 44px; font-size: 12px; color: var(--dim); }
+.numfield { display: flex; flex: none; align-items: center; gap: 4px; margin: 0; color: var(--text); } .numfield span { font-size: 12px; width: 12px; } .numfield input { flex: none; width: 64px; color: var(--text); font: 13px var(--b); min-height: 30px; padding: 3px 6px; background: #0d1826; border: 1px solid var(--line); border-radius: 3px; }
 /* locker */
 .t0 { --tier: #3a5170; --tier2: #1c2c44; } .t1 { --tier: #3f7d4e; --tier2: #1a3a26; } .t2 { --tier: #3b62b4; --tier2: #1a2d5c; } .t3 { --tier: #7a52c4; --tier2: #33215e; } .t4 { --tier: #c0563f; --tier2: #5a2014; }
 .mine { --tier: #7a6230; --tier2: #2e2716; } .none { --tier: #22364f; --tier2: #14243a; }

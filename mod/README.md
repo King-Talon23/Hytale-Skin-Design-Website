@@ -9,7 +9,8 @@ included. No commands. Unofficial; not affiliated with or endorsed by Hypixel St
 3. Turn on **In game** (next to Front, under the character). Whatever you wear in the Wardrobe now shows on your character in
    game within a second, and keeps showing after you close the website. Turn it off and your own skin comes back.
 
-Custom textures reach the game through a pack the mod keeps in the world (`mods/SkinEditor_Live`). Repaints show live.
+Custom textures and reshaped models reach the game through a pack the mod keeps in the world (`mods/SkinEditor_Live`).
+Repaints and shape changes show live.
 Everyone in the world sees you dressed, because the server sends it.
 
 ## Limits

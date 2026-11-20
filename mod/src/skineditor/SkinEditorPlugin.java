@@ -203,6 +203,11 @@ public final class SkinEditorPlugin extends JavaPlugin {
                 byte[] data = Files.readAllBytes(png); if (data.length < 8 || (data[0] & 0xff) != 0x89 || data[1] != 'P' || data[2] != 'N' || data[3] != 'G') continue;
                 String ver = String.format("%08x", java.util.Arrays.hashCode(data)), tex = id + "-" + ver + ".png";
                 Path out = texDir.resolve(tex); if (!Files.isRegularFile(out)) Files.write(out, data);
+                // a reshaped asset brings its own model: it gets a content-named file too, and the entry points at it
+                Path shp = src.resolve(n.substring(0, n.length() - 5) + ".blockymodel");
+                if (Files.isRegularFile(shp) && Files.size(shp) <= 200_000) { String mj = Files.readString(shp).trim();
+                    if (mj.startsWith("{") && mj.contains("\"nodes\"")) { String mf = id + "-" + String.format("%08x", mj.hashCode()) + ".blockymodel";
+                        Path mo = texDir.resolve(mf); if (!Files.isRegularFile(mo)) Files.writeString(mo, mj); keepFiles.add(mf); model = "Characters/SkinEditor/" + mf; } }
                 String entry = "{\"format\": \"skin-editor-asset\", \"id\": \"" + id + "\", \"field\": \"" + field + "\", \"model\": \"" + model + "\", \"texture\": \"Characters/SkinEditor/" + tex + "\"}\n";
                 Path ent = entDir.resolve(id + ".json"); if (!Files.isRegularFile(ent) || !Files.readString(ent).equals(entry)) Files.writeString(ent, entry);
                 keepFiles.add(tex); keepFiles.add(id + ".json");

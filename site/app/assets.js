@@ -12,8 +12,20 @@ export const newId = () => [...crypto.getRandomValues(new Uint8Array(4))].map(b 
 export async function list() { return (await db.all('assets')).filter(ok).sort((a, b) => b.updated - a.updated); }
 export async function save(a) {
   const r = { id: a.id, name: cleanName(a.name) || 'My asset', field: a.field, baseId: String(a.baseId || '').slice(0, 64), model: a.model, w: a.w, h: a.h, data: a.data, updated: Date.now(),
-    flag: typeof a.flag === 'string' ? a.flag.slice(0, 80) : undefined };   // set when the asset is too close to a paid item
+    flag: typeof a.flag === 'string' ? a.flag.slice(0, 80) : undefined,   // set when the asset is too close to a paid item
+    shape: okShape(a.shape) ? a.shape : undefined };   // the item's model, reshaped in the Creator (JSON text)
   if (!ok(r)) throw new Error('That asset could not be saved.');
   await db.put('assets', r.id, r); return r;
 }
 export const remove = id => db.del('assets', id);
+export const MAX_BOXES = 64;
+export function okShape(t) {   // a blockymodel this site wrote: small, parseable, boxes and quads only, sane numbers
+  if (typeof t !== 'string' || t.length > 200_000) return false;
+  let m; try { m = JSON.parse(t); } catch { return false; } if (!m || !Array.isArray(m.nodes)) return false;
+  let n = 0; const num = v => v == null || (typeof v === 'number' && isFinite(v) && Math.abs(v) <= 512);
+  const ok = node => { if (!node || typeof node.name !== 'string' || node.name.length > 64 || ++n > 400) return false; const s = node.shape || {};
+    if (s.type && !['box', 'quad', 'none'].includes(s.type)) return false;
+    for (const o of [node.position, s.offset, s.settings?.size, s.stretch]) if (o && !(num(o.x) && num(o.y) && num(o.z))) return false;
+    return (node.children || []).every(ok); };
+  return m.nodes.every(ok);
+}

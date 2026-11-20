@@ -7,6 +7,7 @@ const cache = new Map(), once = (k, f) => cache.has(k) ? cache.get(k) : (cache.s
 export const clearCache = () => cache.clear();
 // a custom asset's texture comes from the asset creator (the live canvas while it is being painted), not from the game files
 let customSource = null; export const setCustomSource = f => { customSource = f; };
+let shapeSource = null; export const setShapeSource = f => { shapeSource = f; };   // 'shape:<id>@<version>' -> model JSON
 export function refreshCustom(id) { for (const [k, v] of cache) if (k.startsWith('t:custom:' + id + '@')) v.then(T => { T.mat.map.needsUpdate = true; }, () => {}); }
 export async function bakedCanvas(tex, tint) { const T = await texture(tex, tint), c = document.createElement('canvas'); c.width = T.w; c.height = T.h; c.getContext('2d').drawImage(T.mat.map.image, 0, 0); return c; }
 async function pixels(p) {
@@ -79,7 +80,7 @@ function attach(ns, T, bones, parts) {
 }
 export async function build(skin, R) {
   const list = FIELDS.map(f => [f, R.resolve(f, skin)]).filter(p => p[1]);
-  const loaded = (await Promise.all(list.map(async ([f, r]) => { try { return [f, await game.json(game.common(r.model)), await texture(r.tex, r.tint)]; } catch (e) { console.warn(f, e.message); return null; } }))).filter(Boolean);
+  const loaded = (await Promise.all(list.map(async ([f, r]) => { try { return [f, r.model.startsWith('shape:') ? await shapeSource(r.model.slice(6).split('@')[0]) : await game.json(game.common(r.model)), await texture(r.tex, r.tint)]; } catch (e) { console.warn(f, e.message); return null; } }))).filter(Boolean);
   const root = new THREE.Group(), bones = {}, parts = new Map(), body = loaded.find(l => l[0] === 'bodyCharacteristic');
   if (!body) throw new Error('the body model is missing from the game files');
   for (const n of body[1].nodes) root.add(node(n, body[2], bones, parts));
