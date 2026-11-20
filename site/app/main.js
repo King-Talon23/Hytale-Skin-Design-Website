@@ -318,10 +318,10 @@ function folderRow() {
          btn('Stop', async () => { await store.forgetFolder(); await after(); })]);
 }
 function gameSteps() {   // the path to wearing your skins in Hytale, in order
-  if (!store.folderSupported) return null; const linked = FOLDER.state === 'on', all = linked && SHOWGAME;
+  if (!store.folderSupported) return null; const linked = FOLDER.state === 'on', all = linked && SHOWGAME && !!FOLDER.mod;
   const row = (n, done, title, text, action) => el('li', { class: done ? 'done' : '' }, el('span', { class: 'num', text: done ? '✓' : n }), el('div', {}, el('b', { text: title }), el('small', { text })), done ? null : action);
   return el('details', { class: 'gamesteps', open: !all }, el('summary', { text: all ? 'Wearing your skins in Hytale: all set' : 'Wear your skins in Hytale: 3 steps' }), el('ol', {},
-    row(1, false, 'Get the Skin Editor Sync mod', 'Install it once from CurseForge. It dresses you in game.', modLink('ghost')),
+    row(1, !!FOLDER.mod, 'Get the Skin Editor Sync mod', FOLDER.mod ? `Installed: it last ran on ${FOLDER.mod.seen}.` : 'Install it once from CurseForge. It dresses you in game.', modLink('ghost')),
     row(2, linked, 'Choose a skins folder', 'Pick a "Hytale Skins" folder in Documents. The mod reads it.', linked ? null : el('button', { class: 'btn primary', text: FOLDER.state === 'ask' ? 'Reconnect folder' : 'Choose folder', onclick: guard(async () => { FOLDER.state === 'ask' ? await store.resumeFolder(true) : await store.chooseFolder(); FOLDER = await store.folderState(); await reloadAssets(); await refreshWard(); pushWearing(); }) })),
     row(3, linked && SHOWGAME, 'Switch on "In game"', linked ? 'The switch under the preview. What you wear here, you wear in your worlds.' : 'The switch appears under the preview once a folder is chosen.', el('button', { class: 'btn ghost', text: 'Turn on', disabled: !linked, onclick: () => { if (!SHOWGAME) $('ingame').onclick(); } }))));
 }
@@ -1135,7 +1135,7 @@ function panelCreator() {
           el('button', { class: 'mini', text: 'Copy', title: 'Make a second version to edit', onclick: () => newAsset(f) }))
         : el('button', { class: 'mini primary', text: 'Edit a copy', onclick: () => newAsset(f) })); };
     return [head('Asset Creator'), el('div', { class: 'pbody' },
-      modLink('primary') ? el('div', { class: 'folder modrow' }, el('div', {}, el('b', { text: 'Wear your items in Hytale' }), el('small', { class: 'dim', text: 'Your custom items show in your own worlds with the free Skin Editor Sync mod.' })), modLink('primary')) : null,
+      modLink('primary') && !FOLDER.mod ? el('div', { class: 'folder modrow' }, el('div', {}, el('b', { text: 'Wear your items in Hytale' }), el('small', { class: 'dim', text: 'Your custom items show in your own worlds with the free Skin Editor Sync mod.' })), modLink('primary')) : null,
       el('h3', { text: 'Make your own version of something you wear' }), el('div', { class: 'cards' }, worn.map(tile)), anyItem(),
       el('h3', { text: `My custom assets (${ASSETS.length} / ${assets.MAX})` }),
       ASSETS.length ? el('div', { class: 'cards' }, ASSETS.map(assetCard)) : el('p', { class: 'blank', text: 'None yet. Pick an item above and press Edit a copy.' }))]; }

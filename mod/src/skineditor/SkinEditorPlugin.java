@@ -62,6 +62,7 @@ public final class SkinEditorPlugin extends JavaPlugin {
         "undertop", "overtop", "shoes", "headAccessory", "faceAccessory", "earAccessory", "skinFeature", "gloves", "cape" };
     static final Set<String> SLOTS = Set.of(FIELDS);
     static final String LIVE = "SkinEditor_Live";
+    static final String VERSION = "1.0.1";
 
     record Asset(String id, String field, String model, String texture) {}
     /** what the website says you are wearing */
@@ -73,6 +74,7 @@ public final class SkinEditorPlugin extends JavaPlugin {
     private final Map<UUID, String> dressedWith = new java.util.concurrent.ConcurrentHashMap<>();   // the Wearing.json text last applied
     private final Map<UUID, PlayerSkin> applied = new java.util.concurrent.ConcurrentHashMap<>();   // the plain skin we put on (no custom pieces)
     private volatile String lastSync = "";
+    private volatile String markedOn = "";   // the day the folder marker was last written
 
     public SkinEditorPlugin(JavaPluginInit init) {
         super(init);
@@ -104,6 +106,7 @@ public final class SkinEditorPlugin extends JavaPlugin {
 
     // ------------------------------------------------------------------ once a second
     private void step() {
+        markFolder();
         try { syncAssets(); } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] sync: " + e); }
         try {
             UUID me = localPlayer(); if (me == null) return;
@@ -113,6 +116,14 @@ public final class SkinEditorPlugin extends JavaPlugin {
             World w = ref.getStore().getExternalData().getWorld();
             w.execute(() -> { try { apply(ref.getStore(), ref, me, want, all); } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] could not dress: " + e); } });
         } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] step: " + e); }
+    }
+
+    /** "Skin Editor Sync.json" in the skins folder tells the website this mod is installed and has run (once a day, only if the folder exists) */
+    private void markFolder() {
+        String today = java.time.LocalDate.now().toString(); if (today.equals(markedOn) || skinsDir == null || !Files.isDirectory(skinsDir)) return;
+        String body = "{\n \"format\": \"skin-editor-sync\",\n \"version\": \"" + VERSION + "\",\n \"seen\": \"" + today + "\"\n}\n";
+        try { Files.writeString(skinsDir.resolve("Skin Editor Sync.json"), body); markedOn = today; }
+        catch (Exception e) { getLogger().atWarning().log("[SkinEditor] could not write the folder marker: " + e); markedOn = today; }
     }
 
     /** the account this PC plays as: the newest skin the game cached in UserData/CachedPlayerSkins */

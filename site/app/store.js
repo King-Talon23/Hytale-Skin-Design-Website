@@ -67,6 +67,12 @@ export async function writeWearing(data) {
   if (!dir) return false; const text = JSON.stringify({ format: 'skin-editor-wearing', version: 1, ...data }, null, 1); if (text === lastWearing) return true;
   const w = await (await dir.getFileHandle('Wearing.json', { create: true })).createWritable(); await w.write(text); await w.close(); lastWearing = text; return true;
 }
+// the companion mod writes "<skins folder>/Skin Editor Sync.json" once a day while it runs: { version, seen } when it has, else null
+export async function modSeen() {
+  if (!dir) return null;
+  try { const j = JSON.parse(await (await (await dir.getFileHandle('Skin Editor Sync.json')).getFile()).text());
+    return j && j.format === 'skin-editor-sync' && /^\d{4}-\d{2}-\d{2}$/.test(j.seen) ? { version: String(j.version || '').slice(0, 20), seen: j.seen } : null; } catch { return null; }
+}
 export let lockedOf = () => false;   // set by the page: repaints of edition and reward items, which the mod will not wear
 export const setLockedOf = f => { lockedOf = f; };
 export let keepOwnOf = () => [];   // set by the page: slots holding paid items, which the mod keeps as the player's own
@@ -76,7 +82,8 @@ const safe = n => { let t = String(n).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
 export async function folderState() {
   if (!folderSupported) return { state: 'none' };
   const h = await db.get('meta', 'folder'); if (!h) return { state: 'none' };
-  return { state: dir && (await h.queryPermission({ mode: 'readwrite' })) === 'granted' ? 'on' : 'ask', name: h.name };
+  const on = dir && (await h.queryPermission({ mode: 'readwrite' })) === 'granted';
+  return { state: on ? 'on' : 'ask', name: h.name, mod: on ? await modSeen() : null };   // mod: the companion mod's marker, when it has run
 }
 export async function chooseFolder() { return useFolder(await self.showDirectoryPicker({ id: 'skins', mode: 'readwrite', startIn: 'documents' })); }
 export async function useFolder(h) { await db.put('meta', 'folder', h); dir = h; written.clear(); known.clear(); lastWearing = null; return attach(); }
