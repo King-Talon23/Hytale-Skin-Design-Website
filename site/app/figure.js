@@ -263,7 +263,7 @@ export function stage(canvas, Controls) {
   }
   const api = { isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
     gizmoBusy: () => tc.dragging || tc.axis !== null,
-    orbit(dx, dy) { const off = cam.position.clone().sub(ctl.target), s = new THREE.Spherical().setFromVector3(off); s.theta -= dx * 0.01; s.phi = Math.max(0.05, Math.min(Math.PI - 0.05, s.phi - dy * 0.01)); off.setFromSpherical(s); cam.position.copy(ctl.target).add(off); ctl.update(); },
+    orbit(dx, dy) { const off = cam.position.clone().sub(ctl.target), s = new THREE.Spherical().setFromVector3(off); const k = 2 * Math.PI / Math.max(1, canvas.clientHeight); s.theta -= dx * k; s.phi = Math.max(0.05, Math.min(Math.PI - 0.05, s.phi - dy * k)); off.setFromSpherical(s); cam.position.copy(ctl.target).add(off); ctl.update(); },
     findMesh(keep) { let hit = null; figure?.traverse(o => { if (!hit && o.isMesh && keep(o)) hit = o; }); return hit; },
     setView(name) { const v = VIEWS[name] || VIEWS.persp; cam.position.set(...v); ctl.target.set(0, 62, 0); ctl.update(); },
     highlight(f) { hl = f; drawHL(); },

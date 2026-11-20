@@ -11,7 +11,7 @@ function fromHsl(h, s, l) { const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 
 export const SHAPES = new Set(['line', 'box', 'boxfill']), ONCE = new Set(['pick', 'fill', 'replace']);   // drag-out shapes; tools that act once per click
 
 export function createPainter(canvas, onChange, onPick) {
-  const ctx = canvas.getContext('2d', { willReadFrequently: true }), W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true }), W = canvas.width; let H = canvas.height;
   const undo = [], redo = []; let img = null, base = null, start = null, touched = null, fresh = false, dirty = false, adjFrom = null;
   const copy = () => { const d = ctx.getImageData(0, 0, W, H); return new ImageData(new Uint8ClampedArray(d.data), W, H); };
   function px(x, y) {   // one texel, once per stroke (so lighten, darken and see-through paint do not stack while the pointer rests)
@@ -52,6 +52,13 @@ export function createPainter(canvas, onChange, onPick) {
       line(a, b); show(); },
     end() { if (!img) return; if (dirty) { redo.length = 0; onChange(true); } else undo.pop(); img = null; base = null; touched = null; },
     undo() { swap(undo, redo); }, redo() { swap(redo, undo); },
+    // the texture gets taller: the picture and every undo step keep their pixels where they were, the new rows are empty
+    grow(h2) { const old = copy(); canvas.height = h2; H = h2; ctx.putImageData(old, 0, 0);
+      const pad = im => { const n = new ImageData(W, h2); n.data.set(im.data); return n; }; for (const a of [undo, redo]) a.forEach((im, i) => { a[i] = pad(im); }); if (adjFrom) adjFrom = pad(adjFrom); },
+    // a shape dragged out on the 3D model: the texels under points along the drag, joined where they sit next to each other
+    trace(points, reach) { if (!img) return; fresh = false; img.data.set(base.data); touched.clear(); let prev = null;
+      for (const p of points) { if (!p) { prev = null; continue; } if (prev && Math.abs(prev.x - p.x) + Math.abs(prev.y - p.y) <= reach) line(prev, p); else dot(p.x, p.y); prev = p; }
+      show(); },
     write(fn) { undo.push(copy()); if (undo.length > 40) undo.shift(); redo.length = 0; const d = ctx.getImageData(0, 0, W, H); fn(d.data, W, H); ctx.putImageData(d, 0, 0); onChange(true); },   // copy-paste and box paint areas
     replace(source) { undo.push(copy()); redo.length = 0; ctx.clearRect(0, 0, W, H); ctx.drawImage(source, 0, 0, W, H); onChange(true); },
     // recolour the whole item: hue in degrees, saturation and brightness from -1 to 1. Previews from the picture as it was when the sliders were first moved.
