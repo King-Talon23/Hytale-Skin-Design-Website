@@ -11,6 +11,7 @@ Not affiliated with or endorsed by Hypixel Studios. Hytale is a trademark of Hyp
   - `app/zip.js` reads single files out of the zip in place; `app/game.js` imports and serves the game files from IndexedDB.
   - `app/skin.js` skin format and rules; `app/figure.js` 3D build, thumbnails and the animation player; `app/store.js` the wardrobe
     (5 in-game slots, 45 custom skins); `app/main.js` the interface.
+  - `app/icons.js` category symbols from Tabler Icons 3.19.0 (MIT).
   - `vendor/` three.js 0.160.0 (MIT), pinned; `fonts/` Lexend and Nunito Sans (OFL); hashes in `vendor/SHA256SUMS`.
   - `_headers` the security headers (Cloudflare Pages format).
 - `functions/api/` the published-skins API (Cloudflare Pages Functions), `lib/api.js` its shared code. Database: Cloudflare D1

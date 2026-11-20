@@ -6,6 +6,7 @@ import * as store from './store.js';
 import * as auth from './auth.js';
 import * as assets from './assets.js';
 import { createPainter, SHAPES, ONCE } from './paint.js';
+import { icon as catIcon } from './icons.js';
 import { rules, sanitize, cleanName, parse, nice, LABEL, GROUPS, REQUIRED } from './skin.js';
 
 const $ = id => document.getElementById(id);
@@ -374,13 +375,11 @@ let animGroup = 'Emote';
 // the move groups as locker tiles: the game's 16 folders folded into a few, each tile showing its signature move
 const CATS = [['Emote', ['Emote']], ['Moves', ['Default']], ['Poses', ['Poses']], ['Taunt', ['Taunt']], ['Flavor', ['Flavor']], ['Faces', ['Expressions']],
   ['Travel', ['Fly', 'Glide', 'Dash', 'Roll', 'Slide', 'Swim', 'Climb', 'Mantle']], ['Mount', ['Mount']]];
-const SIGNATURE = { Moves: ['Default', 'Run'], Travel: ['Fly', 'Fly_Fast'], Mount: ['Mount', 'Mount_Idle'] };
 function animCats() {
   const have = g => (CAT.anims[g] || []).length, out = CATS.map(([k, gs]) => [k, gs.filter(have)]).filter(([, gs]) => gs.length);
   const used = new Set(out.flatMap(c => c[1])); for (const g of Object.keys(CAT.anims)) if (!used.has(g) && have(g)) out.push([nice(g), [g]]);
   return out;
 }
-function catThumb(k, gs) { const s = SIGNATURE[k], ok = s && (CAT.anims[s[0]] || []).includes(s[1]); return ok ? animThumb(s[0], s[1]) : animThumb(gs[0], CAT.anims[gs[0]][0]); }
 function panelAnimations() {
   const cats = animCats(); if (!cats.some(c => c[0] === animGroup)) animGroup = cats[0][0];
   const gs = cats.find(c => c[0] === animGroup)[1], A = st.anim, count = list => list.reduce((t, g) => t + CAT.anims[g].length, 0);
@@ -388,11 +387,9 @@ function panelAnimations() {
     return el('button', { class: A.anim && playing.group === g && playing.name === n ? 'on' : '', title: nice(n), onclick: () => playAnim(g, n) }, animThumb(g, n), el('span', { text: nice(n) }),
       el('i', { class: 'star' + (pinned ? ' on' : ''), title: pinned ? 'Remove from quick slots' : 'Add to quick slots', text: pinned ? '★' : '☆', onclick: e => { e.stopPropagation(); toggleEmote(g, n); render(); } })); };
   return [head('Animations'), el('div', { class: 'pbody' },
-    el('div', { class: 'now' }, el('b', { text: A.anim ? nice(playing.name) : 'Rest pose' }),
-      el('button', { class: 'btn ghost', text: A.playing ? 'Pause' : 'Play', onclick: () => { A.playing = !A.playing; render(); } }),
-      el('button', { class: 'btn ghost', text: 'Rest pose', onclick: () => { A.set(null); setMount(null); st.hover(0); render(); } })),
+    el('div', { class: 'now' }, el('b', { text: A.anim ? nice(playing.name) : 'Rest pose' })),
     el('div', { class: 'cattiles' }, cats.map(([k, list]) => el('button', { class: 'cattile' + (k === animGroup ? ' on' : ''), onclick: () => { animGroup = k; render(); } },
-      catThumb(k, list), el('b', { text: k }), el('small', { text: String(count(list)) })))),
+      catIcon(k), el('b', { text: k }), el('small', { text: String(count(list)) })))),
     animGroup === 'Mount' ? el('div', { class: 'options' }, el('b', { class: 'dim', text: 'Ride:' }), Object.keys(MOUNTS).map(k => el('button', { class: 'chip' + (k === mountKind ? ' on' : ''), text: k,
       onclick: () => { mountKind = k; if (playing.group === 'Mount' && A.anim) playAnim('Mount', playing.name); else render(); } }))) : null,
     animGroup === 'Mount' && mountMsg ? el('div', { class: 'row' }, el('p', { class: 'need', text: mountMsg }), el('button', { class: 'btn ghost', text: 'Refresh game files', onclick: () => showConnect() })) : null,

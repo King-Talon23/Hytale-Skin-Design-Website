@@ -240,7 +240,8 @@ input[type=color] { width: 46px; height: 38px; padding: 2px; background: #0d1826
 .now { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; } .now b { flex: 1; font: 700 16px var(--h); }
 .cattiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 4px 0 10px; }
 .cattile { position: relative; display: flex; flex-direction: column; align-items: center; padding: 4px 4px 6px; background: linear-gradient(#1f3858, #13243a); border: 1px solid #33557f; border-bottom: 3px solid #0a1422; border-radius: 4px; color: #dce8eb; }
-.cattile img { width: 56px; height: 56px; image-rendering: pixelated; display: block; }
+.cattile svg { width: 30px; height: 30px; display: block; margin: 8px 0 4px; color: #9fc1e8; }
+.cattile.on svg { color: var(--gold); }
 .cattile b { font: 700 12px var(--h); text-transform: uppercase; letter-spacing: .06em; margin-top: 2px; }
 .cattile small { position: absolute; top: 3px; right: 5px; font: 700 10px var(--h); color: #7f97b5; }
 .cattile:hover { border-color: var(--line2); }
