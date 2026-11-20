@@ -7,7 +7,8 @@ import * as auth from './auth.js';
 import * as assets from './assets.js';
 import { createPainter, SHAPES, ONCE } from './paint.js';
 import { icon as catIcon } from './icons.js';
-import { SUPPORT_URL } from './config.js';
+import { SUPPORT_URL, MOD_URL } from './config.js';
+const modLink = cls => /^https:\/\/(www\.)?curseforge\.com\/hytale\/[a-z-]+\/[a-z0-9-]{2,80}$/.test(MOD_URL) ? el('a', { class: 'btn ' + cls, href: MOD_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Get the mod' }) : null;
 // the footer's support link: only a Ko-fi page, and only when one is set
 if (/^https:\/\/ko-fi\.com\/[A-Za-z0-9_]{2,60}$/.test(SUPPORT_URL)) { const a = document.getElementById('support'); if (a) { a.href = SUPPORT_URL; a.hidden = false; document.getElementById('supportdot').hidden = false; } }
 import { rules, sanitize, cleanName, parse, nice, LABEL, GROUPS, REQUIRED } from './skin.js';
@@ -305,7 +306,7 @@ function folderRow() {
   const [title, text] = FOLDER.state === 'on' ? ['Saving to folder: ' + FOLDER.name, 'Every skin and custom asset is a small file in this folder and updates as you edit.']
     : FOLDER.state === 'ask' ? ['Folder paused: ' + FOLDER.name, 'Your browser needs your OK again before it can write to the folder. Until then, changes are kept in the browser.']
     : ['Save skins to a folder', 'Pick a folder on your computer, for example a "Hytale Skins" folder in Documents. Each skin becomes a small file there and updates as you edit.'];
-  return el('div', { class: 'folder ' + FOLDER.state }, el('div', {}, el('b', { text: title })),
+  return el('div', { class: 'folder ' + FOLDER.state }, el('div', {}, el('b', { text: title })), modLink('ghost'),
     FOLDER.state === 'none' ? btn('Choose folder', async () => after(await store.chooseFolder()), 'primary')
       : [FOLDER.state === 'ask' ? btn('Reconnect', async () => after(await store.resumeFolder(true)), 'primary') : btn('Change', async () => after(await store.chooseFolder())),
          btn('Stop', async () => { await store.forgetFolder(); await after(); })]);
@@ -443,6 +444,7 @@ function panelHelp() {
     sec('Game files', META ? `Connected: ${META.name}, ${META.files} character files, read on ${new Date(META.at).toLocaleDateString()}.` : 'Not connected yet.',
       el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Connect again', onclick: showConnect }),
         el('button', { class: 'btn danger', text: 'Forget game files', onclick: guard(async () => { if (!await confirmBox('Forget game files', 'Removes the copy of your game files from this browser. Your saved skins stay.', 'Forget', true)) return; await game.forget(); R = null; pics.clear(); fig.clearCache(); showConnect(); }) }))),
+    MOD_URL ? sec('Skin Editor mod', 'Wear what you design in your own worlds: install the mod, pick a skins folder in the Locker, then turn on In game.', el('div', { class: 'row' }, modLink('primary'))) : null,
     sec('Backup', 'Keep a backup file if you have not picked a skins folder in the Locker.',
       el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Download backup', onclick: guard(async () => download('skin-editor-backup.json', await store.exportAll())) }), el('label', { class: 'btn ghost' }, 'Restore backup', backupFile))),
     el('p', {}, el('a', { href: '/privacy', text: 'Privacy: what the site keeps and how to delete it' })))];
