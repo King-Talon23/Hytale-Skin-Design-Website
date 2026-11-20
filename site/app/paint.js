@@ -32,9 +32,10 @@ export function createPainter(canvas, onChange, onPick) {
   const colourAt = (d, i) => [d[i], d[i + 1], d[i + 2], d[i + 3]], is = (d, i, c) => d[i] === c[0] && d[i + 1] === c[1] && d[i + 2] === c[2] && d[i + 3] === c[3];
   function flood(x, y) {   // fills the connected area of one exact colour
     const d = img.data, at = (X, Y) => (Y * W + X) * 4, from = colourAt(d, at(x, y)), [r, g, b] = rgb(P.color); if (is(d, at(x, y), [r, g, b, 255])) return;
-    const stack = [[x, y]];
-    while (stack.length) { const [X, Y] = stack.pop(); if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const i = at(X, Y); if (!is(d, i, from)) continue;
-      if (P.inside && P.mask && !P.mask[i / 4]) continue;
+    const tol = P.tolerance * 3, near = i => from[3] ? d[i + 3] && Math.abs(d[i] - from[0]) + Math.abs(d[i + 1] - from[1]) + Math.abs(d[i + 2] - from[2]) <= tol : !d[i + 3];
+    const seen = new Uint8Array(W * H), stack = [[x, y]];
+    while (stack.length) { const [X, Y] = stack.pop(); if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const k = Y * W + X, i = k * 4; if (seen[k] || !near(i)) continue; seen[k] = 1;
+      if (P.inside && P.mask && !P.mask[k]) continue;
       d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 255; stack.push([X + 1, Y], [X - 1, Y], [X, Y + 1], [X, Y - 1]); }
   }
   function replaceAll(x, y) {   // every texel of the clicked colour, wherever it is on the texture
@@ -43,7 +44,7 @@ export function createPainter(canvas, onChange, onPick) {
   }
   const show = () => { ctx.putImageData(img, 0, 0); dirty = true; onChange(false); };
   function swap(from, to) { if (!from.length) return; to.push(copy()); ctx.putImageData(from.pop(), 0, 0); onChange(true); }
-  const P = { tool: 'brush', size: 1, color: '#e0b050', opacity: 1, inside: true, mask: null,
+  const P = { tool: 'brush', size: 1, color: '#e0b050', opacity: 1, inside: true, mask: null, tolerance: 24,   // tolerance: how far a colour may differ (0-100) and still count as the same for Fill
     begin() { img = ctx.getImageData(0, 0, W, H); base = new ImageData(new Uint8ClampedArray(img.data), W, H); undo.push(base); if (undo.length > 40) undo.shift(); touched = new Set(); fresh = true; dirty = false; start = null; },
     stroke(a, b) { if (!img) return; const first = fresh, t = P.tool; fresh = false; if (first) start = a;
       if (t === 'pick') { if (first) { const i = (b.y * W + b.x) * 4, d = img.data; if (d[i + 3]) { P.color = hex(d[i], d[i + 1], d[i + 2]); onPick && onPick(); } } return; }

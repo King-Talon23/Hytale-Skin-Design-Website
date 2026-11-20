@@ -171,7 +171,7 @@ export function stage(canvas, Controls) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   const scene = new THREE.Scene(); lights(scene);
   const cam = new THREE.PerspectiveCamera(32, 1, 1, 2000); cam.position.set(-75, 95, 255);
-  const ctl = new Controls(cam, canvas); ctl.target.set(0, 62, 0); ctl.enablePan = false; ctl.minDistance = 90; ctl.maxDistance = 480; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
+  const ctl = new Controls(cam, canvas); ctl.target.set(0, 62, 0); ctl.enablePan = false; ctl.zoomToCursor = true; ctl.minDistance = 40; ctl.maxDistance = 480; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
   const disc = new THREE.Mesh(new THREE.CircleGeometry(58, 48), new THREE.MeshBasicMaterial({ color: 0x0b1626, transparent: true, opacity: 0.55 })); disc.rotation.x = -Math.PI / 2; disc.position.y = -0.2; scene.add(disc);
   const CELL = 32, grid = new THREE.GridHelper(CELL * 40, 40, 0x4a76ad, 0x33557f); grid.material.transparent = true; grid.material.opacity = 0; grid.material.depthWrite = false; scene.add(grid);
   const vel = new THREE.Vector2(), want = new THREE.Vector2();
@@ -214,7 +214,7 @@ export function stage(canvas, Controls) {
     const p = texel(image); if (!p || !mirror) return p;
     ray.ray.origin.x *= -1; ray.ray.direction.x *= -1; p.m = texel(image); return p; }   // the same ray flipped left to right lands on the matching spot of the other side
   // while painting, the left button paints and the right button turns the view
-  function paintMode(on) { ctl.mouseButtons.LEFT = on ? -1 : THREE.MOUSE.ROTATE; ctl.mouseButtons.RIGHT = THREE.MOUSE.ROTATE; ctl.touches.ONE = on ? -1 : THREE.TOUCH.ROTATE; canvas.style.cursor = on ? 'crosshair' : ''; }
+  function paintMode(on) { ctl.maxPolarAngle = on ? Math.PI * 0.97 : Math.PI * 0.55; ctl.mouseButtons.LEFT = on ? -1 : THREE.MOUSE.ROTATE; ctl.mouseButtons.RIGHT = THREE.MOUSE.ROTATE; ctl.touches.ONE = on ? -1 : THREE.TOUCH.ROTATE; canvas.style.cursor = on ? 'crosshair' : ''; }
   // the box under a screen point (first hit that passes the filter), and outlines around the boxes a filter picks
   // the picked box glows (its own copy of the material, lit gold) as well as getting an outline
   let lit = []; const glow = new Map();
@@ -263,6 +263,11 @@ export function stage(canvas, Controls) {
   }
   const api = { isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
     gizmoBusy: () => tc.dragging || tc.axis !== null,
+    frameOn(img) {   // turn the view on the parts painted with this texture, close enough to fill the view
+      if (!figure || !img) return; const box = new THREE.Box3(); figure.updateMatrixWorld(true);
+      figure.traverse(o => { if (o.isMesh && (o.userData.realMat || o.material)?.map?.image === img) box.expandByObject(o); }); if (box.isEmpty()) return;
+      const c = box.getCenter(new THREE.Vector3()), r = Math.max(14, box.getSize(new THREE.Vector3()).length() / 2), dir = cam.position.clone().sub(ctl.target).normalize();
+      ctl.target.copy(c); cam.position.copy(c).add(dir.multiplyScalar(Math.min(ctl.maxDistance, Math.max(ctl.minDistance, r / Math.tan(cam.fov * Math.PI / 360) * 1.15)))); ctl.update(); },
     orbit(dx, dy) { const off = cam.position.clone().sub(ctl.target), s = new THREE.Spherical().setFromVector3(off); const k = 2 * Math.PI / Math.max(1, canvas.clientHeight); s.theta -= dx * k; s.phi = Math.max(0.05, Math.min(Math.PI - 0.05, s.phi - dy * k)); off.setFromSpherical(s); cam.position.copy(ctl.target).add(off); ctl.update(); },
     findMesh(keep) { let hit = null; figure?.traverse(o => { if (!hit && o.isMesh && keep(o)) hit = o; }); return hit; },
     setView(name) { const v = VIEWS[name] || VIEWS.persp; cam.position.set(...v); ctl.target.set(0, 62, 0); ctl.update(); },
