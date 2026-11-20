@@ -129,6 +129,12 @@ function render() { jobGen++; plate(); const p = $('panel'), was = p.className, 
 // our own small symbols for the category rail (drawn here, not taken from the game)
 const ICON = { Head: 'M6 3h12v13H6zM9 8v3h2V8zM13 8v3h2V8zM9 17h6v4H9z', Body: 'M9 2h6v6H9zM7 9h10v8H7zM3 9h3v8H3zM18 9h3v8h-3zM8 18h3v4H8zM13 18h3v4h-3z',
   Torso: 'M8 3l4 2 4-2 5 3-2 4-2-1v12H7V9l-2 1-2-4z', Legs: 'M6 3h12l1 18h-5l-2-11-2 11H5z', Capes: 'M8 3h8l4 18-4-2-4 2-4-2-4 2z' };
+const SLOT_ICON = { haircut: 'M5 13V8l2-4 3 2 2-3 2 3 3-2 2 4v5h-3V9H8v4z', eyebrows: 'M3 11l7-3 1 2-7 3zM21 11l-7-3-1 2 7 3z', eyes: 'M3 8h8v8H3zM13 8h8v8h-8zM6 11v3h3v-3zM15 11v3h3v-3z',
+  facialHair: 'M5 5h3v6h8V5h3v10l-4 5H9l-4-5z', headAccessory: 'M7 6h10v8h5v3H2v-3h5z', faceAccessory: 'M2 9h9v6H2zM13 9h9v6h-9zM4 11v2h5v-2zM15 11v2h5v-2z',
+  earAccessory: 'M11 2h2v5h-2zM7 13a5 5 0 1 0 10 0a5 5 0 1 0-10 0zM10 13a2 2 0 1 1 4 0a2 2 0 1 1-4 0z', bodyCharacteristic: ICON.Body, face: 'M5 4h14v16H5zM8 9v3h2V9zM14 9v3h2V9zM9 15v2h6v-2z',
+  mouth: 'M3 9h18v3l-3 5H6l-3-5zM6 12v1h12v-1z', ears: 'M8 20V9l10-6-3 9v8z', skinFeature: 'M5 6h3v3H5zM14 4h3v3h-3zM10 11h3v3h-3zM17 12h3v3h-3zM5 15h3v3H5zM13 18h3v3h-3z',
+  underwear: 'M4 6h16v6l-6 6h-4l-6-6z', undertop: ICON.Torso, overtop: 'M8 3l4 3 4-3 5 3-2 4-2-1v12h-4V8l-1 1-1-1v13H7V9l-2 1-2-4z', gloves: 'M7 21v-8L5 9l2-1 2 3V4h2v6h1V3h2v7h1V5h2v9l-2 7z',
+  pants: ICON.Legs, overpants: 'M9 3h7v10l4 4v4H9z', shoes: 'M6 4h7v9l7 3v5H6z', cape: ICON.Capes };
 function icon(d) { const NS = 'http://www.w3.org/2000/svg', s = document.createElementNS(NS, 'svg'), p = document.createElementNS(NS, 'path');
   s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true'); p.setAttribute('d', d); p.setAttribute('fill-rule', 'evenodd'); s.append(p); return s; }
 const head = (title, right) => el('div', { class: 'phead' }, el('h2', { text: title }), right);
@@ -138,7 +144,7 @@ function panelEditor() {
   const it = R.find(slot, cur.skin[slot]), { color, variant } = parse(cur.skin[slot]);
   const change = (item, c, v) => setSkin({ ...cur.skin, [slot]: R.partStr(item, c, v) });
   const rail = el('div', { class: 'rail' }, GROUPS.map(([g]) => el('button', { class: g === group ? 'on' : '', onclick: () => { group = g; filter = ''; render(); } }, icon(ICON[g]), el('span', { text: g }))));
-  const sub = el('div', { class: 'rail sub' }, fields.map(f => el('button', { class: f === slot ? 'on' : '', onclick: () => { slot = f; filter = ''; render(); } }, el('span', { text: LABEL[f] }), el('small', { text: cur.skin[f] ? nice(parse(cur.skin[f]).id) : 'None' }))));
+  const sub = el('div', { class: 'rail sub' }, fields.map(f => el('button', { class: f === slot ? 'on' : '', onclick: () => { slot = f; filter = ''; render(); } }, icon(SLOT_ICON[f]), el('div', {}, el('span', { text: LABEL[f] }), el('small', { text: cur.skin[f] ? nice(parse(cur.skin[f]).id) : 'None' })))));
   const q = filter.toLowerCase(), items = R.ITEMS[slot].filter(e => nice(e.Id).toLowerCase().includes(q));
   const grid = el('div', { class: 'grid' },
     REQUIRED.has(slot) ? null : el('button', { class: 'tile none' + (!it ? ' on' : ''), title: 'None', onclick: () => change(null), ...hover(null) }, el('span', { text: '✕' })),
