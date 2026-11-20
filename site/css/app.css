@@ -37,11 +37,13 @@ nav button.on::after { content: ''; position: absolute; left: 50%; bottom: 0; wi
 .conn.ok { color: var(--text); }
 
 /* buttons */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 0 18px; border-radius: 3px; border: 1px solid var(--line2); font-size: 13px; font-weight: 700; color: #eaf2f7; background: linear-gradient(#263f5f, #1b2e48); box-shadow: inset 0 1px 0 #ffffff1c, 0 2px 0 #0006; white-space: nowrap; }
+.btn { --bd: var(--line2); --fill: linear-gradient(#263f5f, #1b2e48); --cut: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+  position: relative; isolation: isolate; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 0 18px; border: 0; font-size: 13px; font-weight: 700; color: #eaf2f7; background: var(--bd); clip-path: var(--cut); white-space: nowrap; }
+.btn::before { content: ''; position: absolute; inset: 1.5px; z-index: -1; background: var(--fill); clip-path: var(--cut); }
 .btn:hover { filter: brightness(1.15); }
 .btn:disabled { opacity: .4; cursor: default; filter: none; }
-.btn.primary { background: linear-gradient(var(--blue), var(--blue2)); border-color: #86abef; }
-.btn.danger { background: linear-gradient(#8d3b33, #6a2a25); border-color: #c0695f; }
+.btn.primary { --fill: linear-gradient(var(--blue), var(--blue2)); --bd: #86abef; }
+.btn.danger { --fill: linear-gradient(#8d3b33, #6a2a25); --bd: #c0695f; }
 .btn.big { min-height: 48px; padding: 0 26px; font-size: 15px; }
 .btn.icon { padding: 0; width: 38px; font-size: 20px; }
 input[type=text], input[type=search], select { width: 100%; background: #0d1826; border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; min-height: 38px; }
@@ -59,7 +61,8 @@ label.btn { margin: 0; color: #eaf2f7; cursor: pointer; }
 .hero { max-width: 760px; }
 .lead { font-size: 17px; color: #c5d6e2; margin: 0 0 28px; }
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-.card { background: linear-gradient(var(--panel2), var(--panel)); border: 1px solid var(--line); border-radius: 4px; padding: 18px; box-shadow: inset 0 1px 0 #ffffff12, 0 6px 22px #0006; }
+.framed, .card, .panel, dialog { border: 9px solid transparent; border-image: url(../img/frame.svg) 20 fill / 20px stretch; background: none; border-radius: 0; filter: drop-shadow(0 8px 18px #0008); }
+.card { padding: 12px; }
 .step { position: relative; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .step h3 { margin: 0; font-size: 15px; }
 .step p { margin: 0; color: #c5d6e2; font-size: 14.5px; }
@@ -76,7 +79,9 @@ code { display: block; width: 100%; background: #0a131f; border: 1px solid var(-
 /* app */
 main { min-height: 0; }
 #app { display: grid; grid-template-columns: minmax(420px, 640px) 1fr; gap: 18px; height: 100%; padding: 18px 22px; min-height: 0; }
-.panel { display: flex; flex-direction: column; min-height: 0; background: #101d2ff2; border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 0 0 1px #0a121d, 0 10px 34px #0009; overflow: hidden; }
+.panel { position: relative; display: flex; flex-direction: column; min-height: 0; margin: 10px 0; }
+.panel::before, .panel::after { content: ''; position: absolute; left: 50%; width: 180px; height: 24px; margin-left: -90px; background: url(../img/stud.svg) center / contain no-repeat; pointer-events: none; z-index: 1; }
+.panel::before { top: -20px; } .panel::after { bottom: -20px; }
 .phead { background: linear-gradient(#274a7a, var(--head)); border-bottom: 1px solid var(--line2); padding: 9px 14px; text-align: center; box-shadow: inset 0 1px 0 #ffffff22; }
 .phead h2 { margin: 0; font-size: 14px; font-weight: 800; letter-spacing: .1em; }
 .pbody { flex: 1; overflow: auto; padding: 14px 16px 18px; min-width: 0; scrollbar-color: var(--line2) transparent; }
@@ -146,7 +151,7 @@ main { min-height: 0; }
 .prose p { margin: 0 0 10px; color: #c5d6e2; max-width: 62ch; }
 
 /* dialog, drop, footer */
-dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line2); border-radius: 4px; padding: 0; width: min(520px, 92vw); max-height: 86vh; box-shadow: 0 20px 60px #000c; }
+dialog { color: var(--text); padding: 0; width: min(520px, 92vw); max-height: 86vh; }
 dialog::backdrop { background: #050a12c0; }
 dialog form { display: flex; flex-direction: column; max-height: 86vh; }
 dialog h3 { margin: 0; padding: 11px 16px; background: linear-gradient(#274a7a, var(--head)); border-bottom: 1px solid var(--line2); font-size: 14px; }
