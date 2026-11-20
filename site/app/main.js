@@ -530,7 +530,7 @@ function assetCard(a) {
   return el('div', { class: 'skin asset' + (worn ? ' on' : ''), tabIndex: 0, title: 'Open in the creator', onclick: guard(() => openAsset(a)) },
     el('div', { class: 'pic tex' }, assetPicture(a)), el('b', { text: a.name }), el('small', { text: modReady(a) ? LABEL[a.field] : a.flag ? 'Too close to ' + a.flag : 'Paid item: site only' }),
     el('div', { class: 'acts' }, act(worn ? 'Wearing' : 'Wear', () => setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' })),
-      modReady(a) ? act('Export', () => downloadBlob(a.name.replace(/[^\w -]/g, '') + '.png', a.data)) : null,
+
       act('Delete', guard(async () => { if (!await confirmBox('Delete custom asset', `Delete "${a.name}"? Skins wearing it lose that part. This cannot be undone.`, 'Delete', true)) return;
         await assets.remove(a.id); ASSETS = await assets.list(); syncFolder(); registerAssets(); cur.skin = R.fit(cur.skin); pics.clear(); rebuild(); render(); }), 'danger')));
 }
@@ -652,8 +652,6 @@ const resetShape = guard(async () => { if (!await confirmBox('Reset shape', 'Go 
 function renderWorkspace() {
   const P = ED.painter, a = ED.asset, c = ED.canvas, mode = ED.mode || 'paint'; ED.shapeOpen = mode === 'shape';
   const tools = mode === 'paint' ? PAINT_TOOLS : SHAPE_TOOLS, active = mode === 'paint' ? P.tool : ED.stool || 'select';
-  const file = el('input', { type: 'file', accept: 'image/png', hidden: true, onchange: guard(async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; if (f.size > 2_000_000) throw new Error('That image is too large.');
-    const bmp = await createImageBitmap(f); if (bmp.width !== c.width || bmp.height !== c.height) throw new Error(`The image must be ${c.width} by ${c.height} pixels, the size of this texture.`); P.replace(bmp); ED.palette = P.palette(); render(); await checkReplica(); }) });
   $('wstop').replaceChildren(...[
     el('input', { type: 'text', class: 'wsname', value: a.name, maxLength: 40, title: 'Name', onchange: e => { ED.asset = { ...ED.asset, name: cleanName(e.target.value) || a.name }; queueAssetSave(); } }),
     el('div', { class: 'wsmodes' }, [['paint', 'Paint'], ['shape', 'Shape']].map(([m, t]) => el('button', { class: mode === m ? 'on' : '', text: t, title: 'Tab switches', onclick: guard(() => setMode(m)) }))),
@@ -667,7 +665,6 @@ function renderWorkspace() {
   $('wsleft').replaceChildren(el('div', { class: 'wshead', text: 'Texture' }), el('div', { class: 'paintbox' }, el('div', { class: 'paintwrap' }, c, limits(c))),
     el('div', { class: 'row' }, el('button', { class: 'btn icon', text: '−', title: 'Zoom out', onclick: () => { ED.zoom = Math.max(1, ED.zoom - 1); render(); } }), el('button', { class: 'btn icon', text: '+', title: 'Zoom in', onclick: () => { ED.zoom = Math.min(16, ED.zoom + 1); render(); } }),
       ED.rects.length ? el('button', { class: 'chip' + (P.inside ? ' on' : ''), text: `Inside only: ${P.inside ? 'on' : 'off'}`, title: 'Only paint the parts of the texture the model shows', onclick: () => { P.inside = !P.inside; render(); } }) : null),
-    el('div', { class: 'row' }, el('label', { class: 'btn ghost' }, 'Import PNG', file), modReady(a) ? el('button', { class: 'btn ghost', text: 'Export PNG', onclick: () => c.toBlob(b => downloadBlob(a.name.replace(/[^\w -]/g, '') + '.png', b), 'image/png') }) : null),
     el('p', { class: 'need', text: 'Shows in Hytale in your own worlds with the Skin Editor mod and In game on. Repaints of paid items stay on this site.' }));
   $('wsright').replaceChildren(...(mode === 'paint' ? paintSide() : shapeSide()));
   $('viewbtns').replaceChildren(...[['front', 'Front', '1'], ['side', 'Side', '3'], ['top', 'Top', '7'], ['persp', 'Persp', '5']].map(([v, t, k]) => el('button', { text: t, title: `${t} view (${k})`, onclick: () => st.setView(v) })));
