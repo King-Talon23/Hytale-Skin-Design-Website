@@ -531,6 +531,14 @@ function maskFromRects() { const c = ED.canvas, m = new Uint8Array(c.width * c.h
 function outlineBox() {   // the selected box, outlined on the model while the shape tools are open
   if (!st) return; if (!ED || !ED.shapeOpen || !ED.model) return st.highlight(null);
   const b = boxesOf(ED.model)[ED.box || 0]; st.highlight(b ? o => o.material?.map?.image === ED.canvas && o.userData.nodeName === b.node.name : null); }
+// turning a box: its node's orientation as X/Y/Z degrees (applied X, then Y, then Z, as the 3D view does)
+const D2R = Math.PI / 180;
+function toEuler(q) { const { x = 0, y = 0, z = 0, w = 1 } = q || {};
+  const m11 = 1 - 2 * (y * y + z * z), m12 = 2 * (x * y - w * z), m13 = 2 * (x * z + w * y), m22 = 1 - 2 * (x * x + z * z), m23 = 2 * (y * z - w * x), m32 = 2 * (y * z + w * x), m33 = 1 - 2 * (x * x + y * y);
+  const ey = Math.asin(Math.max(-1, Math.min(1, m13))), far = Math.abs(m13) > 0.9999999;
+  return [far ? Math.atan2(m32, m22) : Math.atan2(-m23, m33), ey, far ? 0 : Math.atan2(-m12, m11)].map(r => Math.round(r / D2R * 10) / 10); }
+function toQuat(dx, dy, dz) { const [c1, c2, c3] = [dx, dy, dz].map(d => Math.cos(d * D2R / 2)), [s1, s2, s3] = [dx, dy, dz].map(d => Math.sin(d * D2R / 2)), r = v => Math.round(v * 1e6) / 1e6;
+  return { x: r(s1 * c2 * c3 + c1 * s2 * s3), y: r(c1 * s2 * c3 - s1 * c2 * s3), z: r(c1 * c2 * s3 + s1 * s2 * c3), w: r(c1 * c2 * c3 - s1 * s2 * s3) }; }
 function shapePanel() {
   if (!ED.shapeOpen) return el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Edit shape', onclick: guard(async () => { await editModel(); ED.shapeOpen = true; ED.box = 0; render(); }) }));
   const boxes = boxesOf(ED.model), i = Math.min(ED.box || 0, boxes.length - 1), b = boxes[i], sh = b.node.shape;
@@ -550,6 +558,10 @@ function shapePanel() {
     el('div', { class: 'nums' }, el('b', { text: 'Size' }), num('W', sh.settings, 'size', 'x', 0, 64), num('H', sh.settings, 'size', 'y', 0, 64), num('D', sh.settings, 'size', 'z', 0, 64)),
     el('div', { class: 'nums' }, el('b', { text: 'Move' }), num('X', sh, 'offset', 'x', -64, 64), num('Y', sh, 'offset', 'y', -64, 64), num('Z', sh, 'offset', 'z', -64, 64)),
     el('div', { class: 'options' }, nudge('x', -1), nudge('x', 1), nudge('y', -1), nudge('y', 1), nudge('z', -1), nudge('z', 1)),
+    el('div', { class: 'nums' }, el('b', { text: 'Turn' }), ...['X', 'Y', 'Z'].map((ax, k) => el('label', { class: 'numfield' }, el('span', { text: ax }),
+      el('input', { type: 'number', step: 15, min: -180, max: 180, value: toEuler(b.node.orientation)[k], onchange: e => { const d = toEuler(b.node.orientation); d[k] = Math.max(-180, Math.min(180, Number(e.target.value) || 0)); b.node.orientation = toQuat(...d); shapeChanged(); } })))),
+    el('div', { class: 'options' }, ...['x', 'y', 'z'].flatMap((ax, k) => [-15, 15].map(st => el('button', { class: 'chip', text: (st > 0 ? '↻' : '↺') + ax + ' 15°',
+      onclick: () => { const d = toEuler(b.node.orientation); d[k] = ((d[k] + st + 540) % 360) - 180; b.node.orientation = toQuat(...d); shapeChanged(); } })))),
     el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Reset shape', onclick: reset }), el('button', { class: 'btn ghost', text: 'Close shape', onclick: () => { ED.shapeOpen = false; render(); } })),
     el('p', { class: 'need', text: 'Click a box on the model to pick it. Right-drag turns the model.' }));
 }

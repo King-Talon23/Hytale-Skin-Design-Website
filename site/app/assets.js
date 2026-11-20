@@ -26,6 +26,7 @@ export function okShape(t) {   // a blockymodel this site wrote: small, parseabl
   const ok = node => { if (!node || typeof node.name !== 'string' || node.name.length > 64 || ++n > 400) return false; const s = node.shape || {};
     if (s.type && !['box', 'quad', 'none'].includes(s.type)) return false;
     for (const o of [node.position, s.offset, s.settings?.size, s.stretch]) if (o && !(num(o.x) && num(o.y) && num(o.z))) return false;
+    const q = node.orientation; if (q && ![q.x, q.y, q.z, q.w].every(v => v == null || (typeof v === 'number' && Math.abs(v) <= 1.0001))) return false;
     return (node.children || []).every(ok); };
   return m.nodes.every(ok);
 }
