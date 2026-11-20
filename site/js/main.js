@@ -179,23 +179,23 @@ const locked = (label, feature, cls = 'btn ghost') => el('button', { class: cls 
 const need = feature => el('p', { class: 'need', text: NEED(feature) + '.' });
 function accountRow() {
   if (!auth.enabled) return el('div', { class: 'folder account' }, el('div', {}, el('b', {}, 'Hytale account ', el('span', { class: 'tag none', text: 'WIP' })),
-    el('small', { text: 'Sign in with Hytale is not available yet. The greyed-out buttons across the site turn on when it is.' })),
+    ),
     el('button', { class: 'btn primary locked', disabled: true, title: 'Coming soon', text: 'Connect Hytale account' }));
   if (!ACCOUNT) return el('div', { class: 'folder account' }, el('div', {}, el('b', { text: 'Hytale account' }),
-    el('small', { text: 'Sign in on Hytale’s own page to show your equipped skin without typing your name. The site receives only the game profile you pick (username and ID) and keeps it in this browser.' })),
+    ),
     el('button', { class: 'btn primary', text: 'Connect Hytale account', onclick: guard(() => auth.start()) }));
-  return el('div', { class: 'folder account on' }, el('div', {}, el('b', { text: 'Signed in as ' + ACCOUNT.username }), el('small', { text: 'Kept in this browser only. Presets and friends still wait on Hytale offering them.' })),
+  return el('div', { class: 'folder account on' }, el('div', {}, el('b', { text: 'Signed in as ' + ACCOUNT.username })),
     el('button', { class: 'btn ghost', text: 'Show my skin', onclick: () => { setTab('lookup'); lookup(ACCOUNT.username); } }),
     el('button', { class: 'btn ghost', text: 'Sign out', onclick: guard(async () => { await auth.signOut(); ACCOUNT = null; render(); }) }));
 }
 function folderRow() {
-  if (!store.folderSupported) return el('p', { class: 'note', text: 'This browser can only keep skins in its own storage. Chrome and Edge can also save them to a folder on your computer; in any browser you can download a backup from Help.' });
+  if (!store.folderSupported) return el('p', { class: 'note', text: 'Saving to a folder needs Chrome or Edge.' });
   const after = async r => { FOLDER = await store.folderState(); await reloadAssets(); await refreshWard(); if (r) say(r.imported ? `Folder connected, ${r.imported} skin${r.imported > 1 ? 's' : ''} brought in` : 'Folder connected'); };
   const btn = (t, fn, c = 'ghost') => el('button', { class: 'btn ' + c, text: t, onclick: guard(fn) });
   const [title, text] = FOLDER.state === 'on' ? ['Saving to folder: ' + FOLDER.name, 'Every skin and custom asset is a small file in this folder and updates as you edit.']
     : FOLDER.state === 'ask' ? ['Folder paused: ' + FOLDER.name, 'Your browser needs your OK again before it can write to the folder. Until then, changes are kept in the browser.']
     : ['Save skins to a folder', 'Pick a folder on your computer, for example a "Hytale Skins" folder in Documents. Each skin becomes a small file there and updates as you edit.'];
-  return el('div', { class: 'folder ' + FOLDER.state }, el('div', {}, el('b', { text: title }), el('small', { text })),
+  return el('div', { class: 'folder ' + FOLDER.state }, el('div', {}, el('b', { text: title })),
     FOLDER.state === 'none' ? btn('Choose folder', async () => after(await store.chooseFolder()), 'primary')
       : [FOLDER.state === 'ask' ? btn('Reconnect', async () => after(await store.resumeFolder(true)), 'primary') : btn('Change', async () => after(await store.chooseFolder())),
          btn('Stop', async () => { await store.forgetFolder(); await after(); })]);
@@ -203,11 +203,9 @@ function folderRow() {
 function panelWardrobe() {
   return [head('Wardrobe'), el('div', { class: 'pbody' }, folderRow(), accountRow(),
     el('div', { class: 'shelf game' }, el('h3', {}, el('span', { text: 'In-game slots' }), el('em', { text: `${WARD.game.filter(Boolean).length} / ${store.GAME_SLOTS}` })),
-      el('p', { class: 'note', text: 'These mirror your 5 presets inside Hytale. The site cannot read or change your Hytale account, so after you move a skin here, use "Set in game" for the list of parts to pick in My Avatar.' }),
       el('div', { class: 'row' }, locked('Load my presets', 'loading your in-game presets'), locked('Send all to game', 'sending skins to your in-game presets')), need('preset sync'),
       el('div', { class: 'cards' }, WARD.game.map((r, i) => card(r, 'game', i)))),
     el('div', { class: 'shelf custom' }, el('h3', {}, el('span', { text: 'My skins' }), el('em', { text: `${WARD.custom.length} / ${store.CUSTOM_MAX}` })),
-      el('p', { class: 'note', text: 'Extra skins that exist only here, not in the game. Saved skins update by themselves as you edit them.' }),
       WARD.custom.length ? el('div', { class: 'cards' }, WARD.custom.map(r => card(r, 'custom'))) : el('p', { class: 'blank', text: 'Nothing saved yet. Design a skin in the Editor and press Save.' })))];
 }
 async function refreshWard() { WARD = await store.list(); if (cur.id && ![...WARD.game, ...WARD.custom].some(r => r && r.id === cur.id)) { cur.id = null; cur.kind = null; cur.slot = null; } render(); }
@@ -247,7 +245,6 @@ function panelAnimations() {
   const groups = Object.keys(CAT.anims).sort((a, b) => (ORDER.indexOf(a) + 99) % 99 - (ORDER.indexOf(b) + 99) % 99 || a.localeCompare(b)); if (!groups.includes(animGroup)) animGroup = groups[0];
   const A = st.anim;
   return [head('Animations'), el('div', { class: 'pbody' },
-    el('p', { class: 'note', text: 'See how the skin moves. These are the game\'s own player animations, read from your game files.' }),
     el('div', { class: 'now' }, el('b', { text: A.anim ? nice(playing.name) : 'Rest pose' }),
       el('button', { class: 'btn ghost', text: A.playing ? 'Pause' : 'Play', onclick: () => { A.playing = !A.playing; render(); } }),
       el('button', { class: 'btn ghost', text: 'Rest pose', onclick: () => { A.set(null); render(); } })),
@@ -276,9 +273,8 @@ function panelLookup() {
   const form = el('form', { class: 'row', onsubmit: e => { e.preventDefault(); lookup(input.value); } }, input, el('button', { class: 'btn primary', text: 'Find' }));
   const file = el('input', { type: 'file', accept: '.json,.skin,application/json', multiple: true, hidden: true, onchange: e => { importSkinFiles(e.target.files); e.target.value = ''; } });
   return [head('Players'), el('div', { class: 'pbody' },
-    el('h3', { text: 'Find a player' }), el('p', { class: 'note', text: 'Look up any player by username or UUID to see the skin they have equipped right now. Saved presets are private to each player’s Hytale account, so only the equipped skin can be shown. What you type is sent to playerdb.co, a public community lookup service; nothing else is.' }), form, el('p', { class: 'err', text: lookupMsg }),
-    el('h3', { text: 'Open skin files' }), el('p', { class: 'note', text: 'Your game keeps your equipped skin in UserData\\CachedPlayerSkins and the skins of players it has seen in UserData\\CachedAvatarPreviews (the .skin files). Choose or drop them here.' }),
-    el('label', { class: 'btn ghost' }, 'Choose skin files', file),
+    el('h3', { text: 'Find a player' }), form, el('p', { class: 'err', text: lookupMsg }),
+    el('h3', { text: 'Open skin files' }), el('label', { class: 'btn ghost' }, 'Choose skin files', file),
     found.length ? [el('h3', { text: 'Found this session' }), el('div', { class: 'cards' }, found.map(r => card(r, 'found')))] : null)];
 }
 
@@ -307,7 +303,7 @@ function panelFeedback() {
     link('Report a bug', `${REPO}/issues/new?template=bug.yml&diagnostics=${encodeURIComponent(diag)}`, 'primary'),
     el('h3', { text: 'Request a feature' }), el('p', { text: 'Vote for a request with a thumbs-up, or add your own. The most wanted get built first.' }),
     el('div', { class: 'row' }, link('See and vote on requests', `${REPO}/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement+sort%3Areactions-%2B1-desc`, 'ghost'), link('Request a feature', `${REPO}/issues/new?template=feature.yml`, 'primary')),
-    el('p', { class: 'note', text: 'Reports are public and need a free GitHub account. This site collects nothing itself.' }))];
+    )];
 }
 
 // ---------------------------------------------------------------- asset creator
@@ -375,7 +371,6 @@ function panelCreator() {
   if (!ED) { const worn = game.FIELDS.filter(f => R.resolve(f, cur.skin));
     const sel = el('select', {}, worn.map(f => el('option', { value: f, text: `${LABEL[f]}: ${itemName(R.find(f, cur.skin[f]))}` })));
     return [head('Asset Creator'), el('div', { class: 'pbody' },
-      el('p', { class: 'note', text: 'Make your own version of any item by repainting it, on the flat texture or straight on the 3D model. Custom assets exist on this site only: the game and other players will not see them, and they cannot go into in-game slots. They are saved in this browser, in your skins folder if you chose one, and in backup files.' }),
       el('h3', { text: 'Start from something you are wearing' }), el('div', { class: 'row' }, sel, el('button', { class: 'btn primary', text: 'Create', onclick: () => newAsset(sel.value) })),
       el('h3', { text: `My custom assets (${ASSETS.length} / ${assets.MAX})` }),
       ASSETS.length ? el('div', { class: 'cards' }, ASSETS.map(assetCard)) : el('p', { class: 'blank', text: 'None yet. Pick a slot above and press Create.' }))]; }
@@ -391,7 +386,6 @@ function panelCreator() {
     const bmp = await createImageBitmap(f); if (bmp.width !== c.width || bmp.height !== c.height) throw new Error(`The image must be ${c.width} by ${c.height} pixels, the size of this texture.`); P.replace(bmp); ED.palette = P.palette(); render(); }) });
   return [head('Asset Creator'), el('div', { class: 'pbody' },
     el('div', { class: 'row' }, el('input', { type: 'text', value: a.name, maxLength: 40, onchange: e => { ED.asset = { ...ED.asset, name: cleanName(e.target.value) || a.name }; queueAssetSave(); } }), btn('Done', () => closeAsset(), 'primary')),
-    el('p', { class: 'note', text: 'Left-drag paints, on the texture below or on the model. Right-drag turns the model. Changes save by themselves.' }),
     el('div', { class: 'options' }, tool('brush', 'Brush'), tool('erase', 'Eraser'), tool('fill', 'Fill'), tool('replace', 'Replace colour'), tool('pick', 'Pick colour'), tool('light', 'Lighten'), tool('dark', 'Darken'), tool('noise', 'Noise'),
       tool('line', 'Line'), tool('box', 'Box'), tool('boxfill', 'Filled box'),
       el('button', { class: 'chip' + (ED.mirror ? ' on' : ''), text: 'Mirror: ' + (ED.mirror ? 'on' : 'off'), title: 'When painting on the model, paint the matching spot on the other side too', onclick: () => { ED.mirror = !ED.mirror; render(); } })),
