@@ -5,17 +5,19 @@
   and the skins they chose to publish (a name and a list of game part names; custom assets are refused). No passwords, emails,
   tokens, IPs or analytics. `DELETE /api/me` removes all of it.
 - **API rules:** every write needs the site's `Origin` and a session cookie (`__Host-`, HttpOnly, Secure, SameSite=Strict,
-  HMAC-signed with the `SESSION_KEY` secret, 30 days; void as soon as the player row is deleted or banned). Bodies are JSON
+  HMAC-signed with the `SESSION_KEY` secret, 30 days, carrying a per-player session number; void as soon as the player row is
+  deleted or banned, and signing out bumps the number so every copy of the cookie stops working). Bodies are JSON
   capped at 8 KB, recipes pass a slot and part-name allow-list, names are stripped and capped, 45 skins per player, 30 writes an
-  hour. Identity comes from Hytale's own `/userinfo`, called by the server with the token the browser hands over once.
+  hour. Identity comes from Hytale's own `/userinfo`, read by the server with a token it redeemed itself under this site's
+  client ID, so a token issued to any other app can't open a session here.
 - **Game files and skins stay in the player's browser** (IndexedDB). Nothing is uploaded.
-- **Two outside hosts, both on demand:** the player lookup sends the typed username to `https://playerdb.co`, and Sign in with
-  Hytale (off until a client ID is set in `site/app/config.js`) talks to `https://connect.accounts.hytale.com`. They are the only
-  hosts allowed by the Content Security Policy.
+- **One outside host for the browser:** the player lookup sends the typed username to `https://playerdb.co`, the only host the
+  Content Security Policy allows. Sign in with Hytale (off until a client ID is set in `site/app/config.js`) is a page visit to
+  Hytale; the server, not the browser, talks to `https://connect.accounts.hytale.com`.
 - **Sign-in keeps no tokens.** It is OpenID Connect with PKCE as a public client (no secret). `state` is checked, the one-time
-  code is removed from the address bar at once, the tokens are used once to read the chosen game profile and then dropped, and
-  only that profile (UUID and username) is kept, in the player's browser. The access token is also handed once to
-  `/api/session`, which checks it with Hytale and drops it.
+  code is removed from the address bar at once, the code and PKCE verifier go once to `/api/session`, which redeems
+  them with Hytale under this site's client ID, reads the chosen game profile and drops the tokens. Tokens never reach the
+  browser; the profile (UUID and username) is kept in the player's browser and, for publishing, on the server.
 - **Strict Content Security Policy** (`site/_headers`): scripts, styles and fonts from this origin only; no inline script or
   style; no frames, forms, plugins or `eval`. Plus HSTS (preload), `nosniff`, `no-referrer`, a locked Permissions-Policy and
   same-origin opener/resource policies.

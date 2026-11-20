@@ -14,6 +14,6 @@ export async function onRequestDelete({ request, env }) {
   if (!sameSite(request)) return json({ error: 'Not allowed.' }, 403);
   const me = await whoIs(request, env); if (!me) return json({ error: 'Sign in first.' }, 401);
   await env.DB.batch([env.DB.prepare('DELETE FROM skins WHERE owner_uuid = ?1').bind(me.uuid), env.DB.prepare('DELETE FROM writes WHERE uuid = ?1').bind(me.uuid),
-    env.DB.prepare('DELETE FROM players WHERE uuid = ?1').bind(me.uuid)]);
+    env.DB.prepare('DELETE FROM supporters_pending WHERE username = lower(?1)').bind(me.username), env.DB.prepare('DELETE FROM players WHERE uuid = ?1').bind(me.uuid)]);
   const res = json({ ok: true }); res.headers.append('Set-Cookie', clearCookie); return res;
 }

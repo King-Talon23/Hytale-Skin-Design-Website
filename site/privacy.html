@@ -7,6 +7,7 @@
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="/img/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <link rel="stylesheet" href="/css/site.css">
 </head>
 <body>
@@ -28,20 +29,29 @@
 <p>Skins are saved in your browser. If you pick a skins folder in the Locker they're also written there as small files. They aren't sent to us or anyone else.</p>
 
 <h2>Signing in and publishing</h2>
-<p>Signing in is optional and only needed to publish. You sign in on Hytale's own page so we never see your password. Our server checks the profile you pick once, keeps its UUID and username, and drops the sign-in token. One cookie called __Host-se_session keeps you signed in for 30 days and isn't used for anything else.</p>
-<p>When you publish a skin we store its name and the list of game items it uses, so people who look you up in Players can see it. Custom pieces are never uploaded. A count of your recent changes is kept for an hour to stop spam.</p>
-<p>You can unpublish any skin whenever you want, and "Delete my published data" in the Locker removes everything we have on you straight away. It's stored with Cloudflare and never sold or shared.</p>
+<p>Signing in is optional and only needed to publish. You sign in on Hytale's own page so we never see your password. Our server swaps the sign-in code with Hytale once, reads the profile you pick and drops the tokens straight away. One cookie called __Host-se_session keeps you signed in for 30 days and isn't used for anything else. Signing out ends it on every device.</p>
+<p>If Hytale tells us which paid items your account owns, that list goes to your browser so you can edit those items, and it stays there. Our server doesn't keep it.</p>
+
+<h2>What our server keeps</h2>
+<p>Only if you sign in and publish. Your profile's UUID and username, the skins you publish with their names and the list of game items they use, a supporter badge if you have one, and a count of your recent changes that's gone after an hour and only there to stop spam. Custom pieces are never uploaded. Everything is stored with Cloudflare and never sold or shared.</p>
+<p>It's kept until you remove it. You can unpublish any skin whenever you want, and "Delete my published data" in the Locker removes everything we have on you straight away, badge included.</p>
 
 <h2>Other services</h2>
 <p>Pressing Find in Players sends the username you typed to playerdb.co to get that player's skin, nothing else. The site is hosted by Cloudflare, which sees normal request data like your IP to serve pages and block attacks, we don't use it. Bug reports go to GitHub and are public, so don't put personal stuff in them. Tips go through Ko-fi, and if your message names your Hytale username we mark that profile as a supporter and keep nothing else from Ko-fi.</p>
 
-<h2>Contact</h2>
-<p>Questions go on <a href="https://github.com/King-Talon23/Hytale-Skin-Design-Website/issues/new/choose" target="_blank" rel="noopener noreferrer">the project's GitHub</a>. If this page changes the date below changes too.</p>
+<h2>Kids</h2>
+<p>The editor itself needs no personal info at all. Publishing needs a Hytale account, so it follows Hytale's own age rules for accounts.</p>
+
+<h2>Your rights</h2>
+<p>You can see and delete everything we hold about you from the Locker at any time. Wherever you live, if you want a copy of it or have any other privacy question, ask on <a href="https://github.com/King-Talon23/Hytale-Skin-Design-Website/issues/new/choose" target="_blank" rel="noopener noreferrer">the project's GitHub</a>.</p>
+
+<h2>Who runs this</h2>
+<p>Skin Editor is a one-person fan project by King-Talon23. If this page changes the date below changes too.</p>
 <p class="fine">Last updated 20 November 2026.</p>
 </main>
 <footer>
-  <span>Unofficial fan tool. Not affiliated with or endorsed by Hypixel Studios.</span>
-  <span><a href="/privacy">Privacy</a> &middot; <a href="https://github.com/King-Talon23/Hytale-Skin-Design-Website/issues/new?template=bug.yml" target="_blank" rel="noopener noreferrer">Report a bug</a></span>
+  <span>Unofficial fan tool. Not affiliated with or endorsed by Hypixel Studios. Hytale is a trademark of Hypixel Studios.</span>
+  <span><a href="/privacy">Privacy</a> &middot; <a href="/terms">Terms</a> &middot; <a href="https://github.com/King-Talon23/Hytale-Skin-Design-Website/issues/new?template=bug.yml" target="_blank" rel="noopener noreferrer">Report a bug</a></span>
 </footer>
 </body>
 </html>

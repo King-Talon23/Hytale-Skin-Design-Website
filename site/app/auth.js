@@ -1,7 +1,7 @@
 // Sign in with Hytale: OpenID Connect, Authorization Code flow with PKCE, as a public (browser-only) client with no secret.
 // The site keeps one thing from a sign-in: the game profile the player picked (UUID and username), in this browser only.
-// The access token is used once to read that profile, then handed once to this site's own server (/api/session), which checks
-// it with Hytale itself and starts a publishing session. Tokens are never stored, here or there.
+// The one-time code goes to this site's own server (/api/session), which redeems it with Hytale under this site's client ID,
+// reads the profile and starts a publishing session. Tokens never reach the browser and are never stored.
 import { HYTALE_CLIENT_ID } from './config.js';
 import * as db from './db.js';
 
@@ -30,18 +30,13 @@ export async function finish(query) {   // runs on /auth/callback
   const err = query.get('error'); if (err) throw new Error(ERRORS[err] || 'Hytale could not sign you in. Try again.');   // only our own wording is shown, never text from the address
   const code = query.get('code');
   if (!saved || typeof saved.verifier !== 'string' || !code || !/^[\w.~-]{1,4096}$/.test(code) || query.get('state') !== saved.state || Date.now() - saved.at > 15 * 60000) throw new Error(AGAIN);
-  const opts = { credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store' };
-  const r = await fetch(`${ISSUER}/oauth2/token`, { ...opts, method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri(), code_verifier: saved.verifier, client_id: HYTALE_CLIENT_ID }) });
-  const tokens = await r.json().catch(() => null);
-  if (!r.ok || !tokens || typeof tokens.access_token !== 'string') throw new Error(tokens?.error === 'invalid_grant' ? AGAIN : 'Hytale did not accept the sign-in. Try again.');
-  // The profile is read from Hytale's own /userinfo over HTTPS with the token just issued, so the id_token is not used or trusted here.
-  const u = await fetch(`${ISSUER}/userinfo`, { ...opts, headers: { Authorization: 'Bearer ' + tokens.access_token } });
-  const me = u.ok ? await u.json().catch(() => null) : null, p = me && me.profile;
-  if (!p || typeof p.uuid !== 'string' || typeof p.username !== 'string' || !UUID.test(p.uuid) || !NAME.test(p.username)) throw new Error('No game profile was shared. Sign in again and pick a profile.');
-  await fetch('/api/session', { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_token: tokens.access_token }) }).catch(() => null);   // publishing; optional
-  // what the account owns, when Hytale shares it (the unlock names items list in the game files, such as game.deluxe)
-  const ent = [me.entitlements, p.entitlements, me.editions, p.editions].find(Array.isArray) || [];
+  // the server redeems the code under this site's client ID and reads the profile from Hytale, so tokens never reach this page
+  const r = await fetch('/api/session', { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code, verifier: saved.verifier, redirect_uri: redirectUri() }) }).catch(() => null);
+  const p = r ? await r.json().catch(() => null) : null;
+  if (!r || !r.ok || !p) throw new Error((p && p.error) || 'Hytale did not accept the sign-in. Try again.');
+  if (typeof p.uuid !== 'string' || typeof p.username !== 'string' || !UUID.test(p.uuid) || !NAME.test(p.username)) throw new Error('No game profile was shared. Sign in again and pick a profile.');
+  const ent = Array.isArray(p.entitlements) ? p.entitlements : [];
   const account = { uuid: p.uuid.toLowerCase(), username: p.username, at: Date.now(), entitlements: ent.filter(x => typeof x === 'string' && x.length <= 80).slice(0, 300) };
   await db.put('meta', 'account', account); return account;   // the tokens go out of scope here and are never stored
 }
