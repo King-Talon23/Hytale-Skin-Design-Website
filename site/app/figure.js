@@ -95,7 +95,7 @@ export async function build(skin, R) {
   if (!body) throw new Error('the body model is missing from the game files');
   for (const n of body[1].nodes) root.add(node(n, body[2], bones, parts));
   for (const [f, m, T] of loaded) if (f !== 'bodyCharacteristic') attach(m.nodes, T, bones, parts);
-  root.userData.parts = parts; return root;
+  root.userData.parts = parts; root.userData.bones = bones; return root;
 }
 // an animal (or any model with attachments) built the same way, for the Mount moves
 export async function buildCreature(cfg) {
@@ -264,6 +264,21 @@ export function stage(canvas, Controls) {
   // flying moves: the figure rises off the ground and bobs gently, easing up and down when the move changes
   function float(dt, now) { if (!figure || (!hoverTo && !hoverAt)) return; hoverAt += (hoverTo - hoverAt) * (1 - Math.exp(-dt * 4)); if (Math.abs(hoverTo - hoverAt) < 0.05) hoverAt = hoverTo;
     seatAt(); if (hoverAt > 1 && hoverTo) figure.position.y += Math.sin(now / 1000 * 2.2) * 2.5 * Math.min(1, hoverAt / hoverTo); }
+  // things held in the hands (a glider, a sword ...): each hangs on a bone of the figure and moves with it; re-hung when the figure is rebuilt
+  let held = [];
+  // the moves animate the held thing's own parts too (the glider's frame and flaps), so those parts join the figure's while it is held;
+  // parts sharing a name with the body (the item's root is named after the hand's attachment) stay out, or the move would apply twice
+  const unhang = () => { for (const h of held) { h.root.parent?.remove(h.root); const fp = h.on?.userData.parts; if (fp) for (const [k, g] of h.added || []) { const gs = fp.get(k); if (gs) { const i = gs.indexOf(g); if (i >= 0) gs.splice(i, 1); if (!gs.length) fp.delete(k); } } h.on = null; h.added = []; } };
+  const hang = () => { unhang(); for (const h of held) { const b = figure?.userData.bones?.[h.bone]; if (!b) continue; b.add(h.root); const fp = figure.userData.parts; h.on = figure; h.added = [];
+    h.root.userData.parts?.forEach((gs, k) => { if (fp.has(k) && !h.added.some(a => a[0] === k)) return; for (const g of gs) { (fp.get(k) || fp.set(k, []).get(k)).push(g); h.added.push([k, g]); } }); }
+    anim.setFigure(figure); };
+  function props(list) { unhang(); for (const h of held) dispose(h.root); held = list || []; if (figure) hang(); }
+  // a tall move (gliding, arms and glider high overhead): aim higher and back off so it all fits; lift(0) puts the view back
+  let lifted = null;
+  function lift(y) { const off = cam.position.clone().sub(ctl.target);
+    if (y) { if (!lifted) lifted = { len: off.length() }; off.setLength(Math.max(off.length(), 360)); ctl.target.set(0, y, 0); }
+    else if (lifted) { off.setLength(lifted.len); ctl.target.set(0, 62, 0); lifted = null; } else return;
+    cam.position.copy(ctl.target).add(off); ctl.update(); }
   function mount(root, at) {
     const was = !!mountRoot; if (mountRoot) { scene.remove(mountRoot); dispose(mountRoot); }
     mountRoot = root || null; seat = root ? at : null; if (root) { scene.add(root); mountAnim.setFigure(root); } else { mountAnim.anim = null; mountAnim.figure = null; }
@@ -271,7 +286,7 @@ export function stage(canvas, Controls) {
     if (was !== !!root) { const k = root ? 1.6 : 1 / 1.6, ty = root ? 62 + at[1] * 0.7 : 62, off = cam.position.clone().sub(ctl.target).multiplyScalar(k);
       ctl.target.set(0, ty, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
   }
-  const api = { isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
+  const api = { isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, props, lift, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
     gizmoBusy: () => tc.dragging || tc.axis !== null,
     // where a click lands on a box: the point and the face's outward direction, in the box's own part (node) space
     pickHit(cx, cy, keep) { if (!figure) return null; aim(cx, cy); for (const h of ray.intersectObject(figure, true)) if (h.object.visible && keep(h.object)) {
@@ -294,7 +309,7 @@ export function stage(canvas, Controls) {
     findMesh(keep) { let hit = null; figure?.traverse(o => { if (!hit && o.isMesh && keep(o)) hit = o; }); return hit; },
     setView(name) { const v = VIEWS[name] || VIEWS.persp; cam.position.set(...v); ctl.target.set(0, 62, 0); ctl.update(); },
     highlight(f) { hl = f; drawHL(); },
-    show(root) { if (figure) { scene.remove(figure); dispose(figure); } figure = root; scene.add(root); seatAt(); anim.setFigure(root); lit = []; applyIsolate(); drawHL(); if (api.afterShow) api.afterShow(); },
+    show(root) { if (figure) { unhang(); scene.remove(figure); dispose(figure); } figure = root; scene.add(root); seatAt(); anim.setFigure(root); hang(); lit = []; applyIsolate(); drawHL(); if (api.afterShow) api.afterShow(); },
     view(front) { cam.position.set(front ? 0 : -75, 95, front ? 265 : 255); ctl.target.set(0, 62, 0); ctl.update(); } };
   return api;
 }

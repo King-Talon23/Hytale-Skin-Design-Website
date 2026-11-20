@@ -6,7 +6,14 @@ import * as db from './db.js';
 
 const EXT = /\.(png|json|blockymodel|blockyanim|lang)$/;
 const LANG = 'Common/Languages/en-US/avatarCustomization/';
-const wanted = n => EXT.test(n) && !n.includes('..') && (
+// things the moves hold: the glider for Glide, weapons and tools for the poses and taunts ([model, texture] under Common/)
+export const PROPS = {
+  glider: ['Items/Glider/Scrap.blockymodel', 'Items/Glider/Scrap_Texture.png'], battleaxe: ['Items/Weapons/Battleaxe/Iron.blockymodel', 'Items/Weapons/Battleaxe/Iron_Texture.png'],
+  book: ['Items/Weapons/Spellbook/Book.blockymodel', 'Items/Weapons/Spellbook/Book_Fire_Texture.png'], pickaxe: ['Items/Tools/Pickaxe/Iron.blockymodel', 'Items/Tools/Pickaxe/Iron_Texture.png'],
+  staff: ['Items/Weapons/Staff/Bo_Wood.blockymodel', 'Items/Weapons/Staff/Bo_Wood_Texture.png'], sword: ['Items/Weapons/Sword/Iron.blockymodel', 'Items/Weapons/Sword/Iron_Texture.png'],
+  mace: ['Items/Weapons/Mace/Iron.blockymodel', 'Items/Weapons/Mace/Iron_Texture.png'], bow: ['Items/Weapons/Bow/Bronze.blockymodel', 'Items/Weapons/Bow/Bronze_Texture.png'] };
+const PROP_FILES = new Set(Object.values(PROPS).flat().map(p => 'Common/' + p));
+const wanted = n => EXT.test(n) && !n.includes('..') && (PROP_FILES.has(n) ||
   n.startsWith('Cosmetics/CharacterCreator/') || n.startsWith(LANG) || n.startsWith('Common/Cosmetics/') || n.startsWith('Common/TintGradients/') ||
   (n.startsWith('Common/Characters/') && !n.includes('/Animations/Items/') && !n.endsWith('_FPS.blockyanim')) ||
   /^Common\/NPC\/Livestock\/(Horse|Camel|Ram)\/(Models\/|Animations\/Default\/)/.test(n));   // the animals players ride, for the Mount moves

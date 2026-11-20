@@ -413,7 +413,16 @@ async function setMount(kind, move) {
     const [n, sp] = MOUNT_MOVE[move] || ['Idle', 1]; st.mountAnim.set(await game.json(game.common(M.anims + n + '.blockyanim')), sp); mountMsg = '';
   } catch (e) { console.warn(e); st.mount(null); mountOn = null; mountMsg = 'Your saved copy of the game files is from before animals were added. Refresh it once to see them (your skins are kept).'; }
 }
-async function playAnim(g, n, speed = 1, once = false) { clearTimeout(onceT); try { await setMount(g === 'Mount' ? mountKind : null, n); const a = await fig.loadAnim(g, n); st.hover(g === 'Fly' ? 44 : g === 'Glide' ? 60 : 0); playing = { group: g, name: n }; st.anim.set(a, speed);
+// what each move holds, and in which hand (the game's attachment bones)
+const HELD = { Glide: { '*': [['glider', 'R-Attachment']] },
+  Poses: { BattleAxe: [['battleaxe', 'R-Attachment']], Book_Read: [['book', 'L-Attachment']], Pickaxe: [['pickaxe', 'R-Attachment']], Staff: [['staff', 'R-Attachment']], Sword: [['sword', 'R-Attachment']],
+    Warhammer: [['mace', 'R-Attachment']], Outlander_Sword: [['sword', 'R-Attachment']], Outlander_Archer_Bow_Charge: [['bow', 'L-Attachment']], Outlander_Archer_Bow_Pose: [['bow', 'L-Attachment']] },
+  Taunt: { Staff_Helicopter: [['staff', 'R-Attachment']], Sword_Back: [['sword', 'R-Attachment']], Sword_Front: [['sword', 'R-Attachment']] } };
+const heldBy = (g, n) => HELD[g]?.[n] || HELD[g]?.['*'] || [];
+async function setProps(g, n) { const want = heldBy(g, n);
+  const built = await Promise.all(want.map(async ([k, bone]) => { try { const [model, tex] = game.PROPS[k]; return { root: await fig.buildCreature({ model, tex }), bone }; } catch (e) { console.warn(k, e.message); return null; } }));
+  st.props(built.filter(Boolean)); if (built.some(b => !b)) say('Your saved copy of the game files is from before held items were added. Refresh it once in the Locker to see them (your skins are kept).', true); }
+async function playAnim(g, n, speed = 1, once = false) { clearTimeout(onceT); try { await setMount(g === 'Mount' ? mountKind : null, n); await setProps(g, n); st.lift(g === 'Glide' ? 165 : 0); const a = await fig.loadAnim(g, n); st.hover(g === 'Fly' ? 44 : g === 'Glide' ? 60 : 0); playing = { group: g, name: n }; st.anim.set(a, speed);
     if (once) { const still = fig.motionOf(g, n) && st.anim.still, ms = still ? 1700 : (Math.max(1, a.duration || 60) / 60 / speed) * 1000 + (a.holdLastKeyframe ? 700 : 0) + 250;
       onceT = setTimeout(() => { if (playing.group === g && playing.name === n) playAnim('Default', 'Idle', 0.5); }, ms); } st.anim.setMove(fig.motionOf(g, n)); st.anim.playing = true; drawEmotes(); } catch (e) { say('That animation could not be loaded.', true); } if (tab === 'animations') render(); }
 let animGroup = 'Emote';
