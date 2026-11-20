@@ -359,7 +359,7 @@ input.hex { width: 84px; font: 600 12px ui-monospace, Consolas, monospace; backg
 .stbtn { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 4px; border: 1px solid var(--line2); background: #0d1826d9; color: var(--text); font: 600 12px var(--b); cursor: pointer; }
 .stbtn:hover, .stbtn:focus-visible { border-color: var(--gold2); color: var(--gold); }
 .bdchip { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #fff8; background: #0f1d30; }   /* a hint of the picked place: sky over ground */
-.bdchip.bd-meadow { background: linear-gradient(#077ad9 50%, #5d8f2a 50%); } .bdchip.bd-desert { background: linear-gradient(#0081b2 50%, #d9c38a 50%); } .bdchip.bd-tundra { background: linear-gradient(#699bd4 50%, #eef3f7 50%); }
+.bdchip.bd-meadow { background: linear-gradient(#077ad9 50%, #5d8f2a 50%); } .bdchip.bd-desert { background: linear-gradient(#0081b2 50%, #d9c38a 50%); } .bdchip.bd-tundra { background: linear-gradient(#699bd4 50%, #eef3f7 50%); } .bdchip.bd-volcanic { background: linear-gradient(#67352c 50%, #4f7d2a 50%); }
 .stage.clean .nameplate, .stage.clean .emotes, .stage.clean .bar, .stage.clean .status { display: none !important; }
 
 /* a tool's tip, the first time that tool is used */

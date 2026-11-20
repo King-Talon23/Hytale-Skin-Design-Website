@@ -19,7 +19,7 @@ export const SCENERY_TEX = { wood: 'BlockTextures/Wood_Softwood_Planks_Top.png',
 // backgrounds behind the character and the set pieces of the moves: built from the game's own files (see scene-data.js)
 export { SCENES, SET_PIECES } from './scene-data.js';
 // which set of files a connect reads; raised when the site starts needing more, so a remembered Assets.zip is read again
-export const FILES_V = 3;
+export const FILES_V = 4;
 const PROP_FILES = new Set([...Object.values(PROPS).flat(), ...Object.values(SCENERY_TEX)].filter(Boolean).map(p => 'Common/' + p)
   .concat(SCENE_FILES));
 const wanted = n => EXT.test(n) && !n.includes('..') && (PROP_FILES.has(n) ||

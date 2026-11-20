@@ -213,22 +213,25 @@ const turnOf = r => new THREE.Quaternion().setFromEuler(new THREE.Euler(((r >> 2
 // a small piece of the zone: rolling land of its ground blocks, its own grasses and flowers, and a few of its trees, from the game's prefabs
 async function buildWorld(sc, tint) {
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const R = 26, FLAT = 3, at = new Map(), put = (name, x, y, z, q, k) => { const key = name + '|' + (k || 0); (at.get(key) || at.set(key, []).get(key)).push([x, y, z, q]); };
+  const R = 26, FLAT = 8, at = new Map(), put = (name, x, y, z, q, k) => { const key = name + '|' + (k || 0); (at.get(key) || at.set(key, []).get(key)).push([x, y, z, q]); };
   const height = (x, z) => { const d = Math.hypot(x, z); if (d < FLAT) return 0; const n = Math.sin(x * 0.21 + 1.3) * Math.cos(z * 0.17 - 0.7) + 0.7 * Math.sin((x + z) * 0.09 + 2.1) + 0.4 * Math.cos((x - z) * 0.27);
-    return Math.max(0, Math.round((n + 0.5) * sc.hills * 0.55 * Math.min(1, (d - FLAT) / 5))); };
+    return Math.max(0, Math.round((n + 0.5) * sc.hills * 0.55 * Math.min(1, (d - FLAT) / 4))); };
   const H = new Map(); for (let x = -R - 1; x <= R + 1; x++) for (let z = -R - 1; z <= R + 1; z++) H.set(x + ',' + z, height(x, z));
   const h = (x, z) => H.get(x + ',' + z) ?? 0, nTops = (await blockParts(sc.ground, tint)).length;
-  const low = sc.plants.filter(p => p[2]), pick = near => { const from = near ? low : sc.plants; if (!from.length) return null; let r = rnd() * from.reduce((s, p) => s + p[1], 0);
+  // plant sizes (third value): 1 low, 2 knee-high, none tall; tall ones only grow beyond the camera's reach
+  const pick = near => { const from = sc.plants.filter(p => near === 1 ? p[2] === 1 : near === 2 ? p[2] : true); if (!from.length) return null; let r = rnd() * from.reduce((s, p) => s + p[1], 0);
     for (const [n, w] of from) if ((r -= w) <= 0) return n; return from[0][0]; };   // plants marked low (third value) may grow close
   // the trees first, so the land under them stays clear of grass
   const taken = new Set(), trees = await Promise.all(sc.trees.map(p => game.json(p)));
-  const spots = sc.trees.length * 2; for (let i = 0; i < spots; i++) { const ang = (i / spots) * Math.PI * 2 + 0.4, dist = 12 + (i % 3) * 4, tx = Math.round(Math.cos(ang) * dist), tz = Math.round(Math.sin(ang) * dist), base = h(tx, tz);
-    const tb = trees[i % trees.length].blocks, trunks = tb.filter(b => /Trunk/.test(b.name)), lift = trunks.length ? -Math.min(...trunks.map(b => b.y)) : 0;   // the trunk's foot on the ground
-    for (const b0 of tb) { const blk = { ...b0, y: b0.y + lift }; if (!BLOCKS[blk.name]) continue; const q = blk.rotation ? turnOf(blk.rotation) : null; put(blk.name, tx + blk.x, base + blk.y, tz + blk.z, q); if (blk.y === 0) taken.add((tx + blk.x) + ',' + (tz + blk.z)); } }
+  const spots = sc.trees.length * 2; for (let i = 0; i < spots; i++) { const tb = trees[i % trees.length].blocks, reach = Math.max(0, ...tb.map(b => Math.hypot(b.x, b.z)));   // a wide tree stands farther out
+    const ang = (i / spots) * Math.PI * 2 + 0.4, dist = Math.max(12, reach + 7) + (i % 3) * 4, tx = Math.round(Math.cos(ang) * dist), tz = Math.round(Math.sin(ang) * dist), base = h(tx, tz);
+    // the trunk's foot on the ground; no part of a tree within 6 blocks of the character
+    const trunks = tb.filter(b => /Trunk/.test(b.name)), lift = trunks.length ? -Math.min(...trunks.map(b => b.y)) : 0;
+    for (const b0 of tb) { const blk = { ...b0, y: b0.y + lift }; if (!BLOCKS[blk.name] || Math.hypot(tx + blk.x, tz + blk.z) < 6) continue; const q = blk.rotation ? turnOf(blk.rotation) : null; put(blk.name, tx + blk.x, base + blk.y, tz + blk.z, q); if (blk.y === 0) taken.add((tx + blk.x) + ',' + (tz + blk.z)); } }
   for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) { const d = Math.hypot(x, z); if (d > R) continue; const top = h(x, z), low = Math.min(top, h(x + 1, z), h(x - 1, z), h(x, z + 1), h(x, z - 1));
     for (let y = low; y <= top; y++) put(y === top ? sc.ground : sc.under, x, y - 1, z, null, y === top ? Math.floor(rnd() * nTops) : 0);
     // near the character (inside the camera's reach) only low plants grow, so nothing tall stands between the view and the skin
-    if (d > 1.7 && !taken.has(x + ',' + z) && rnd() < sc.density) { const name = d < 3.2 ? pick(true) : pick(); if (!name) continue; const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * Math.PI * 2);
+    if (d > 1.7 && !taken.has(x + ',' + z) && rnd() < sc.density) { const name = pick(d < 3.2 ? 1 : d < 8 ? 2 : 0); if (!name) continue; const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * Math.PI * 2);
       put(name, x + (rnd() - 0.5) * 0.5, top, z + (rnd() - 0.5) * 0.5, yaw); } }
   const root = new THREE.Group(), M = new THREE.Matrix4(), V = new THREE.Vector3(), Q = new THREE.Quaternion(), ONE = new THREE.Vector3(1, 1, 1);
   for (const [key, list] of at) { const [name, k] = key.split('|'), parts = await blockParts(name, tint), p = parts[+k] || parts[0];
