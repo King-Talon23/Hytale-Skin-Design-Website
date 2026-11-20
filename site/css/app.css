@@ -22,8 +22,7 @@ button { cursor: pointer; }
 /* top bar */
 .topbar { display: flex; align-items: center; gap: 22px; padding: 0 22px; height: 62px; background: linear-gradient(#16283fee, #101d2fee); border-bottom: 1px solid var(--line); box-shadow: 0 2px 14px #0008; position: relative; z-index: 2; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
-.brand svg { width: 30px; height: 34px; fill: var(--blue2); stroke: #a9c6f5; stroke-width: 1.4; filter: drop-shadow(0 2px 0 #0008); }
-.brand svg .in { fill: #e9f1ff; stroke: none; }
+.brand svg { height: 36px; width: auto; filter: drop-shadow(0 2px 0 #0008); }
 .brand span { font: 800 17px/1 var(--h); text-transform: uppercase; letter-spacing: .08em; }
 .brand small { display: block; font: 600 10px/1.6 var(--b); letter-spacing: .08em; color: var(--dim); text-transform: uppercase; }
 nav { display: flex; gap: 4px; height: 100%; }
