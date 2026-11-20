@@ -482,11 +482,43 @@ async function replicaOf(a, canvas, mask) {
   let hit = null, top = 0; for (const e of paid) { const s = await best(e); if (s > top) { top = s; hit = e; } }
   return top >= 0.85 && top >= own + 0.1 ? itemName(hit) : null;
 }
-async function checkReplica() {   // after an import, a recolour or leaving the editor
-  if (!ED) return; const e = ED, flag = await replicaOf(e.asset, e.canvas, e.painter.mask).catch(() => null);
+// ---- shapes: a reshaped item may not copy a paid item's shape either. Each model becomes its list of boxes (centre and sorted
+// sizes, with every node's position, turn and offset applied); two shapes match when most boxes of each have a twin in the
+// other (centre and sizes within a tolerance that grows with the box). Flagged like a texture copy: the shape matches a paid item closely
+// and clearly better than the free item it was made from does.
+function qmul(a, b) { return { x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x, z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z }; }
+function qrot(q, v) { const p = qmul(qmul(q, { x: v[0], y: v[1], z: v[2], w: 0 }), { x: -q.x, y: -q.y, z: -q.z, w: q.w }); return [p.x, p.y, p.z]; }
+function boxList(model) {
+  const out = [], v = o => [o?.x ?? 0, o?.y ?? 0, o?.z ?? 0];
+  const walk = (n, R, t) => { const q = { x: n.orientation?.x ?? 0, y: n.orientation?.y ?? 0, z: n.orientation?.z ?? 0, w: n.orientation?.w ?? 1 };
+    const p = qrot(R, v(n.position)), R2 = qmul(R, q), t2 = [t[0] + p[0], t[1] + p[1], t[2] + p[2]], sh = n.shape || {}, o = qrot(R2, v(sh.offset)), c = [t2[0] + o[0], t2[1] + o[1], t2[2] + o[2]];
+    if ((sh.type === 'box' || sh.type === 'quad') && sh.visible !== false) { const st = v(sh.stretch).map(x => x || 1), sz = v(sh.settings?.size).map((x, k) => Math.abs(x * st[k])).sort((a, b) => a - b); out.push({ c, s: sz }); }
+    for (const ch of n.children || []) walk(ch, R2, c); };
+  for (const n of model.nodes || []) walk(n, { x: 0, y: 0, z: 0, w: 1 }, [0, 0, 0]);
+  return out;
+}
+function shapeLikeness(A, B) {
+  if (!A.length || !B.length) return 0;
+  // tolerances grow with the box, so small shifts and stretches of a copied shape still count as the same box
+  const twin = (b, list) => list.some(a => Math.hypot(a.c[0] - b.c[0], a.c[1] - b.c[1], a.c[2] - b.c[2]) <= Math.max(2.5, 0.3 * b.s[2]) && a.s.every((x, k) => Math.abs(x - b.s[k]) <= Math.max(2, 0.25 * b.s[k])));
+  return Math.min(B.filter(b => twin(b, A)).length / B.length, A.filter(a => twin(a, B)).length / A.length);
+}
+async function shapeReplicaOf(a, model) {
+  const items = CAT.items[a.field].filter(e => !e.custom), models = e => [...new Set([e.Model, ...Object.values(e.Variants || {}).map(v => v.Model)].filter(Boolean))];
+  const mine = boxList(model), load = async p => { try { return boxList(await game.json(game.common(p))); } catch { return []; } };
+  const base = items.find(e => e.Id === a.baseId); let own = 0;
+  let hit = null, top = 0;
+  for (const e of items.filter(e => tierOf(e) > 0)) for (const m of models(e)) { const s = shapeLikeness(mine, await load(m)); if (s > top) { top = s; hit = e;
+    if (base) for (const bm of models(base)) own = Math.max(own, shapeLikeness(await load(bm), await load(m))); } }
+  return top >= 0.8 && top >= own + 0.15 ? itemName(hit) : null;
+}
+async function checkReplica() {   // after an import, a recolour, a shape change or leaving the editor
+  if (!ED) return; const e = ED;
+  let flag = await replicaOf(e.asset, e.canvas, e.painter.mask).catch(() => null), why = 'looks';
+  if (!flag && e.model && (e.shapeN || e.asset.shape)) { flag = await shapeReplicaOf(e.asset, e.model).catch(() => null); why = 'shape is'; }
   if ((flag || undefined) === e.asset.flag) return;
   e.asset = { ...e.asset, flag: flag || undefined }; queueAssetSave();
-  if (flag) say(`This looks too close to ${flag}, a paid item. It stays on this site: it won't show in game or export.`, true);
+  if (flag) say(`This ${why} too close to ${flag}, a paid item. It stays on this site: it won't show in game or export.`, true);
   render();
 }
 
@@ -524,6 +556,7 @@ async function editModel() { if (!ED.model) ED.model = ED.asset.shape ? JSON.par
 function shapeChanged() {   // the preview, the drawn-area guide and the saved copy follow every edit
   ED.shapeN = (ED.shapeN || 0) + 1; ED.rects = fig.usedRects(ED.model); maskFromRects();
   registerAssets(); rebuild(); queueAssetSave(); render();
+  clearTimeout(shapeChanged.t); shapeChanged.t = setTimeout(() => checkReplica(), 1200);
 }
 function maskFromRects() { const c = ED.canvas, m = new Uint8Array(c.width * c.height);
   for (const r of ED.rects) for (let y = Math.max(0, Math.floor(r.y)); y < Math.min(c.height, Math.ceil(r.y + r.h)); y++) for (let x = Math.max(0, Math.floor(r.x)); x < Math.min(c.width, Math.ceil(r.x + r.w)); x++) m[y * c.width + x] = 1;
