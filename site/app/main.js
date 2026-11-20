@@ -470,10 +470,7 @@ function panelFeedback() {
   const link = (text, href, cls) => el('a', { class: 'btn ' + cls, text, href, target: '_blank', rel: 'noopener noreferrer' });
   return [head('Feedback'), el('div', { class: 'pbody prose' },
     el('h3', { text: 'Report a bug' }), el('p', { text: 'Something broken or drawn wrong? Tell us what happened. The report form opens on GitHub with the site version and your browser filled in; you can read and edit it before sending.' }),
-    link('Report a bug', `${REPO}/issues/new?template=bug.yml&diagnostics=${encodeURIComponent(diag)}`, 'primary'),
-    el('h3', { text: 'Request a feature' }), el('p', { text: 'Vote for a request with a thumbs-up, or add your own. The most wanted get built first.' }),
-    el('div', { class: 'row' }, link('See and vote on requests', `${REPO}/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement+sort%3Areactions-%2B1-desc`, 'ghost'), link('Request a feature', `${REPO}/issues/new?template=feature.yml`, 'primary')),
-    )];
+    link('Report a bug', `${REPO}/issues/new?template=bug.yml&diagnostics=${encodeURIComponent(diag)}`, 'primary'))];
 }
 
 // ---------------------------------------------------------------- asset creator
