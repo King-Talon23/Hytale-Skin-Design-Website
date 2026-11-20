@@ -692,14 +692,43 @@ async function copyAsset(a) { if (ASSETS.length >= assets.MAX) throw new Error(`
 function anyItem() {   // or start from any free item in the game, worn or not
   const slots = game.FIELDS.filter(f => CAT.items[f].some(e => !e.custom && !paidLocked(e))), slot = el('select', { title: 'Slot' }, slots.map(f => el('option', { value: f, text: LABEL[f] })));
   const ok = e => !e.custom && !paidLocked(e) && !/^\s*\[?tmp\]?/i.test(itemName(e)) && !/(^|_)tmp(_|$)/i.test(e.Id);
-  const item = el('select', { title: 'Item' }), find_ = el('input', { type: 'search', placeholder: 'Search', class: 'anysearch' }), pic = el('div', { class: 'pic anypic' });
-  const pick = () => { const [f, id] = item.value.split('|'); return [f, CAT.items[f]?.find(x => x.Id === id)]; };
-  const show = () => { const [f, e] = pick(); pic.replaceChildren(e ? itemThumb(f, e) : ''); };
+  // the item list is our own drop-down (a plain one can't tell us what the pointer is over): the picture shows the item under the pointer or arrow keys, and goes back to the chosen one
+  const item = el('button', { type: 'button', class: 'anypick', title: 'Item' }), menu = el('div', { class: 'anymenu', role: 'listbox', hidden: true });
+  item.setAttribute('aria-haspopup', 'listbox'); item.setAttribute('aria-expanded', 'false');
+  const find_ = el('input', { type: 'search', placeholder: 'Search', class: 'anysearch' }), pic = el('div', { class: 'pic anypic' });
+  let list = [], at = -1, act = -1, hov = 0;
+  const pick = () => { const r = list[at]; return r ? [r[1], r[2]] : []; };
+  const draw = i => { const r = list[i]; if (!r) { pic.replaceChildren(); return; } const img = itemThumb(r[1], r[2]);
+    if (img.src || !pic.firstChild) { pic.replaceChildren(img); return; }   // ready now: swap at once; otherwise keep the old picture until the new one is drawn
+    img.classList.add('next'); img.addEventListener('load', () => { if (img.isConnected) { img.classList.remove('next'); pic.replaceChildren(img); } }, { once: true });
+    [...pic.querySelectorAll('img.next')].forEach(x => x.remove()); pic.append(img); };
+  const peek = i => { clearTimeout(hov); hov = setTimeout(() => draw(i), 40); };
+  const mark = i => { act = i; menu.querySelectorAll('[aria-selected=true]').forEach(o => o.setAttribute('aria-selected', 'false')); const o = menu.children[i]; if (o) { o.setAttribute('aria-selected', 'true'); o.scrollIntoView({ block: 'nearest' }); } };
+  const label = () => { item.textContent = list[at]?.[0] || 'Nothing found'; };
+  const away = ev => { if (!menu.contains(ev.target) && ev.target !== item) close(); };
+  const drift = ev => { if (!menu.contains(ev.target)) close(); };   // the list floats over the page, so it closes when the page under it scrolls
+  const close = () => { if (menu.hidden) return; menu.hidden = true; if (item.isConnected) item.after(menu); else menu.remove(); item.setAttribute('aria-expanded', 'false'); peek(at); document.removeEventListener('pointerdown', away, true); removeEventListener('scroll', drift, true); removeEventListener('resize', close); };
+  const place = () => { const r = item.getBoundingClientRect(), below = innerHeight - r.bottom - 8, above = r.top - 8, up = below < 220 && above > below, h = Math.min(320, up ? above : below);
+    Object.assign(menu.style, { left: r.left + 'px', width: r.width + 'px', maxHeight: h + 'px', top: up ? '' : r.bottom + 2 + 'px', bottom: up ? innerHeight - r.top + 2 + 'px' : '' }); };
+  const open = () => { if (!list.length || !menu.hidden) return; document.querySelectorAll('body > .anymenu').forEach(x => x.remove()); document.body.append(menu); place(); menu.hidden = false; item.setAttribute('aria-expanded', 'true'); mark(at);
+    document.addEventListener('pointerdown', away, true); addEventListener('scroll', drift, true); addEventListener('resize', close); };
+  const choose = i => { at = i; label(); close(); clearTimeout(hov); draw(at); };
+  item.onclick = () => menu.hidden ? open() : close();
+  item.onkeydown = ev => { const k = ev.key, n = list.length; if (!n) return;
+    if (k === 'ArrowDown' || k === 'ArrowUp') { ev.preventDefault(); if (menu.hidden) open(); const i = Math.max(0, Math.min(n - 1, act + (k === 'ArrowDown' ? 1 : -1))); mark(i); peek(i); }
+    else if ((k === 'Home' || k === 'End') && !menu.hidden) { ev.preventDefault(); const i = k === 'Home' ? 0 : n - 1; mark(i); peek(i); }
+    else if ((k === 'Enter' || k === ' ') && !menu.hidden) { ev.preventDefault(); choose(act); }
+    else if (k === 'Escape' && !menu.hidden) { ev.preventDefault(); close(); } else if (k === 'Tab') close(); };
+  menu.onpointerover = ev => { const o = ev.target.closest('[role=option]'); if (o && +o.dataset.i !== act) { const i = +o.dataset.i; mark(i); peek(i); } };
+  menu.onpointerleave = () => peek(at);
+  menu.onclick = ev => { const o = ev.target.closest('[role=option]'); if (o) { choose(+o.dataset.i); item.focus(); } };
   const fill = () => { const q = find_.value.trim().toLowerCase(), from = q ? slots : [slot.value];   // a search looks in every slot
-    const list = from.flatMap(f => CAT.items[f].filter(e => ok(e) && (!q || itemName(e).toLowerCase().includes(q))).map(e => [itemName(e) + (q ? ` (${LABEL[f]})` : ''), f, e]));
-    item.replaceChildren(...(list.length ? list.sort((a, b) => a[0].localeCompare(b[0])).map(([n, f, e]) => el('option', { value: f + '|' + e.Id, text: n })) : [el('option', { value: '', text: 'Nothing found' })])); show(); };
-  slot.value = slots.includes(anyItem.slot) ? anyItem.slot : slots.includes('overtop') ? 'overtop' : slots[0]; fill(); slot.onchange = () => { anyItem.slot = slot.value; find_.value = ''; fill(); }; find_.oninput = fill; item.onchange = show;
-  return [el('h3', { text: 'Or start from any item' }), el('div', { class: 'row anyitem' }, pic, el('div', { class: 'anycol' }, el('div', { class: 'row' }, slot, find_), item),
+    list = from.flatMap(f => CAT.items[f].filter(e => ok(e) && (!q || itemName(e).toLowerCase().includes(q))).map(e => [itemName(e) + (q ? ` (${LABEL[f]})` : ''), f, e])).sort((a, b) => a[0].localeCompare(b[0]));
+    menu.replaceChildren(...list.map(([n], i) => el('div', { role: 'option', class: 'anyopt', text: n, data: { i } })));
+    at = list.length ? 0 : -1; act = at; label(); item.disabled = !list.length; close(); clearTimeout(hov); draw(at); };
+  slot.value = slots.includes(anyItem.slot) ? anyItem.slot : slots.includes('overtop') ? 'overtop' : slots[0]; fill(); slot.onchange = () => { anyItem.slot = slot.value; find_.value = ''; fill(); }; find_.oninput = fill;
+  find_.onkeydown = ev => { if (ev.key === 'ArrowDown' && list.length) { ev.preventDefault(); item.focus(); item.onkeydown(ev); } };
+  return [el('h3', { text: 'Or start from any item' }), el('div', { class: 'row anyitem' }, pic, el('div', { class: 'anycol' }, el('div', { class: 'row' }, slot, find_), el('div', { class: 'anywrap' }, item, menu)),
     el('button', { class: 'btn primary', text: 'Edit a copy', onclick: () => { const [f, e] = pick(); if (e) newAsset(f, R.partStr(e)); } }))];
 }
 function assetCard(a) {

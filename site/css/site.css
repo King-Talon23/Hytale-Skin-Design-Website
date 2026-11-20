@@ -111,7 +111,15 @@ main { min-height: 0; }
 .swlabel { font-size: 11px; color: var(--dim); margin: 2px 0 -2px; }
 .swatches.empty { min-height: 26px; align-items: center; font-size: 11.5px; color: var(--dim); font-style: italic; }
 .anyitem { align-items: center; } .anyitem select { flex: 1; min-width: 0; } .anycol { flex: 1; display: grid; gap: 6px; min-width: 0; } .anysearch { flex: 1; min-width: 0; }
-.anypic { width: 64px; height: 64px; flex: none; } .anypic img { width: 64px; height: 64px; }
+.anypic { width: 64px; height: 64px; flex: none; position: relative; } .anypic img { width: 64px; height: 64px; } .anypic img.next { position: absolute; inset: 0; opacity: 0; }
+.anywrap { position: relative; min-width: 0; }
+.anypick { width: 100%; min-height: 38px; text-align: left; background: #0d1826; border: 1px solid var(--line); border-radius: 3px; padding: 8px 30px 8px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; position: relative; }
+.anypick::after { content: ""; position: absolute; right: 12px; top: 50%; width: 7px; height: 7px; border: solid currentColor; border-width: 0 2px 2px 0; transform: translateY(-70%) rotate(45deg); opacity: .8; }
+.anypick:disabled { opacity: .6; cursor: default; }
+.anymenu { position: fixed; z-index: 50; max-height: 320px; overflow-y: auto; background: #0d1826; border: 1px solid var(--line); border-radius: 3px; box-shadow: 0 8px 22px #000a; padding: 3px; }
+.anymenu[hidden] { display: none; }
+.anyopt { padding: 6px 9px; border-radius: 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.anyopt[aria-selected=true] { background: #23406a; color: #fff; }
 .worn { font-size: 11.5px; color: #6fae7a; padding: 3px 6px; } body.busy, body.busy * { cursor: progress !important; }
 .tour { position: fixed; z-index: 50; width: 290px; background: #13233a; border: 1px solid var(--gold); border-radius: 6px; padding: 12px 14px; box-shadow: 0 10px 30px #000a; }
 .tour b { font: 700 14px var(--h); color: var(--gold); } .tour p { margin: 6px 0 10px; font-size: 13.5px; line-height: 1.45; color: #dce8eb; }
