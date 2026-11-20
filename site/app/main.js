@@ -90,6 +90,7 @@ async function startApp() {
   META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); SHOWGAME = !!(await db.get('meta', 'showInGame').catch(() => false));
   $('connect').hidden = true; $('app').hidden = false;
   if (!st) { st = fig.stage($('view'), OrbitControls);
+    if (location.hostname.endsWith('localhost')) window.__st = st;   // local tests only
     st.onMissing = () => say('Some of the game objects this move uses are not in your saved copy of the game files yet. Connect your Assets.zip again in Help to see them.', true); st.onFacing(f => { const t = $('facing') || $('view').parentElement.appendChild(el('div', { id: 'facing', class: 'facing' })); t.textContent = 'Facing you: ' + f; }); bindPaint($('view'), e => ED && !ED.shapeOpen && ED.painter.tool !== 'select' ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true);
     $('view').addEventListener('pointermove', e => { if (!ED) return; partHover(e); const p = ED.shapeOpen || ED.painter.tool === 'select' ? st.cursor(null) : st.cursor(e.clientX, e.clientY, ED.canvas, brushSize(), ED.mirror);
       ED.hover = p; ED.hoverM = p?.m || null; drawOvl(); });
@@ -506,7 +507,7 @@ const CHAIR = [{ block: game.SET_PIECES.chair, at: [0, 0, 0], turn: 0 }];   // s
 const BED = [{ block: game.SET_PIECES.bed, at: [-32, 0, -8], turn: 90 }];   // the headboard and pillow end towards -z   // lying moves drop the pelvis about 42, head towards -z
 const BENCH = [{ block: game.SET_PIECES.bench, at: [0, 0, 84], turn: 180 }];   // something to work at, in front of the hands
 const LADDERS = cols => [{ ladder: [cols, 7], at: [0, 0, -8] }];   // climbing faces +z: the rungs just in front of the hands, planks behind them
-const WATER = y => [{ plane: [900, 900], at: [0, y, 0], tex: W.water, repeat: [14, 14], color: 0x7fb2e6, opacity: 0.45 }];
+const WATER = y => [{ plane: [3600, 3600], at: [0, y, 0], tex: W.water, repeat: [56, 56], color: 0x7fb2e6, opacity: 0.45, flow: true }];   // a lake to the hills, drifting with the land while swimming
 function sceneryFor(g, n) {
   if (g === 'Flavor' && /^Sit2?$/.test(n)) return [CHAIR, 32];   // the village chair's seat top
   if (g === 'Flavor' && /^Sleep/.test(n)) return [BED, 50];   // on the mattress, under the blanket's top

@@ -212,58 +212,64 @@ const disposeTree = root => root.traverse(o => { if (o.isInstancedMesh) o.dispos
 const turnOf = r => new THREE.Quaternion().setFromEuler(new THREE.Euler(((r >> 2) & 3) * Math.PI / 2, (r & 3) * Math.PI / 2, ((r >> 4) & 3) * Math.PI / 2, 'YXZ'));
 // a small piece of the zone: rolling land of its ground blocks, its own grasses and flowers, and a few of its trees, from the game's prefabs
 async function buildWorld(sc, tint) {
+  // The land repeats every P blocks both ways. Two lanes FLAT blocks either side of the lines x = 0 and z = 0 stay level, so a moving
+  // animation (always straight along x or z) carries the character down a lane: the whole land slides past as one piece, and nothing
+  // solid ever reaches the character or the camera. Hills, trees and tall plants fill the squares between the lanes.
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const R = 26, FLAT = 8, at = new Map(), put = (name, x, y, z, q, k) => { const key = name + '|' + (k || 0); (at.get(key) || at.set(key, []).get(key)).push([x, y, z, q]); };
-  const height = (x, z) => { const d = Math.hypot(x, z); if (d < FLAT) return 0; const n = Math.sin(x * 0.21 + 1.3) * Math.cos(z * 0.17 - 0.7) + 0.7 * Math.sin((x + z) * 0.09 + 2.1) + 0.4 * Math.cos((x - z) * 0.27);
+  const P = 80, FLAT = 10, R = 27, TAU = Math.PI * 2, sym = v => { const w = ((v % P) + P) % P; return w >= P / 2 ? w - P : w; };
+  const lane = (x, z) => Math.min(Math.abs(sym(x)), Math.abs(sym(z)));   // blocks to the nearest lane's middle line
+  const height = (x, z) => { const d = lane(x, z); if (d < FLAT) return 0;
+    const n = Math.sin(TAU * 2 * x / P + 1.3) * Math.cos(TAU * 3 * z / P - 0.7) + 0.7 * Math.sin(TAU * (x + z) / P + 2.1) + 0.4 * Math.cos(TAU * 4 * (x - z) / P);
     return Math.max(0, Math.round((n + 0.5) * sc.hills * 0.55 * Math.min(1, (d - FLAT) / 4))); };
-  const H = new Map(); for (let x = -R - 1; x <= R + 1; x++) for (let z = -R - 1; z <= R + 1; z++) H.set(x + ',' + z, height(x, z));
-  const h = (x, z) => H.get(x + ',' + z) ?? 0, nTops = (await blockParts(sc.ground, tint)).length;
-  // plant sizes (third value): 1 low, 2 knee-high, none tall; tall ones only grow beyond the camera's reach
-  const pick = near => { const from = sc.plants.filter(p => near === 1 ? p[2] === 1 : near === 2 ? p[2] : true); if (!from.length) return null; let r = rnd() * from.reduce((s, p) => s + p[1], 0);
-    for (const [n, w] of from) if ((r -= w) <= 0) return n; return from[0][0]; };   // plants marked low (third value) may grow close
-  // the trees first, so the land under them stays clear of grass
-  const taken = new Set(), trees = await Promise.all(sc.trees.map(p => game.json(p)));
-  const spots = sc.trees.length * 2; for (let i = 0; i < spots; i++) { const tb = trees[i % trees.length].blocks, reach = Math.max(0, ...tb.map(b => Math.hypot(b.x, b.z)));   // a wide tree stands farther out
-    const ang = (i / spots) * Math.PI * 2 + 0.4, dist = Math.max(12, reach + 7) + (i % 3) * 4, tx = Math.round(Math.cos(ang) * dist), tz = Math.round(Math.sin(ang) * dist), base = h(tx, tz);
-    // the trunk's foot on the ground; no part of a tree within 6 blocks of the character
-    const trunks = tb.filter(b => /Trunk/.test(b.name)), lift = trunks.length ? -Math.min(...trunks.map(b => b.y)) : 0;
-    for (const b0 of tb) { const blk = { ...b0, y: b0.y + lift }; if (!BLOCKS[blk.name] || Math.hypot(tx + blk.x, tz + blk.z) < 6) continue; const q = blk.rotation ? turnOf(blk.rotation) : null; put(blk.name, tx + blk.x, base + blk.y, tz + blk.z, q); if (blk.y === 0) taken.add((tx + blk.x) + ',' + (tz + blk.z)); } }
-  for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) { const d = Math.hypot(x, z); if (d > R || d < FLAT - 0.75) continue; const top = h(x, z), low = Math.min(top, h(x + 1, z), h(x - 1, z), h(x, z + 1), h(x, z - 1));
-    for (let y = low; y <= top; y++) put(y === top ? sc.ground : sc.under, x, y - 1, z, null, y === top ? Math.floor(rnd() * nTops) : 0);
-    // near the character (inside the camera's reach) only low plants grow, so nothing tall stands between the view and the skin
-    if (d >= FLAT && !taken.has(x + ',' + z) && rnd() < sc.density) { const name = pick(0); if (!name) continue; const yaw = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd() * Math.PI * 2);
-      put(name, x + (rnd() - 0.5) * 0.5, top, z + (rnd() - 0.5) * 0.5, yaw); } }
-  const root = new THREE.Group(), M = new THREE.Matrix4(), V = new THREE.Vector3(), Q = new THREE.Quaternion(), ONE = new THREE.Vector3(1, 1, 1);
-  for (const [key, list] of at) { const [name, k] = key.split('|'), parts = await blockParts(name, tint), p = parts[+k] || parts[0];
-    const im = new THREE.InstancedMesh(p.geo, p.mat, list.length);
-    list.forEach(([x, y, z, q], i) => im.setMatrixAt(i, M.compose(V.set(x * BLOCK, y * BLOCK, z * BLOCK), q || Q.identity(), ONE)));
-    im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); root.add(im); }
-  // the clearing round the character: one floor of the zone's ground blocks and its low plants, which slide under the feet during
-  // moving animations and wrap round (period 2*FLAT blocks), so the character runs through grass and never into a hill or tree
-  const tops = BLOCKS[sc.ground].cube.top, topList = Array.isArray(tops) ? tops : [tops], b = BLOCKS[sc.ground];
-  const tiles = await Promise.all(topList.map(async t => b.tintUp ? tinted(await canvasOf(t), tint) : await canvasOf(t))), S = tiles[0].width, P = FLAT * 2;
-  const fc = document.createElement('canvas'); fc.width = fc.height = P * S; const fx = fc.getContext('2d');
-  for (let j = 0; j < P; j++) for (let i = 0; i < P; i++) fx.drawImage(tiles[Math.floor(rnd() * tiles.length)], i * S, j * S, S, S);
-  const ft = new THREE.CanvasTexture(fc); ft.colorSpace = THREE.SRGBColorSpace; ft.wrapS = ft.wrapT = THREE.RepeatWrapping; ft.magFilter = THREE.NearestFilter; ft.minFilter = THREE.NearestMipmapLinearFilter;
-  const SPAN = P * BLOCK, base = 0.5 / P;   // blocks are centred on whole numbers, so their edges sit half a block off the circle's
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(FLAT * BLOCK, 96), new THREE.MeshLambertMaterial({ map: ft, color: new THREE.Color(SHADE, SHADE, SHADE) }));
-  floor.rotation.x = -Math.PI / 2; floor.position.y = 0.8; ft.offset.set(base, base); root.add(floor);
-  const near = [];   // [name, x, z, yaw] on the repeating tile, centred on the character
-  for (let x = -FLAT; x < FLAT; x++) for (let z = -FLAT; z < FLAT; z++) { if (rnd() >= sc.density) continue; const px = x + (rnd() - 0.5) * 0.5, pz = z + (rnd() - 0.5) * 0.5, d = Math.hypot(px, pz);
-    const name = pick(d < 3.2 ? 1 : 2); if (!name || d < 1.7) continue; near.push([name, px, pz, rnd() * Math.PI * 2]); }
-  const groups = new Map(); for (const n of near) (groups.get(n[0]) || groups.set(n[0], []).get(n[0])).push(n);
-  const movers = []; for (const [name, list] of groups) { const p = (await blockParts(name, tint))[0], im = new THREE.InstancedMesh(p.geo, p.mat, list.length); root.add(im); movers.push([im, list]); }
-  const Y = new THREE.Vector3(0, 1, 0), ZERO = new THREE.Vector3(0, 0, 0), SC = new THREE.Vector3(), wrap = v => ((v + FLAT) % P + P) % P - FLAT;
-  let ax = 0, az = 0;
-  const place = () => { ft.offset.set(base - ax / SPAN, base + az / SPAN);
-    for (const [im, list] of movers) { list.forEach(([, px, pz, yaw], i) => { const x = wrap(px + ax / BLOCK), z = wrap(pz + az / BLOCK), c = root.userData.cam, d = Math.hypot(x, z);
-        // a plant shrinks away as it nears the character (never through the legs), the camera's lens or the clearing's edge
-        const k = Math.min(1, Math.max(0, (d - (root.userData.clear || 1)) / 0.7), Math.max(0, (FLAT - 0.4 - d) / 0.6), c ? Math.max(0, (Math.hypot(x * BLOCK - c.x, z * BLOCK - c.z) / BLOCK - 1.6) / 0.8) : 1);
-        im.setMatrixAt(i, M.compose(V.set(x * BLOCK, 0, z * BLOCK), Q.setFromAxisAngle(Y, yaw), k > 0.01 ? SC.setScalar(k) : ZERO)); }); im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); } };
-  root.userData.move = (dx, dz) => { ax += dx; az += dz; place(); };   // the floor slides by this much (scene units)
-  root.userData.rest = () => { ax = az = 0; place(); };   // back to the starting layout when a move ends (and kept clear of the camera)
-  place();
-  root.position.y = -0.5; return root; }
+  const H = []; for (let x = 0; x < P; x++) for (let z = 0; z < P; z++) H[x * P + z] = height(x, z);
+  const h = (x, z) => H[(((x % P) + P) % P) * P + (((z % P) + P) % P)];
+  const items = new Map(), put = (key, x, y, z, q, plant) => (items.get(key) || items.set(key, { plant, list: [] }).get(key)).list.push([x, y, z, q]);
+  const nTops = (await blockParts(sc.ground, tint)).length;
+  // plant sizes (third value): 1 low, 2 knee-high, none tall; the closer to a lane's middle, the lower
+  const pick = size => { const from = sc.plants.filter(p => size === 1 ? p[2] === 1 : size === 2 ? p[2] : true); if (!from.length) return null; let r = rnd() * from.reduce((t, p) => t + p[1], 0);
+    for (const [n, w] of from) if ((r -= w) <= 0) return n; return from[0][0]; };
+  // trees in the squares between the lanes, each wholly inside (reach = how far its blocks spread from the trunk), never touching another
+  const taken = new Set(), trees = await Promise.all(sc.trees.map(p => game.json(p))), placed = [];
+  for (let i = 0, tries = 0; placed.length < 5 && tries < 400; tries++) { const tb = trees[i % trees.length].blocks, reach = Math.max(0, ...tb.map(b => Math.hypot(b.x, b.z)));
+    const cx = Math.round(FLAT + reach + 2 + rnd() * (P - 2 * (FLAT + reach + 2))), cz = Math.round(FLAT + reach + 2 + rnd() * (P - 2 * (FLAT + reach + 2)));
+    if (P - 2 * (FLAT + reach + 2) < 0 || placed.some(t => Math.hypot(sym(t[0] - cx), sym(t[1] - cz)) < t[2] + reach + 2)) { if (tries % 40 === 39) i++; continue; }
+    placed.push([cx, cz, reach]); i++;
+    const trunks = tb.filter(b => /Trunk/.test(b.name)), lift = trunks.length ? -Math.min(...trunks.map(b => b.y)) : 0, base = h(cx, cz);   // the trunk's foot on the ground
+    for (const b0 of tb) { if (!BLOCKS[b0.name]) continue; const x = cx + b0.x, z = cz + b0.z, y = base + b0.y + lift;
+      put(b0.name + '|0', x, y, z, b0.rotation ? turnOf(b0.rotation) : null, false); if (b0.y + lift === 0) taken.add(sym(x) + ',' + sym(z)); } }
+  for (let x = 0; x < P; x++) for (let z = 0; z < P; z++) { const top = h(x, z), low = Math.min(top, h(x + 1, z), h(x - 1, z), h(x, z + 1), h(x, z - 1));
+    for (let y = low; y <= top; y++) put(y === top ? sc.ground + '|' + Math.floor(rnd() * nTops) : sc.under + '|0', x, y - 1, z, null, false);
+    if (taken.has(sym(x) + ',' + sym(z)) || rnd() >= sc.density) continue; const px = x + (rnd() - 0.5) * 0.5, pz = z + (rnd() - 0.5) * 0.5, d = lane(px, pz);
+    const name = pick(d < 3.2 ? 1 : d < FLAT ? 2 : 0); if (name) put(name + '|0', px, top, pz, rnd() * TAU, true); }
+  const root = new THREE.Group(), M = new THREE.Matrix4(), V = new THREE.Vector3(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), ONE = new THREE.Vector3(1, 1, 1), SC = new THREE.Vector3();
+  const sets = []; for (const [key, { plant, list }] of items) { const [name, k] = key.split('|'), parts = await blockParts(name, tint), p = parts[+k] || parts[0];
+    const im = new THREE.InstancedMesh(p.geo, p.mat, list.length); im.frustumCulled = false; root.add(im); sets.push({ im, list, plant }); }
+  let ax = 0, az = 0, laid = null;   // how far the land has slid (scene units), and where it was last laid out
+  const avoid = () => root.userData.avoid || [];   // set pieces' ground rectangles [x0, z0, x1, z1] in blocks: no plant inside them
+  // lay out the land for the current slide: wrapped round the character, only what is within R blocks (the fog hides the edge)
+  const layout = (plantsOnly) => { const ox = ax / BLOCK, oz = az / BLOCK, c = root.userData.cam, clear = root.userData.clear || 1, rects = avoid();
+    for (const st of sets) { if (plantsOnly && !st.plant) continue; let n = 0;
+      for (const [x0, y, z0, q] of st.list) { const x = sym(x0 + ox), z = sym(z0 + oz); if (x * x + z * z > R * R) continue;
+        let k = 1; if (st.plant) { const d = Math.hypot(x, z);   // a plant shrinks away near the character, the camera's lens and any set piece
+          k = Math.min(1, Math.max(0, (d - clear) / 0.7), c ? Math.max(0, (Math.hypot(x * BLOCK - c.x, z * BLOCK - c.z) / BLOCK - 2.2) / 1.2) : 1);
+          for (const r of rects) if (x > r[0] - 0.6 && x < r[2] + 0.6 && z > r[1] - 0.6 && z < r[3] + 0.6) k = 0;
+          if (k < 0.02) continue; }
+        st.im.setMatrixAt(n++, M.compose(V.set(x * BLOCK, y * BLOCK, z * BLOCK), st.plant ? Q.setFromAxisAngle(Y, q) : q || Q.identity(), st.plant ? SC.setScalar(k) : ONE)); }
+      st.im.count = n; st.im.instanceMatrix.needsUpdate = true; } };
+  const span = P * BLOCK;
+  root.userData.move = (dx, dz) => {
+    // a move along one lane starts from the crossing, so it never runs down the other lane into the squares
+    if (dx && az % span) az = 0; if (dz && ax % span) ax = 0;
+    ax = (ax + dx) % span; az = (az + dz) % span;
+    const key = ax.toFixed(1) + ',' + az.toFixed(1); if (key !== laid) { laid = key; layout(false); } else layout(true); };
+  root.userData.offset = () => [ax, az];
+  root.userData.solids = () => sets.filter(t => !t.plant).flatMap(t => t.list.filter(b => b[1] >= 0).map(b => [sym(b[0]), b[1], sym(b[2])]));   // for tests: blocks above the ground, in blocks
+  // for tests: the nearest solid block above the ground to a point (scene units), in blocks, as the land lies now
+  root.userData.solidNear = (px = 0, pz = 0) => { let best = Infinity; const ox = ax / BLOCK, oz = az / BLOCK;
+    for (const st of sets) { if (st.plant) continue; for (const [x0, y, z0] of st.list) { if (y < 0) continue; const x = sym(x0 + ox), z = sym(z0 + oz);
+      best = Math.min(best, Math.max(0, Math.hypot(x - px / BLOCK, z - pz / BLOCK) - 0.71)); } } return best; };
+  root.userData.relayout = () => { laid = null; layout(false); };
+  layout(false); root.position.y = -0.5; return root; }
 // ---- the stage (main view) and a small off-screen renderer for thumbnails
 function lights(scene) { scene.add(new THREE.AmbientLight(0xffffff, 1.7)); const l = new THREE.DirectionalLight(0xfff4e0, 1.9); l.position.set(-60, 160, 120); scene.add(l); }
 export function stage(canvas, Controls) {
@@ -274,14 +280,15 @@ export function stage(canvas, Controls) {
   ctl.minDistance = 40; ctl.maxDistance = 480; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
   const disc = new THREE.Mesh(new THREE.CircleGeometry(58, 48), new THREE.MeshBasicMaterial({ color: 0x0b1626, transparent: true, opacity: 0.55 })); disc.rotation.x = -Math.PI / 2; disc.position.y = -0.2; scene.add(disc);
   const CELL = 32, grid = new THREE.GridHelper(CELL * 40, 40, 0x4a76ad, 0x33557f); grid.material.transparent = true; grid.material.opacity = 0; grid.material.depthWrite = false; scene.add(grid);
-  let sky = null, world = null, scrollers = [];   // the in-game background (setBackdrop below); set pieces that slide while climbing
+  let sky = null, world = null, scrollers = [], flowing = [];   // the in-game background (setBackdrop below); set pieces that slide while climbing
   // the climbing wall: the same grid stood up in front of the figure, sliding the other way as it climbs
   const wallG = new THREE.GridHelper(CELL * 16, 16, 0x4a76ad, 0x33557f); wallG.rotation.x = Math.PI / 2; wallG.material.transparent = true; wallG.material.opacity = 0; wallG.material.depthWrite = false; wallG.visible = false; scene.add(wallG);
   let wallOn = null; const WALL_Z = 12, WALL_Y = 70;
   const vel = new THREE.Vector2(), want = new THREE.Vector2();
   function travel(dt) { const v = anim.velocity; want.set(v ? v[0] : 0, v ? v[1] : 0); vel.lerp(want, 1 - Math.exp(-dt * 9));
     // the clearing's floor slides with the move (a horse needs more room round it than a person)
-    if (world) { world.userData.cam = cam.position; world.userData.clear = mountRoot ? 2.3 : 1; if (anim.move) world.userData.move(-vel.x * dt, -vel.y * dt); else if (vel.lengthSq() < 1) world.userData.rest(); else world.userData.move(0, 0); }
+    if (world) { world.userData.cam = cam.position; world.userData.clear = mountRoot ? 2.3 : 1; world.userData.move(anim.move ? -vel.x * dt : 0, anim.move ? -vel.y * dt : 0); }
+    for (const w of flowing) { const [ox, oz] = world ? world.userData.offset() : [0, 0], m = w.material.map; if (m) m.offset.set(-ox / w.userData.flow, oz / w.userData.flow); }   // water drifts with the land
     grid.position.x = (grid.position.x - vel.x * dt) % CELL; grid.position.z = (grid.position.z - vel.y * dt) % CELL;   // the ground runs backwards under the figure
     grid.material.opacity += ((anim.move && anim.anim && !world ? 0.5 : 0) - grid.material.opacity) * (1 - Math.exp(-dt * 6)); grid.visible = grid.material.opacity > 0.01;
     const wy = wallG.position.y - WALL_Y - (wallOn ? wallOn[1] : 0) * dt, wx = wallG.position.x - (wallOn ? wallOn[0] : 0) * dt;
@@ -379,12 +386,17 @@ export function stage(canvas, Controls) {
       if (it.tex) { try { const T = await texture(it.tex); map = T.mat.map.clone(); map.wrapS = map.wrapT = THREE.RepeatWrapping; map.repeat.set(...(it.repeat || [1, 1])); map.needsUpdate = true; } catch (e) { console.warn(it.tex, e.message); } }
       const mat = new THREE.MeshLambertMaterial({ map, color: it.color ?? 0xffffff, transparent: it.opacity != null, opacity: it.opacity ?? 1, depthWrite: it.opacity == null, side: THREE.DoubleSide });
       const geo = it.plane ? new THREE.PlaneGeometry(...it.plane) : new THREE.BoxGeometry(...it.box), m = new THREE.Mesh(geo, mat);
-      if (it.plane) m.rotation.x = -Math.PI / 2; m.position.set(...it.at); return m; }));
+      if (it.plane) m.rotation.x = -Math.PI / 2; m.position.set(...it.at); if (it.flow) m.userData.flow = it.plane[0] / (it.repeat || [1])[0]; return m; }));
     const drop = m => m.traverse(o => { if (o.isMesh && !o.userData.shared) { o.geometry.dispose(); o.material.map?.dispose(); o.material.dispose(); } });   // game blocks are shared, kept
     const lost = made.some(m => !m); made.splice(0, made.length, ...made.filter(Boolean)); if (lost) api.onMissing?.();   // older copies of the game files lack the furniture
     if (my !== scenery.n) return made.forEach(drop);
     for (const m of [...setPiece.children]) { setPiece.remove(m); drop(m); }
-    for (const m of made) setPiece.add(m); scrollers = made.filter(m => m.userData.scroll); perchY = perch; seatAt(); }
+    for (const m of made) setPiece.add(m); scrollers = made.filter(m => m.userData.scroll); flowing = made.filter(m => m.userData.flow); perchY = perch; seatAt(); groundRects(); }
+  // the ground each set piece stands on, in blocks, so no plant grows through a chair, a bed or a ladder wall
+  function groundRects() { const box = new THREE.Box3(), rs = []; setPiece.updateMatrixWorld(true);
+    for (const m of setPiece.children) { if (m.userData.flow) continue; box.setFromObject(m); if (box.isEmpty() || box.min.y > 40) continue; rs.push([box.min.x / BLOCK, box.min.z / BLOCK, box.max.x / BLOCK, box.max.z / BLOCK]); }
+    if (world) { world.userData.avoid = rs; world.userData.relayout(); } else pendingRects = rs; }
+  let pendingRects = [];
   // flying moves: the figure rises off the ground and bobs gently, easing up and down when the move changes
   function float(dt, now) { if (!figure || (!hoverTo && !hoverAt)) return; hoverAt += (hoverTo - hoverAt) * (1 - Math.exp(-dt * 4)); if (Math.abs(hoverTo - hoverAt) < 0.05) hoverAt = hoverTo;
     seatAt(); if (hoverAt > 1 && hoverTo) figure.position.y += Math.sin(now / 1000 * 2.2) * 2.5 * Math.min(1, hoverAt / hoverTo); }
@@ -446,6 +458,7 @@ export function stage(canvas, Controls) {
   const shadow = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
     g.addColorStop(0, 'rgba(0,0,0,0.42)'); g.addColorStop(0.6, 'rgba(0,0,0,0.22)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   // bd: { top, fog } colours from the zone's weather at noon, sc: its entry in SCENES, tint: the biome's grass colour
+  api.world = () => world; api.camera = cam; api.orbit = (az, el, dist) => { const t = ctl.target; cam.position.set(t.x + Math.sin(az) * Math.cos(el) * dist, t.y + Math.sin(el) * dist, t.z + Math.cos(az) * Math.cos(el) * dist); ctl.update(); };   // for tests
   api.setBackdrop = async (bd, sc, tint) => { const my = (api.setBackdrop.n = (api.setBackdrop.n || 0) + 1);
     let built = null; if (bd) try { built = await buildWorld(sc, tint); } catch (e) { console.warn('scene', e); if (my === api.setBackdrop.n) throw new Error('scene files missing'); return; }   // the caller says what is missing
     if (my !== api.setBackdrop.n) { if (built) disposeTree(built); return; }
@@ -458,7 +471,7 @@ export function stage(canvas, Controls) {
     for (let i = 0; i < p.count; i++) { const c = hor.clone().lerp(top, Math.pow(Math.max(0, p.getY(i) / R), 0.5)); cols.push(c.r, c.g, c.b); }
     g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     sky = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -2; scene.add(sky);
-    if (built) { world = built; scene.add(world); }
+    if (built) { world = built; scene.add(world); world.userData.avoid = pendingRects; groundRects(); }
     scene.fog = new THREE.Fog(hor, 950, 1750);   // the far edge of the land melts into the sky, as the game's fog does
   };
   return api;
