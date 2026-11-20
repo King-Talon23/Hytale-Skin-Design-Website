@@ -40,7 +40,9 @@ export async function finish(query) {   // runs on /auth/callback
   const me = u.ok ? await u.json().catch(() => null) : null, p = me && me.profile;
   if (!p || typeof p.uuid !== 'string' || typeof p.username !== 'string' || !UUID.test(p.uuid) || !NAME.test(p.username)) throw new Error('No game profile was shared. Sign in again and pick a profile.');
   await fetch('/api/session', { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_token: tokens.access_token }) }).catch(() => null);   // publishing; optional
-  const account = { uuid: p.uuid.toLowerCase(), username: p.username, at: Date.now() };
+  // what the account owns, when Hytale shares it (the unlock names items list in the game files, such as game.deluxe)
+  const ent = [me.entitlements, p.entitlements, me.editions, p.editions].find(Array.isArray) || [];
+  const account = { uuid: p.uuid.toLowerCase(), username: p.username, at: Date.now(), entitlements: ent.filter(x => typeof x === 'string' && x.length <= 80).slice(0, 300) };
   await db.put('meta', 'account', account); return account;   // the tokens go out of scope here and are never stored
 }
 export async function account() { const a = await db.get('meta', 'account'); return a && UUID.test(a.uuid) && NAME.test(a.username) ? a : null; }

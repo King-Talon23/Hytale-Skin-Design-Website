@@ -501,12 +501,12 @@ async function makeAsset(f, val) {
   if (ASSETS.length >= assets.MAX) throw new Error(`You have ${assets.MAX} custom assets, the most this site keeps. Delete one first.`);
   const skin = val ? { ...cur.skin, [f]: val } : cur.skin, r = R.resolve(f, skin), it = R.find(f, skin[f]); if (!r || !it) throw new Error('Pick an item first.');
   const paidBase = it.custom ? CAT.items[f].find(e => e.Id === it.baseId) : it;
-  if (paidBase && tierOf(paidBase) > 0) throw new Error(`${itemName(paidBase)} is a ${TIERS[tierOf(paidBase)]} item. Paid items can't be repainted.`);
+  if (paidBase && paidLocked(paidBase)) throw new Error(`${itemName(paidBase)} is a ${TIERS[tierOf(paidBase)]} item. Paid items can only be edited by an account that owns them.`);
   const src = it.custom ? ASSETS.find(x => 'Custom_' + x.id === it.Id) : null;
   if (it.custom && !src) throw new Error('That custom item is gone. Pick another one.');
   let a;
   if (src) a = await assets.save({ ...src, id: assets.newId(), name: copyName(src.name), flag: undefined });
-  else { const c = await fig.bakedCanvas(r.tex, r.tint), data = await new Promise(ok => c.toBlob(ok, 'image/png'));
+  else { const c = await fig.bakedCanvas(r.tex, r.tint).catch(() => { throw new Error(`${itemName(it)} is not in your game files, so it can't be edited here.`); }), data = await new Promise(ok => c.toBlob(ok, 'image/png'));
     a = await assets.save({ id: assets.newId(), name: itemName(it) + ' (mine)', field: f, baseId: it.Id, model: r.model, w: c.width, h: c.height, data }); }
   const was = cur.skin[f] && R.find(f, cur.skin[f]); ASSETS = await assets.list(); registerAssets(); setSkin({ ...cur.skin, [f]: 'Custom_' + a.id + '.Mine' }); await openAsset(a);
   say(was && was.Id !== it.Id ? `You are wearing it in place of ${itemName(was)} (one ${LABEL[f]} at a time).` : '');
@@ -596,8 +596,15 @@ function bindPaint(target, toPixel, reach, onModel) { let down = false, last = n
 const urls = new Map();
 function assetPicture(a) { const k = a.id + '@' + a.updated; if (!urls.has(k)) { for (const [o, u] of urls) if (o.startsWith(a.id + '@')) { URL.revokeObjectURL(u); urls.delete(o); } urls.set(k, URL.createObjectURL(a.data)); } return el('img', { alt: '', src: urls.get(k), draggable: false }); }
 function downloadBlob(name, blob) { const a = el('a', { href: URL.createObjectURL(blob), download: name }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
-const lockedBase = a => { const it = CAT.items[a.field].find(e => e.Id === a.baseId); return it ? tierOf(it) : 0; };
+// Paid (edition and reward) items: open to edit only for an account that owns them. Hytale's sign-in tells us what an account
+// owns (its entitlements, the same names the game files list under each item); until then every paid item stays locked.
+const owns = e => { const need = Array.isArray(e?.Entitlements) ? e.Entitlements : [], have = ACCOUNT && Array.isArray(ACCOUNT.entitlements) ? ACCOUNT.entitlements : null;
+  return !!have && need.length > 0 && need.every(x => have.includes(x)); };
+const paidLocked = e => tierOf(e) > 0 && !owns(e);
+const lockedBase = a => { const it = CAT.items[a.field].find(e => e.Id === a.baseId); return it && paidLocked(it) ? tierOf(it) : 0; };
 const modReady = a => lockedBase(a) === 0 && !a.flag;
+store.setLockedOf(a => !modReady(a));
+store.setKeepOwnOf(skin => R ? game.FIELDS.filter(f => { const it = R.find(f, skin[f]); if (!it) return false; if (!it.custom) return paidLocked(it); const a = ASSETS.find(x => 'Custom_' + x.id === it.Id); return !a || !modReady(a); }) : []);
 // ---- paid items stay paid: no repaints of edition or reward items, and no repaints that copy one
 // A custom asset keeps its base item's 3D shape, so it can only pass for a paid item that uses the same model. Its texture is
 // compared, on the drawn area only, with every paid texture for that model: pixel colours (a straight copy) and the light and
@@ -683,8 +690,8 @@ function copyName(n) { const base = n.replace(/ \(mine\)$/, '').replace(/ copy( 
 async function copyAsset(a) { if (ASSETS.length >= assets.MAX) throw new Error(`You have ${assets.MAX} custom assets, the most this site keeps. Delete one first.`);
   const c = await assets.save({ ...a, id: assets.newId(), name: copyName(a.name), flag: undefined }); ASSETS = await assets.list(); registerAssets(); syncFolder(); render(); say(`Made "${c.name}". Its Edit button opens it.`); }
 function anyItem() {   // or start from any free item in the game, worn or not
-  const slots = game.FIELDS.filter(f => CAT.items[f].some(e => !e.custom && tierOf(e) === 0)), slot = el('select', { title: 'Slot' }, slots.map(f => el('option', { value: f, text: LABEL[f] })));
-  const ok = e => !e.custom && tierOf(e) === 0 && !/^\s*\[?tmp\]?/i.test(itemName(e)) && !/(^|_)tmp(_|$)/i.test(e.Id);
+  const slots = game.FIELDS.filter(f => CAT.items[f].some(e => !e.custom && !paidLocked(e))), slot = el('select', { title: 'Slot' }, slots.map(f => el('option', { value: f, text: LABEL[f] })));
+  const ok = e => !e.custom && !paidLocked(e) && !/^\s*\[?tmp\]?/i.test(itemName(e)) && !/(^|_)tmp(_|$)/i.test(e.Id);
   const item = el('select', { title: 'Item' }), find_ = el('input', { type: 'search', placeholder: 'Search', class: 'anysearch' }), pic = el('div', { class: 'pic anypic' });
   const pick = () => { const [f, id] = item.value.split('|'); return [f, CAT.items[f]?.find(x => x.Id === id)]; };
   const show = () => { const [f, e] = pick(); pic.replaceChildren(e ? itemThumb(f, e) : ''); };
@@ -1179,7 +1186,7 @@ const animPicker = () => el('select', { class: 'wsanim', title: 'Preview a move 
 
 function panelCreator() {
   if (!ED) { const worn = game.FIELDS.filter(f => R.resolve(f, cur.skin));
-    const paidIn = f => { const it = R.find(f, cur.skin[f]), b = it && it.custom ? CAT.items[f].find(e => e.Id === it.baseId) : it; return b && tierOf(b) > 0; };
+    const paidIn = f => { const it = R.find(f, cur.skin[f]), b = it && it.custom ? CAT.items[f].find(e => e.Id === it.baseId) : it; return b && paidLocked(b); };
     const tile = f => { const it = R.find(f, cur.skin[f]), p = parse(cur.skin[f]), paid = paidIn(f);
       return el('div', { class: 'skin starttile' + (paid ? ' paid' : '') }, el('div', { class: 'pic' }, itemThumb(f, it, p.color, p.variant)), el('b', { text: itemName(it) }), el('small', { text: LABEL[f] }),
         paid ? el('small', { class: 'dim', text: 'Paid item' }) : it.custom ? el('div', { class: 'acts' }, el('button', { class: 'mini primary', text: 'Open', title: 'Keep editing your version', onclick: guard(() => { const a = ASSETS.find(x => 'Custom_' + x.id === it.Id); if (!a) throw new Error('That custom item is gone.'); return openAsset(a); }) }),
