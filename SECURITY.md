@@ -8,7 +8,7 @@
   HMAC-signed with the `SESSION_KEY` secret, 30 days, carrying a per-player session number; void as soon as the player row is
   deleted or banned, and signing out bumps the number so every copy of the cookie stops working). Bodies are JSON
   capped at 8 KB, recipes pass a slot and part-name allow-list, names are stripped and capped, 45 skins per player, 30 writes an
-  hour. Identity comes from Hytale's own `/userinfo`, read by the server with a token it redeemed itself under this site's
+  hour, 10 sign-ins per address per 10 minutes (the address kept only as a keyed hash). Identity comes from Hytale's own `/userinfo`, read by the server with a token it redeemed itself under this site's
   client ID, so a token issued to any other app can't open a session here.
 - **Game files and skins stay in the player's browser** (IndexedDB). Nothing is uploaded.
 - **One outside host for the browser:** the player lookup sends the typed username to `https://playerdb.co`, the only host the

@@ -2,7 +2,7 @@
 // This server redeems it with Hytale itself under this site's own client ID, so only a sign-in made for this site works
 // (a token issued to some other app can't be used here). It reads the picked game profile from Hytale's /userinfo, keeps
 // the UUID and username, drops the tokens and sets its own session cookie. The profile goes back to the browser.
-import { body, ensure, json, sameSite, sessionCookie, switchedOn, uuidOf, SITE } from '../../lib/api.js';
+import { body, ensure, json, sameSite, sessionCookie, signinAllowed, switchedOn, uuidOf, SITE } from '../../lib/api.js';
 import { HYTALE_CLIENT_ID } from '../../site/app/config.js';
 const ISSUER = 'https://connect.accounts.hytale.com', NAME = /^[A-Za-z0-9_.-]{1,40}$/;
 const AGAIN = 'That sign-in is not valid any more. Start again from the Locker.';
@@ -10,6 +10,7 @@ const AGAIN = 'That sign-in is not valid any more. Start again from the Locker.'
 export async function onRequestPost({ request, env }) {
   if (!sameSite(request)) return json({ error: 'Not allowed.' }, 403);
   if (!HYTALE_CLIENT_ID) return json({ error: 'Sign in with Hytale is not switched on yet.' }, 503);
+  if (switchedOn(env)) { await ensure(env.DB); if (!await signinAllowed(env, request)) return json({ error: 'Too many sign-ins from here. Wait a few minutes and try again.' }, 429); }
   const b = await body(request), code = b && b.code, verifier = b && b.verifier, redirect = b && b.redirect_uri;
   const okRedirect = [SITE + '/auth/callback', new URL(request.url).origin + '/auth/callback'];
   if (typeof code !== 'string' || !/^[\w.~-]{1,4096}$/.test(code) || typeof verifier !== 'string' || !/^[\w~.-]{43,128}$/.test(verifier) || !okRedirect.includes(redirect))
