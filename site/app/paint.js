@@ -42,13 +42,21 @@ export function createPainter(canvas, onChange, onPick) {
     const d = img.data, from = colourAt(d, (y * W + x) * 4), [r, g, b] = rgb(P.color); if (!from[3]) return;
     for (let i = 0; i < d.length; i += 4) if (is(d, i, from)) { d[i] = r; d[i + 1] = g; d[i + 2] = b; }
   }
+  function fillSide(x, y) {   // the whole side of a box under the click, in one colour (the caller says where that side sits on the texture)
+    const r = P.faceAt && P.faceAt(x, y); if (!r) return flood(x, y); const d = img.data, [cr, cg, cb] = rgb(P.color);
+    for (let Y = Math.max(0, Math.floor(r.y)); Y < Math.min(H, Math.ceil(r.y + r.h)); Y++) for (let X = Math.max(0, Math.floor(r.x)); X < Math.min(W, Math.ceil(r.x + r.w)); X++) {
+      const i = (Y * W + X) * 4; d[i] = cr; d[i + 1] = cg; d[i + 2] = cb; d[i + 3] = 255; } }
+  function fillEvery(x, y) {   // every texel close to the clicked colour, anywhere on the item ("Similar colours" sets how close)
+    const d = img.data, from = colourAt(d, (y * W + x) * 4), [r, g, b] = rgb(P.color), tol = P.tolerance * 3; if (!from[3]) return flood(x, y);
+    for (let i = 0; i < d.length; i += 4) { if (!d[i + 3] || Math.abs(d[i] - from[0]) + Math.abs(d[i + 1] - from[1]) + Math.abs(d[i + 2] - from[2]) > tol) continue;
+      if (P.inside && P.mask && !P.mask[i / 4]) continue; d[i] = r; d[i + 1] = g; d[i + 2] = b; } }
   const show = () => { ctx.putImageData(img, 0, 0); dirty = true; onChange(false); };
   function swap(from, to) { if (!from.length) return; to.push(copy()); ctx.putImageData(from.pop(), 0, 0); onChange(true); }
-  const P = { tool: 'brush', size: 1, color: '#e0b050', opacity: 1, inside: true, mask: null, tolerance: 24,   // tolerance: how far a colour may differ (0-100) and still count as the same for Fill
+  const P = { tool: 'brush', size: 1, color: '#e0b050', opacity: 1, inside: true, mask: null, tolerance: 24, fillMode: 'area', faceAt: null,   // tolerance: how far a colour may differ (0-100) and still count as the same for Fill
     begin() { img = ctx.getImageData(0, 0, W, H); base = new ImageData(new Uint8ClampedArray(img.data), W, H); undo.push(base); if (undo.length > 40) undo.shift(); touched = new Set(); fresh = true; dirty = false; start = null; },
     stroke(a, b) { if (!img) return; const first = fresh, t = P.tool; fresh = false; if (first) start = a;
       if (t === 'pick') { if (first) { const i = (b.y * W + b.x) * 4, d = img.data; if (d[i + 3]) { P.color = hex(d[i], d[i + 1], d[i + 2]); onPick && onPick(); } } return; }
-      if (t === 'fill' || t === 'replace') { if (first) { (t === 'fill' ? flood : replaceAll)(b.x, b.y); show(); } return; }
+      if (t === 'fill' || t === 'replace') { if (first) { (t === 'replace' ? replaceAll : P.fillMode === 'side' ? fillSide : P.fillMode === 'every' ? fillEvery : flood)(b.x, b.y); show(); } return; }
       if (SHAPES.has(t)) { img.data.set(base.data); touched.clear(); if (t === 'line') line(start, b); else box(start, b, t === 'boxfill'); show(); return; }   // the shape is redrawn from where the drag began
       line(a, b); show(); },
     end() { if (!img) return; if (dirty) { redo.length = 0; onChange(true); } else undo.pop(); img = null; base = null; touched = null; },

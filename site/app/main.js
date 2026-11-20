@@ -211,7 +211,7 @@ let pressing = false, renderLater = false;
 const flushRender = () => { pressing = false; if (renderLater) { renderLater = false; render(); } };
 addEventListener('pointerdown', e => { if (e.target.closest?.('button, a, summary, label, select, .skin')) { pressing = true; setTimeout(flushRender, 1500); } }, true);
 for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { if (pressing) setTimeout(flushRender, 0); }, true);
-function render() { if (pressing) { renderLater = true; return; } jobGen++; plate(); drawEmotes(); drawGameSwitch(); outlineBox();
+function render() { if (pressing) { renderLater = true; return; } jobGen++; plate(); drawEmotes(); drawStageBtns(); drawGameSwitch(); outlineBox();
   if (!!ED !== $('app').classList.contains('ws')) scrollTo(0, 0);   // opening or closing the Creator workspace starts at the top of the page
   $('app').classList.toggle('ws', !!ED); if (ED) return renderWorkspace(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
   p.replaceChildren(...({ editor: panelEditor, wardrobe: panelWardrobe, animations: panelAnimations, lookup: panelLookup, creator: panelCreator, help: panelHelp }[tab])());
@@ -236,12 +236,14 @@ function tierOf(e) {   // from how the game unlocks the item (its entitlements),
   if (t.some(x => !String(x).startsWith('game.'))) return 4; if (t.includes('game.base')) return 1; if (t.includes('game.deluxe')) return 2; return 3;
 }
 const tierClass = e => e && e.custom ? 'mine' : 't' + tierOf(e);
-let LOCK = { favs: new Set(), seen: null }, picking = false, seenSlot = null, lockFilter = 'all', lockSort = 'up';
+let LOCK = { favs: new Set(), seen: null, recent: {} }, picking = false, seenSlot = null, lockFilter = 'all', lockSort = 'up';
 const favKey = (f, e) => f + '|' + e.Id, isNew = (f, e) => !e.custom && LOCK.seen && !LOCK.seen.has(favKey(f, e));
-const saveLock = () => db.put('meta', 'locker', { favs: [...LOCK.favs], seen: [...LOCK.seen] }).catch(() => {});
+const saveLock = () => db.put('meta', 'locker', { favs: [...LOCK.favs], seen: [...LOCK.seen], recent: LOCK.recent }).catch(() => {});
+// the last items worn in each slot, newest first, for the picker's Recent filter
+const noteWorn = (f, e) => { if (!e) return; const l = (LOCK.recent[f] || []).filter(id => id !== e.Id); l.unshift(e.Id); LOCK.recent[f] = l.slice(0, 12); saveLock(); };
 async function loadLock() {
   const m = await db.get('meta', 'locker').catch(() => null), all = game.FIELDS.flatMap(f => R.ITEMS[f].filter(e => !e.custom).map(e => favKey(f, e)));
-  LOCK.favs = new Set(m?.favs || []); LOCK.seen = m ? new Set(m.seen || []) : new Set(all); if (!m) saveLock();   // on a first visit nothing counts as new
+  LOCK.favs = new Set(m?.favs || []); LOCK.recent = m && m.recent && typeof m.recent === 'object' ? m.recent : {}; LOCK.seen = m ? new Set(m.seen || []) : new Set(all); if (!m) saveLock();   // on a first visit nothing counts as new
 }
 function leavePicker() { if (seenSlot) { for (const e of R.ITEMS[seenSlot]) if (!e.custom) LOCK.seen.add(favKey(seenSlot, e)); saveLock(); seenSlot = null; } picking = false; }
 function variantName(it, v) { const nk = it?.Variants?.[v]?.NameKey; return (nk && CAT.names[nk]) || nice(v); }
@@ -259,13 +261,14 @@ function panelLocker() {
 }
 function panelPicker() {
   const f = slot, it = R.find(f, cur.skin[f]), { color, variant } = parse(cur.skin[f]);
-  const change = (item, c, v) => setSkin({ ...cur.skin, [f]: R.partStr(item, c, v) });
+  const change = (item, c, v) => { if (item !== it) noteWorn(f, it); noteWorn(f, item); setSkin({ ...cur.skin, [f]: R.partStr(item, c, v) }); };
   const all = oneEach(R.ITEMS[f].filter(e => e === it || !isTmp(e))).concat(it && !it.custom && !oneEach(R.ITEMS[f]).includes(it) ? [it] : []), tiersHere = [...new Set(all.filter(e => !e.custom).map(tierOf))].sort();
-  const counts = { fav: all.filter(e => LOCK.favs.has(favKey(f, e))).length, new: all.filter(e => isNew(f, e)).length, mine: all.filter(e => e.custom).length };
+  const recentIds = (LOCK.recent[f] || []).filter(id => all.some(e => e.Id === id));
+  const counts = { recent: recentIds.length, fav: all.filter(e => LOCK.favs.has(favKey(f, e))).length, new: all.filter(e => isNew(f, e)).length, mine: all.filter(e => e.custom).length };
   const chip = (id, label) => el('button', { class: 'chip' + (lockFilter === id ? ' on' : ''), text: label, onclick: () => { lockFilter = id; sortBox.hidden = id !== 'all'; drawCards(); for (const c of bar.querySelectorAll('.chip[data-f]')) c.classList.toggle('on', c.dataset.f === id); }, data: { f: id } });
   const sortBox = el('select', { class: 'sort', title: 'Order', hidden: lockFilter !== 'all', onchange: e => { lockSort = e.target.value; drawCards(); } },
     [['up', 'Standard first'], ['down', 'Event first']].map(([v, t]) => el('option', { value: v, text: t, selected: v === lockSort })));
-  const bar = el('div', { class: 'options lockbar' }, chip('all', 'All'), counts.fav ? chip('fav', `Favourites ${counts.fav}`) : null, counts.new ? chip('new', `New ${counts.new}`) : null,
+  const bar = el('div', { class: 'options lockbar' }, chip('all', 'All'), chip('fav', counts.fav ? `★ Favourites ${counts.fav}` : '☆ Favourites'), counts.recent > 1 ? chip('recent', 'Recent') : null, counts.new ? chip('new', `New ${counts.new}`) : null,
     tiersHere.length > 1 ? tiersHere.map(t => chip('t' + t, TIERS[t])) : null, counts.mine ? chip('mine', 'Custom') : null,
     sortBox);
   const detail = el('div', { class: 'detail' }), showDetail = (e, trying) => { const t = e ? (e.custom ? 'Custom asset · site only' : TIERS[tierOf(e)]) : '';
@@ -273,10 +276,11 @@ function panelPicker() {
   const cardsBox = el('div', { class: 'cards lcards' });
   function drawCards() {
     const q = filter.toLowerCase(); let items = all.filter(e => itemName(e).toLowerCase().includes(q));
-    if (lockFilter === 'fav') items = items.filter(e => LOCK.favs.has(favKey(f, e))); else if (lockFilter === 'new') items = items.filter(e => isNew(f, e));
+    if (lockFilter === 'fav') items = items.filter(e => LOCK.favs.has(favKey(f, e))); else if (lockFilter === 'recent') items = recentIds.map(id => items.find(e => e.Id === id)).filter(Boolean); else if (lockFilter === 'new') items = items.filter(e => isNew(f, e));
     else if (lockFilter === 'mine') items = items.filter(e => e.custom); else if (/^t\d$/.test(lockFilter)) items = items.filter(e => !e.custom && 't' + tierOf(e) === lockFilter);
     const dir = lockFilter === 'all' && lockSort === 'down' ? -1 : 1, rank = e => e.custom ? 5 : tierOf(e);   // the game's order inside each tier; custom assets last
-    items = items.map((e, i) => [e, i]).sort((a, b) => (rank(a[0]) - rank(b[0])) * dir || a[1] - b[1]).map(x => x[0]);
+    const pin = e => lockFilter === 'all' && LOCK.favs.has(favKey(f, e)) ? 0 : 1;   // starred items sit at the top of All
+    if (lockFilter !== 'recent') items = items.map((e, i) => [e, i]).sort((a, b) => pin(a[0]) - pin(b[0]) || (rank(a[0]) - rank(b[0])) * dir || a[1] - b[1]).map(x => x[0]);
     const card = e => { const part = e ? R.partStr(e, color, variant) : null, hv = hover(part), k = e && favKey(f, e), fav = e && LOCK.favs.has(k);
       const star = e ? el('span', { class: 'star' + (fav ? ' on' : ''), role: 'button', title: fav ? 'Remove from favourites' : 'Add to favourites', text: fav ? '★' : '☆',
         onclick: ev => { ev.stopPropagation(); LOCK.favs.has(k) ? LOCK.favs.delete(k) : LOCK.favs.add(k); saveLock(); render(); } }) : null;
@@ -290,7 +294,7 @@ function panelPicker() {
         onpointerenter: ev => { hv.onpointerenter(ev); showDetail(e, e !== it); }, onpointerleave: ev => { hv.onpointerleave(ev); showDetail(it); } },
         e ? itemThumb(f, e, color, variant) : el('span', { class: 'nothing', text: '✕' }), star, bin, e && isNew(f, e) ? el('span', { class: 'new', text: 'NEW' }) : null, el('b', { text: e ? itemName(e) : 'None' })); };
     cardsBox.replaceChildren(...(REQUIRED.has(f) || lockFilter !== 'all' ? [] : [card(null)]), ...items.map(card));
-    if (!items.length) cardsBox.append(el('p', { class: 'blank', text: filter.trim() ? `No items match "${filter.trim()}".` : 'Nothing here.' }));
+    if (!items.length) cardsBox.append(el('p', { class: 'blank', text: filter.trim() ? `No items match "${filter.trim()}".` : lockFilter === 'fav' ? 'No favourites yet. Press the ☆ on any item to keep it here.' : 'Nothing here.' }));
   }
   drawCards(); showDetail(it);
   const search = el('input', { type: 'search', placeholder: 'Search', value: filter, maxLength: 40, oninput: e => { filter = e.target.value; drawCards(); } });
@@ -305,6 +309,20 @@ function panelPicker() {
       return a ? el('button', { class: 'btn ghost small', text: 'Recolour in the Creator', onclick: guard(() => openAsset(a)) }) : null; })())]
       : cols.length ? [el('h3', { text: 'Colour' }), swatches] : null, vs.length > 1 ? [el('h3', { text: 'Option' }), options] : null))];
 }
+// top-left of the stage: the backdrop behind the character, and a clean view with the controls hidden (for a good look or a screenshot)
+const BACKDROPS = [['dark', 'Dark'], ['light', 'Light'], ['sky', 'Sky'], ['grass', 'Meadow']];
+function drawStageBtns() {
+  const box = $('stagebtns'), stg = $('view').parentElement; if (!box) return;
+  let bd = store_.get('se_backdrop'); if (!BACKDROPS.some(b => b[0] === bd)) bd = 'dark';
+  for (const [k] of BACKDROPS) stg.classList.toggle('bd-' + k, k === bd);
+  const name = BACKDROPS.find(b => b[0] === bd)[1], clean = stg.classList.contains('clean');
+  box.replaceChildren(...[
+    el('button', { class: 'stbtn', title: 'Change the background behind your character', 'aria-label': 'Background: ' + name, onclick: () => { const i = BACKDROPS.findIndex(b => b[0] === bd); store_.set('se_backdrop', BACKDROPS[(i + 1) % BACKDROPS.length][0]); drawStageBtns(); } },
+      el('span', { class: 'bdchip' }), el('b', { text: name })),
+    ED ? null : el('button', { class: 'stbtn', title: clean ? 'Show the buttons again (Esc)' : 'Hide the buttons for a clean look at your character', onclick: () => { stg.classList.toggle('clean'); drawStageBtns(); } },
+      el('span', { text: clean ? '◉' : '◎' }), el('b', { text: clean ? 'Show buttons' : 'Clean view' }))].filter(Boolean));
+}
+addEventListener('keydown', e => { if (e.key === 'Escape' && !ED) { const stg = $('view')?.parentElement; if (stg?.classList.contains('clean')) { stg.classList.remove('clean'); drawStageBtns(); } } });
 // six favourite moves under the character, one click to play
 let EMOTES = null;
 const EMOTE_DEFAULT = ['Wave', 'Clap', 'Dance_Boogie', 'Shrug', 'Salute_Chest', 'Laugh_Strong'];
@@ -628,16 +646,17 @@ async function openAsset(a) {
   if (a.shape) ED.model = JSON.parse(a.shape);
   try { ED.rects = fig.usedRects(ED.model || await game.json(game.common(a.model))); } catch (e) { console.warn('no drawn area for', a.model, e); }
   ED.painter = makePainter(c, a); Object.assign(ED.painter, BRUSH);
+  ED.painter.faceAt = (x, y) => ED && ED.rects.find(r => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h);   // Fill > Whole side: which side was clicked
   if (ED.rects.length) { const m = new Uint8Array(c.width * c.height); for (const r of ED.rects) for (let y = Math.max(0, Math.floor(r.y)); y < Math.min(c.height, Math.ceil(r.y + r.h)); y++) for (let x = Math.max(0, Math.floor(r.x)); x < Math.min(c.width, Math.ceil(r.x + r.w)); x++) m[y * c.width + x] = 1; ED.painter.mask = m; }
-  ED.palette = ED.painter.palette(); ED.ovl = el('canvas', { className: 'limits' }); requestAnimationFrame(() => { fitTexture(); render(); if (!store_.get('se_tour')) requestAnimationFrame(() => tour(0)); });
+  ED.palette = ED.painter.palette(); ED.ovl = el('canvas', { className: 'limits' }); requestAnimationFrame(() => { fitTexture(); render(); });
   const flatPx = e => { const r = c.getBoundingClientRect(); return { x: Math.min(c.width - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * c.width))), y: Math.min(c.height - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * c.height))) }; };
   bindPaint(c, flatPx, 1e9); bindSelect(c, flatPx);
   c.addEventListener('pointermove', e => { if (!ED) return; ED.hover = flatPx(e); ED.hoverM = null; drawOvl(); }); c.addEventListener('pointerleave', () => { if (!ED) return; ED.hover = null; drawOvl(); });
   registerAssets(); if (!(cur.skin[a.field] || '').startsWith('Custom_' + a.id)) setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' });
   setMount(null); ED.iso = true; st.isolate(c); st.anim.set(null); st.paintMode(true); tab = 'creator'; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === 'creator'); render(); rebuild();
 }
-const BRUSH = (() => { try { const b = JSON.parse(store_.get('se_brush') || '{}'), o = {}; if (/^#[0-9a-f]{6}$/i.test(b.color)) o.color = b.color; if (b.size >= 1 && b.size <= 8) o.size = Math.round(b.size); if (b.opacity > 0 && b.opacity <= 1) o.opacity = b.opacity; if (['brush', 'erase', 'part', 'fill', 'pick', 'replace', 'line', 'box', 'boxfill', 'light', 'dark', 'noise'].includes(b.tool)) o.tool = b.tool; return o; } catch { return {}; } })();
-const keepBrush = () => { if (!ED) return; const P = ED.painter; Object.assign(BRUSH, { color: P.color, size: P.size, opacity: P.opacity, tool: P.tool === 'select' ? 'brush' : P.tool }); store_.set('se_brush', JSON.stringify(BRUSH)); };
+const BRUSH = (() => { try { const b = JSON.parse(store_.get('se_brush') || '{}'), o = {}; if (/^#[0-9a-f]{6}$/i.test(b.color)) o.color = b.color; if (b.size >= 1 && b.size <= 8) o.size = Math.round(b.size); if (b.opacity > 0 && b.opacity <= 1) o.opacity = b.opacity; if (['area', 'side', 'every'].includes(b.fillMode)) o.fillMode = b.fillMode; if (['brush', 'erase', 'part', 'fill', 'pick', 'replace', 'line', 'box', 'boxfill', 'light', 'dark', 'noise'].includes(b.tool)) o.tool = b.tool; return o; } catch { return {}; } })();
+const keepBrush = () => { if (!ED) return; const P = ED.painter; Object.assign(BRUSH, { color: P.color, size: P.size, opacity: P.opacity, fillMode: P.fillMode, tool: P.tool === 'select' ? 'brush' : P.tool }); store_.set('se_brush', JSON.stringify(BRUSH)); };
 const markSaved = ok => { if (!ED) return; ED.saved = ok; const s = $('wssaved'); if (s) { s.textContent = ok ? 'Saved' : 'Saving…'; s.classList.toggle('busy', !ok); } };
 function queueAssetSave() { markSaved(false); clearTimeout(queueAssetSave.t); queueAssetSave.t = setTimeout(() => flushAsset().catch(e => say(e.message, true)), 900); }
 async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; const e = ED, data = await new Promise(ok => e.canvas.toBlob(ok, 'image/png'));
@@ -982,7 +1001,10 @@ function paintSide() {
     el('button', { class: 'btn primary wide', text: 'Colour whole item', title: 'Turn the whole item this colour and keep its light and dark shading', onclick: () => tintAll(P.color) }),
     el('div', { class: 'wshead', text: 'Brush' }),
     slider('Size', 1, 8, 1, () => P.size, v => { P.size = v; }, v => v), slider('Strength', 10, 100, 10, () => Math.round(P.opacity * 100), v => { P.opacity = v / 100; }, v => v + '%'),
-    P.tool === 'fill' ? slider('Similar colours', 0, 100, 4, () => P.tolerance, v => { P.tolerance = v; }, v => v ? v + '%' : 'exact only') : null,
+    P.tool === 'fill' ? [el('div', { class: 'swlabel', text: 'Fill what?' }), el('div', { class: 'seg', role: 'radiogroup' }, ...[['area', 'Area', 'The patch you click and the touching pixels of a similar colour'], ['side', 'Whole side', 'The whole side of the part you click, in one flat colour'], ['every', 'Everywhere', 'That colour everywhere on the item']]
+      .map(([m, t, why]) => el('button', { class: (P.fillMode || 'area') === m ? 'on' : '', role: 'radio', 'aria-checked': String((P.fillMode || 'area') === m), text: t, title: why, onclick: () => { P.fillMode = m; render(); viewHint(); } }))),
+      el('p', { class: 'dim small seghelp', text: { area: 'Fills the patch you click and the touching pixels of a similar colour.', side: 'Fills the whole side of the part you click, in one flat colour.', every: 'Changes that colour everywhere on the item, even where the patches are apart.' }[P.fillMode || 'area'] }),
+      P.fillMode !== 'side' ? slider('Similar colours', 0, 100, 4, () => P.tolerance, v => { P.tolerance = v; }, v => v ? v + '%' : 'exact only') : null] : null,
     el('div', { class: 'options' }, toggle('Mirror', ED.mirror, () => { ED.mirror = !ED.mirror; render(); }, 'Painting on the model also paints the matching spot on the other side')),
     P.tool === 'select' || ED.sel || ED.float || ED.clip ? [el('div', { class: 'wshead', text: 'Selection' }), el('div', { class: 'options' },
       ...(ED.float ? [chip('Place', placeFloat, 'Enter'), chip('Flip ↔', () => flipFloat(true)), chip('Flip ↕', () => flipFloat(false)), chip('Cancel', () => { ED.float = null; render(); }, 'Esc')]
@@ -1045,7 +1067,7 @@ const TOOL_TIPS = {
   brush: 'Brush: drag on the item to paint. Size and Strength are on the right ([ and ] change the size, hold Alt to pick a colour). Drag off the item to turn the model.',
   erase: 'Eraser: drag on the item to make it see-through there.',
   part: 'Part: click a part of the item to colour all of it, keeping its shading.',
-  fill: 'Fill: click an area to fill it. "Similar colours" on the right sets how far it spreads.',
+  fill: 'Fill: click the item to fill. Pick Area, Whole side or Everywhere on the right.',
   pick: 'Pick colour: click the item to take a colour from it.',
   replace: 'Replace colour: click a colour on the item to swap it everywhere for your colour.',
   line: 'Line: drag from one point to another to draw a straight line.',
@@ -1058,7 +1080,11 @@ const TOOL_TIPS = {
   's-rotate': 'Rotate: drag a ring to tilt the part (5° steps), or type any angle in the Rotation numbers.' };
 function viewHint() {
   let h = $('viewhint'); if (!h) { h = el('div', { id: 'viewhint', class: 'viewhint' }); $('view').parentElement.appendChild(h); }
-  h.hidden = !ED; if (ED && ED.placing) h.textContent = 'Add box: click on the item where it should go. Esc cancels.'; else if (ED) h.textContent = TOOL_TIPS[ED.mode === 'shape' ? 's-' + (ED.stool || 'select') : ED.painter.tool] || '';
+  const key = ED ? (ED.mode === 'shape' ? 's-' + (ED.stool || 'select') : ED.painter.tool) : '';
+  h.hidden = !ED; if (ED && ED.placing) h.textContent = 'Add box: click on the item where it should go. Esc cancels.'; else if (ED) h.textContent = TOOL_TIPS[key] || '';
+  // the first time a tool is used, its tip lights up for a few seconds (help when it is needed, instead of a tour up front)
+  if (ED && key && !ED.placing) { let seen; try { seen = new Set(JSON.parse(store_.get('se_tips') || '[]')); } catch { seen = new Set(); }
+    if (!seen.has(key)) { seen.add(key); store_.set('se_tips', JSON.stringify([...seen])); h.classList.remove('fresh'); void h.offsetWidth; h.classList.add('fresh'); clearTimeout(h._t); h._t = setTimeout(() => h.classList.remove('fresh'), 9000); } }
 }
 // ---- colours: a fixed set of basics, the item's own colours and the ones used lately
 const BASIC = ['#ffffff', '#c9c9c9', '#808080', '#3d3d3d', '#000000', '#e23b3b', '#ef8a35', '#f4d24a', '#7cc444', '#2e9a58', '#3db7c9', '#3b6fe0', '#7a4fd6', '#d65ab4', '#8a5a32', '#f2c9a1'];
@@ -1138,7 +1164,7 @@ const dupBox = () => addBox('dup');
 function delBox() { const boxes = boxesOf(ED.model), i = ED.box || 0, b = boxes[i]; if (boxes.length <= 1) return say('A shape needs at least one box.', true);
   if ((b.node.children || []).length) return say('This box holds other boxes. Delete those first.', true);
   shapeEdit(() => { const list = b.parent ? b.parent.children : ED.model.nodes; list.splice(list.indexOf(b.node), 1); ED.box = Math.max(0, i - 1); }); }
-const resetShape = guard(async () => { if (!await confirmBox('Reset shape', 'Go back to the item’s original shape? You can undo this.', 'Reset', true)) return;
+const resetShape = guard(async () => { say('Back to the original shape. Ctrl+Z undoes it.');
   const orig = structuredClone(await game.json(game.common(ED.asset.model))); shapeEdit(() => { ED.model = orig; ED.box = 0; }); });
 function renderWorkspace() {
   const P = ED.painter, a = ED.asset, c = ED.canvas, mode = ED.mode || 'paint'; ED.shapeOpen = mode === 'shape';
