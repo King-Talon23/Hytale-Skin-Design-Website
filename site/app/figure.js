@@ -23,7 +23,7 @@ const texture = (tex, tint) => once('t:' + tex + '|' + tint, async () => {
       const k = Math.min(gw - 1, Math.round(a[i] * (gw - 1) / 255)) * 4; a[i] = g.data[k]; a[i + 1] = g.data[k + 1]; a[i + 2] = g.data[k + 2]; }
     x.putImageData(d, 0, 0); }
   const t = new THREE.CanvasTexture(c); t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.colorSpace = THREE.SRGBColorSpace;
-  const mat = new THREE.MeshLambertMaterial({ map: t, alphaTest: 0.05, side: THREE.DoubleSide });
+  const mat = new THREE.MeshLambertMaterial({ map: t, alphaTest: 0.05, side: THREE.DoubleSide, fog: false });
   // centroid sampling: antialiased edge pixels look up the texture inside the face, not past its edge (that drew thin lines along box edges)
   mat.onBeforeCompile = sh => { const c = k => THREE.ShaderChunk[k].replace(/varying vec2/g, 'centroid varying vec2');
     sh.vertexShader = sh.vertexShader.replace('#include <uv_pars_vertex>', c('uv_pars_vertex')); sh.fragmentShader = sh.fragmentShader.replace('#include <uv_pars_fragment>', c('uv_pars_fragment')); };
@@ -258,11 +258,11 @@ async function buildWorld(sc, tint) {
       st.im.count = n; st.im.instanceMatrix.needsUpdate = true; } };
   const span = P * BLOCK;
   root.userData.move = (dx, dz) => {
-    // a move along one lane starts from the crossing, so it never runs down the other lane into the squares
-    if (dx && az % span) az = 0; if (dz && ax % span) ax = 0;
     ax = (ax + dx) % span; az = (az + dz) % span;
     const key = ax.toFixed(1) + ',' + az.toFixed(1); if (key !== laid) { laid = key; layout(false); } else layout(true); };
-  root.userData.offset = () => [ax, az];
+  root.userData.offset = () => [ax, az]; root.userData.span = span;
+  // a move along one lane must start from the crossing, or it would run down the other lane into the squares: back to it (under the mist)
+  root.userData.snap = along => { if (along === 'x') az = 0; else ax = 0; laid = null; layout(false); };
   root.userData.solids = () => sets.filter(t => !t.plant).flatMap(t => t.list.filter(b => b[1] >= 0).map(b => [sym(b[0]), b[1], sym(b[2])]));   // for tests: blocks above the ground, in blocks
   // for tests: the nearest solid block above the ground to a point (scene units), in blocks, as the land lies now
   root.userData.solidNear = (px = 0, pz = 0) => { let best = Infinity; const ox = ax / BLOCK, oz = az / BLOCK;
@@ -278,16 +278,25 @@ export function stage(canvas, Controls) {
   const cam = new THREE.PerspectiveCamera(32, 1, 1, 6000); cam.position.set(-75, 95, 255);
   const ctl = new Controls(cam, canvas); ctl.target.set(0, 62, 0); ctl.enablePan = false; ctl.zoomToCursor = false;   // zoom stays on the figure's centre, lined up with the buttons under it
   ctl.minDistance = 40; ctl.maxDistance = 480; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
-  const disc = new THREE.Mesh(new THREE.CircleGeometry(58, 48), new THREE.MeshBasicMaterial({ color: 0x0b1626, transparent: true, opacity: 0.55 })); disc.rotation.x = -Math.PI / 2; disc.position.y = -0.2; scene.add(disc);
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(58, 48), new THREE.MeshBasicMaterial({ color: 0x0b1626, transparent: true, opacity: 0.55, fog: false })); disc.rotation.x = -Math.PI / 2; disc.position.y = -0.2; scene.add(disc);
   const CELL = 32, grid = new THREE.GridHelper(CELL * 40, 40, 0x4a76ad, 0x33557f); grid.material.transparent = true; grid.material.opacity = 0; grid.material.depthWrite = false; scene.add(grid);
-  let sky = null, world = null, scrollers = [], flowing = [];   // the in-game background (setBackdrop below); set pieces that slide while climbing
+  let sky = null, world = null, scrollers = [], flowing = [], mist = null; const FOG = [950, 1750];   // mist: the short fade that hides the land going back to the crossing   // the in-game background (setBackdrop below); set pieces that slide while climbing
   // the climbing wall: the same grid stood up in front of the figure, sliding the other way as it climbs
   const wallG = new THREE.GridHelper(CELL * 16, 16, 0x4a76ad, 0x33557f); wallG.rotation.x = Math.PI / 2; wallG.material.transparent = true; wallG.material.opacity = 0; wallG.material.depthWrite = false; wallG.visible = false; scene.add(wallG);
   let wallOn = null; const WALL_Z = 12, WALL_Y = 70;
   const vel = new THREE.Vector2(), want = new THREE.Vector2();
   function travel(dt) { const v = anim.velocity; want.set(v ? v[0] : 0, v ? v[1] : 0); vel.lerp(want, 1 - Math.exp(-dt * 9));
     // the clearing's floor slides with the move (a horse needs more room round it than a person)
-    if (world) { world.userData.cam = cam.position; world.userData.clear = mountRoot ? 2.3 : 1; world.userData.move(anim.move ? -vel.x * dt : 0, anim.move ? -vel.y * dt : 0); }
+    if (world) { world.userData.cam = cam.position; world.userData.clear = mountRoot ? 2.3 : 1;
+      let mx = anim.move ? -vel.x * dt : 0, mz = anim.move ? -vel.y * dt : 0; const [ox, oz] = world.userData.offset(), span = world.userData.span;
+      const along = Math.abs(want.x) > Math.abs(want.y) ? 'x' : Math.abs(want.y) > 0 ? 'z' : null;   // the lane the new move runs down
+      if (along === 'x') mz = 0; else if (along === 'z') mx = 0;   // the land only ever slides down the current move's lane
+      if (!mist && along && (along === 'x' ? Math.abs(oz % span) > 1 : Math.abs(ox % span) > 1)) mist = { t: 0, along, snapped: false };
+      if (mist) { mist.t += dt / 0.45; const k = mist.t < 0.5 ? mist.t * 2 : Math.max(0, 2 - mist.t * 2), f = scene.fog;
+        if (!mist.snapped && mist.t >= 0.5) { world.userData.snap(mist.along); mist.snapped = true; }
+        if (f) { const d = cam.position.distanceTo(ctl.target); f.near = FOG[0] + (d + 60 - FOG[0]) * k; f.far = FOG[1] + (d + 330 - FOG[1]) * k; }   // the land fades into the zone's own haze and back
+        world.userData.move(mist.snapped ? mx : 0, mist.snapped ? mz : 0); if (mist.t >= 1) { if (f) { f.near = FOG[0]; f.far = FOG[1]; } mist = null; } }
+      else world.userData.move(mx, mz); }
     for (const w of flowing) { const [ox, oz] = world ? world.userData.offset() : [0, 0], m = w.material.map; if (m) m.offset.set(-ox / w.userData.flow, oz / w.userData.flow); }   // water drifts with the land
     grid.position.x = (grid.position.x - vel.x * dt) % CELL; grid.position.z = (grid.position.z - vel.y * dt) % CELL;   // the ground runs backwards under the figure
     grid.material.opacity += ((anim.move && anim.anim && !world ? 0.5 : 0) - grid.material.opacity) * (1 - Math.exp(-dt * 6)); grid.visible = grid.material.opacity > 0.01;
@@ -472,7 +481,7 @@ export function stage(canvas, Controls) {
     g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     sky = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -2; scene.add(sky);
     if (built) { world = built; scene.add(world); world.userData.avoid = pendingRects; groundRects(); }
-    scene.fog = new THREE.Fog(hor, 950, 1750);   // the far edge of the land melts into the sky, as the game's fog does
+    scene.fog = new THREE.Fog(hor, FOG[0], FOG[1]); mist = null;   // the far edge of the land melts into the sky, as the game's fog does
   };
   return api;
 }
