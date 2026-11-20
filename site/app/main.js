@@ -45,7 +45,25 @@ function showConnect() {
   for (const b of $('os').children) b.onclick = () => pick(b.dataset.os); pick(os);
   $('copypath').onclick = async () => { try { await navigator.clipboard.writeText($('path').textContent); $('copypath').textContent = 'Copied'; } catch { $('copypath').textContent = 'Select and copy it'; } setTimeout(() => $('copypath').textContent = 'Copy path', 1800); };
   $('zipfile').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) doConnect(() => game.connect(f, progress)); };
+  // Chrome and Edge: pick through the file-system picker so the site can remember this Assets.zip and re-read it after a game update
+  if (typeof self.showOpenFilePicker === 'function') $('zipfile').parentElement.onclick = async e => { e.preventDefault(); if (connecting) return;
+    let h; try { [h] = await showOpenFilePicker({ id: 'hytale-assets', types: [{ description: 'Hytale Assets.zip', accept: { 'application/zip': ['.zip'] } }] }); } catch { return; }   // cancelled
+    connectHandle(h); };
+  game.zipHandle().then(h => { const b = $('samezip'); if (b) b.remove(); if (!h) return;
+    $('zipfile').parentElement.after(el('button', { id: 'samezip', class: 'btn ghost', text: 'Use the same Assets.zip again', onclick: () => connectHandle(h, true) })); });
 }
+// read Assets.zip from a remembered file handle; ask=true asks the browser for permission (needs a click)
+async function connectHandle(h, ask) {
+  if (ask && (await h.queryPermission({ mode: 'read' })) !== 'granted' && (await h.requestPermission({ mode: 'read' })) !== 'granted') return;
+  doConnect(async () => { const f = await h.getFile(); await game.connect(f, progress); await game.rememberZip(h); });
+}
+// on every visit: if the remembered Assets.zip changed (a game update) and the browser still allows reading it, refresh quietly
+async function checkGameUpdate() {
+  const h = await game.zipHandle().catch(() => null); if (!h || !META) return;
+  try { if ((await h.queryPermission({ mode: 'read' })) !== 'granted') return; const f = await h.getFile();
+    if (f.size === META.size && f.lastModified === META.modified) return;
+    say('Hytale updated, reading the new game files…'); await game.connect(f, () => {}); fig.clearCache(); pics.clear(); META = await game.status(); CAT = await game.catalog(); R = rules(CAT); registerAssets(); setConn(META); rebuild(); render(); say('Game files updated.');
+  } catch (e) { console.warn('game update check', e); say('Hytale seems to have updated, but the new game files could not be read. Use Connect again in Help.', true); } }
 function progress(p) { const b = $('progress'); b.hidden = false; b.firstElementChild.style.width = Math.round(p * 100) + '%'; b.lastElementChild.textContent = p < 1 ? `Reading your game files… ${Math.round(p * 100)}%` : 'Done'; }
 let connecting = false;
 async function doConnect(run) {
@@ -57,7 +75,8 @@ async function doConnect(run) {
 addEventListener('dragover', e => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); $('drop').hidden = false; } });
 addEventListener('dragleave', e => { if (!e.relatedTarget) $('drop').hidden = true; });
 addEventListener('drop', e => { e.preventDefault(); $('drop').hidden = true; const fs = [...e.dataTransfer.files]; if (!fs.length) return;
-  const zip = fs.find(f => /\.zip$/i.test(f.name)); if (zip) return doConnect(() => game.connect(zip, progress));
+  const zi = [...e.dataTransfer.items].findIndex(i => i.kind === 'file' && /\.zip$/i.test(i.getAsFile()?.name || '')), hp = zi >= 0 && e.dataTransfer.items[zi].getAsFileSystemHandle ? e.dataTransfer.items[zi].getAsFileSystemHandle() : null;
+  const zip = fs.find(f => /\.zip$/i.test(f.name)); if (zip) return doConnect(async () => { await game.connect(zip, progress); const h = await hp?.catch(() => null); if (h && h.kind === 'file') await game.rememberZip(h); });
   if (R) importSkinFiles(fs); });
 function setConn(meta) { const c = $('conn'); c.classList.toggle('ok', !!meta); c.lastElementChild.textContent = meta ? 'Game files connected' : 'Not connected'; c.onclick = () => meta ? setTab('help') : showConnect(); }
 
@@ -1335,6 +1354,6 @@ addEventListener('keydown', e => { if (!R || e.target?.matches?.('input, textare
     // Local development only: read the developer's own Assets.zip through the dev server (dev/ is never deployed).
     if ((['localhost', '127.0.0.1'].includes(location.hostname) || location.hostname.endsWith('.localhost')) && new URLSearchParams(location.search).has('devzip') && !(await game.status()))
       { const { devSource } = await import('../dev/devsource.js'); showConnect(); return doConnect(async () => game.importFrom(await devSource(), { name: 'Assets.zip (dev)', size: 0, modified: 0 }, progress)); }
-    if (await game.status()) await startApp(); else showConnect();
+    if (await game.status()) { await startApp(); checkGameUpdate(); } else showConnect();
   } catch (e) { console.error(e); showConnect(); $('connerr').textContent = 'This browser blocked local storage, which the editor needs. Try a normal (not private) window.'; }
 })();
