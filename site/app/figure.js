@@ -229,7 +229,7 @@ export function stage(canvas, Controls) {
     for (const h of ray.intersectObject(figure, true)) if (h.object.visible && keep(h.object)) return h.object; return null; }
   // the gizmo: drag arrows (move), cubes (resize) or rings (rotate) on one box, like Blockbench and Blender. The box itself
   // follows live; on release onEnd gets the change in the box's own axes, and the caller rebuilds the model from its data.
-  const tc = new TransformControls(cam, canvas); tc.setSize(0.85); tc.setTranslationSnap(0.5); tc.setRotationSnap(THREE.MathUtils.degToRad(15)); tc.setScaleSnap(0.05); scene.add(tc);
+  const tc = new TransformControls(cam, canvas); tc.setSize(0.85); tc.setTranslationSnap(0.5); tc.setRotationSnap(THREE.MathUtils.degToRad(5)); tc.setScaleSnap(0.05); scene.add(tc);
   const handle = new THREE.Object3D(); scene.add(handle);
   let gz = null, start = null;
   tc.addEventListener('dragging-changed', e => { ctl.enabled = !e.value; });
@@ -263,6 +263,17 @@ export function stage(canvas, Controls) {
   }
   const api = { isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
     gizmoBusy: () => tc.dragging || tc.axis !== null,
+    // where a click lands on a box: the point and the face's outward direction, in the box's own part (node) space
+    pickHit(cx, cy, keep) { if (!figure) return null; aim(cx, cy); for (const h of ray.intersectObject(figure, true)) if (h.object.visible && keep(h.object)) {
+      const g = h.object.parent, point = g.worldToLocal(h.point.clone()), geo = h.object.geometry; if (!geo.boundingBox) geo.computeBoundingBox();
+      const normal = h.face ? h.face.normal.clone() : new THREE.Vector3(0, 0, 1); if (normal.dot(point.clone().sub(geo.boundingBox.getCenter(new THREE.Vector3()))) < 0) normal.negate();   // always outward
+      return { mesh: h.object, point, normal }; } return null; },
+    // drag a box itself: it slides flat to the screen; move() gives the shift in the box's own axes, like the gizmo
+    boxDrag(mesh, cx, cy) { const g = mesh.parent; g.updateMatrixWorld(true); aim(cx, cy); const hit = ray.intersectObject(mesh, false)[0]; if (!hit) return null;
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(cam.getWorldDirection(new THREE.Vector3()), hit.point), start = hit.point.clone(), q = g.getWorldQuaternion(new THREE.Quaternion()).invert(), s = g.getWorldScale(new THREE.Vector3()), p0 = mesh.position.clone(); ctl.enabled = false;
+      return { move(x, y) { aim(x, y); const p = ray.ray.intersectPlane(plane, new THREE.Vector3()); if (!p) return null; const d = p.sub(start).applyQuaternion(q).divide(s); mesh.position.copy(p0).add(d); return d; },
+        end() { ctl.enabled = true; mesh.position.copy(p0); } }; },
+    zoomBy(k) { const off = cam.position.clone().sub(ctl.target), len = Math.max(ctl.minDistance, Math.min(ctl.maxDistance, off.length() * k)); cam.position.copy(ctl.target).add(off.setLength(len)); ctl.update(); },
     frameOn(img) {   // turn the view on the parts painted with this texture, close enough to fill the view
       if (!figure || !img) return; const box = new THREE.Box3(); figure.updateMatrixWorld(true);
       figure.traverse(o => { if (o.isMesh && (o.userData.realMat || o.material)?.map?.image === img) box.expandByObject(o); }); if (box.isEmpty()) return;
