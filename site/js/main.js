@@ -267,7 +267,7 @@ function panelLookup() {
     el('h3', { text: 'Find a player' }), el('p', { class: 'note', text: 'Shows the skin a player has equipped right now. The name you type is sent to playerdb.co, a public community lookup service; nothing else is.' }), form, el('p', { class: 'err', text: lookupMsg }),
     el('h3', { text: 'Open skin files' }), el('p', { class: 'note', text: 'Your game keeps your equipped skin in UserData\\CachedPlayerSkins and the skins of players it has seen in UserData\\CachedAvatarPreviews (the .skin files). Choose or drop them here.' }),
     el('label', { class: 'btn ghost' }, 'Choose skin files', file),
-    el('h3', {}, 'Friends ', el('span', { class: 'tag none', text: 'WIP' })), el('div', { class: 'row' }, locked('Show my friends', 'your friends list'), locked('Friends\u2019 presets', 'viewing friends\u2019 presets')), need('your friends list'),
+    el('h3', {}, 'Friends ', el('span', { class: 'tag none', text: 'WIP' })), el('div', { class: 'row' }, locked('Show my friends', 'your friends list'), locked('Friends\u2019 skins', 'viewing your friends\u2019 skins')), need('your friends list'),
     found.length ? [el('h3', { text: 'Found this session' }), el('div', { class: 'cards' }, found.map(r => card(r, 'found')))] : null)];
 }
 
