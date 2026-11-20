@@ -347,7 +347,25 @@ async function saveAs() {
 let playing = { group: 'Default', name: 'Idle' };
 const ORDER = ['Emote', 'Default', 'Poses', 'Taunt', 'Flavor', 'Expressions'];
 let onceT;
-async function playAnim(g, n, speed = 1, once = false) { clearTimeout(onceT); try { const a = await fig.loadAnim(g, n); playing = { group: g, name: n }; st.anim.set(a, speed);
+// ---- Mount moves: the player rides the animal the game lets them ride (tamed horse, camel, ram), with its own matching move
+const MOUNT_PATH = 'NPC/Livestock/', BLOCK = 64;   // model units per block
+const MOUNTS = {
+  Horse: { model: MOUNT_PATH + 'Horse/Models/Model.blockymodel', tex: MOUNT_PATH + 'Horse/Models/Texture.png', seat: [0, 1.6, 0], anims: MOUNT_PATH + 'Horse/Animations/Default/',
+    atts: [{ model: MOUNT_PATH + 'Horse/Models/Attachments/Saddle.blockymodel', tex: MOUNT_PATH + 'Horse/Models/Attachments/Saddle_Texture.png' }, { model: MOUNT_PATH + 'Horse/Models/Attachments/Mane.blockymodel', tex: MOUNT_PATH + 'Horse/Models/Attachments/Mane_Grey.png' }] },
+  Camel: { model: MOUNT_PATH + 'Camel/Models/Model.blockymodel', tex: MOUNT_PATH + 'Camel/Models/Texture.png', seat: [0, 2.25, 0.2], anims: MOUNT_PATH + 'Camel/Animations/Default/',
+    atts: [{ model: MOUNT_PATH + 'Camel/Models/Attachments/Shell.blockymodel', tex: MOUNT_PATH + 'Camel/Models/Attachments/Shell_Textures/Green.png' }] },
+  Ram: { model: MOUNT_PATH + 'Ram/Models/Model.blockymodel', tex: MOUNT_PATH + 'Ram/Models/Texture.png', seat: [0, 1.3, 0], anims: MOUNT_PATH + 'Ram/Animations/Default/', atts: [] } };
+const MOUNT_MOVE = { Mount_Idle: ['Idle', 1], Mount_Walk: ['Walk', 1], Mount_Walk_Backward: ['Walk_Backward', 1], Mount_Run: ['Run', 1], Mount_Run_Backward: ['Walk_Backward', 1.6], Mount_Sprint: ['Run', 1.3] };
+let mountKind = 'Horse', mountOn = null, mountMsg = '';
+async function setMount(kind, move) {
+  if (!st) return; if (!kind) { if (mountOn) { st.mount(null); mountOn = null; } return; }
+  const M = MOUNTS[kind];
+  try {
+    if (mountOn !== kind) { const root = await fig.buildCreature(M); st.mount(root, M.seat.map(v => v * BLOCK)); mountOn = kind; }
+    const [n, sp] = MOUNT_MOVE[move] || ['Idle', 1]; st.mountAnim.set(await game.json(game.common(M.anims + n + '.blockyanim')), sp); mountMsg = '';
+  } catch (e) { console.warn(e); st.mount(null); mountOn = null; mountMsg = 'Your saved copy of the game files is from before animals were added. Refresh it once to see them (your skins are kept).'; }
+}
+async function playAnim(g, n, speed = 1, once = false) { clearTimeout(onceT); try { await setMount(g === 'Mount' ? mountKind : null, n); const a = await fig.loadAnim(g, n); playing = { group: g, name: n }; st.anim.set(a, speed);
     if (once) { const still = fig.motionOf(g, n) && st.anim.still, ms = still ? 1700 : (Math.max(1, a.duration || 60) / 60 / speed) * 1000 + (a.holdLastKeyframe ? 700 : 0) + 250;
       onceT = setTimeout(() => { if (playing.group === g && playing.name === n) playAnim('Default', 'Idle', 0.5); }, ms); } st.anim.setMove(fig.motionOf(g, n)); st.anim.playing = true; drawEmotes(); } catch (e) { say('That animation could not be loaded.', true); } if (tab === 'animations') render(); }
 let animGroup = 'Emote';
@@ -357,8 +375,11 @@ function panelAnimations() {
   return [head('Animations'), el('div', { class: 'pbody' },
     el('div', { class: 'now' }, el('b', { text: A.anim ? nice(playing.name) : 'Rest pose' }),
       el('button', { class: 'btn ghost', text: A.playing ? 'Pause' : 'Play', onclick: () => { A.playing = !A.playing; render(); } }),
-      el('button', { class: 'btn ghost', text: 'Rest pose', onclick: () => { A.set(null); render(); } })),
+      el('button', { class: 'btn ghost', text: 'Rest pose', onclick: () => { A.set(null); setMount(null); render(); } })),
     el('div', { class: 'options' }, groups.map(g => el('button', { class: 'chip' + (g === animGroup ? ' on' : ''), text: nice(g), onclick: () => { animGroup = g; render(); } }))),
+    animGroup === 'Mount' ? el('div', { class: 'options' }, el('b', { class: 'dim', text: 'Ride:' }), Object.keys(MOUNTS).map(k => el('button', { class: 'chip' + (k === mountKind ? ' on' : ''), text: k,
+      onclick: () => { mountKind = k; if (playing.group === 'Mount' && A.anim) playAnim('Mount', playing.name); else render(); } }))) : null,
+    animGroup === 'Mount' && mountMsg ? el('div', { class: 'row' }, el('p', { class: 'need', text: mountMsg }), el('button', { class: 'btn ghost', text: 'Refresh game files', onclick: () => showConnect() })) : null,
     el('div', { class: 'animlist' }, (CAT.anims[animGroup] || []).map(n => { const k = animGroup + '/' + n, pinned = EMOTES && EMOTES.includes(k);
       return el('button', { class: A.anim && playing.group === animGroup && playing.name === n ? 'on' : '', title: nice(n), onclick: () => playAnim(animGroup, n) }, animThumb(animGroup, n), el('span', { text: nice(n) }),
         el('i', { class: 'star' + (pinned ? ' on' : ''), title: pinned ? 'Remove from quick slots' : 'Add to quick slots', text: pinned ? '★' : '☆', onclick: e => { e.stopPropagation(); toggleEmote(animGroup, n); render(); } })); })))];
@@ -468,7 +489,7 @@ async function openAsset(a) {
   bindPaint(c, flatPx, 1e9); bindSelect(c, flatPx);
   c.addEventListener('pointermove', e => { if (!ED) return; ED.hover = flatPx(e); ED.hoverM = null; drawOvl(); }); c.addEventListener('pointerleave', () => { if (!ED) return; ED.hover = null; drawOvl(); });
   registerAssets(); if (!(cur.skin[a.field] || '').startsWith('Custom_' + a.id)) setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' });
-  st.anim.set(null); st.paintMode(true); tab = 'creator'; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === 'creator'); render(); rebuild();
+  setMount(null); st.anim.set(null); st.paintMode(true); tab = 'creator'; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === 'creator'); render(); rebuild();
 }
 function queueAssetSave() { clearTimeout(queueAssetSave.t); queueAssetSave.t = setTimeout(() => flushAsset().catch(e => say(e.message, true)), 900); }
 async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; const e = ED, data = await new Promise(ok => e.canvas.toBlob(ok, 'image/png'));

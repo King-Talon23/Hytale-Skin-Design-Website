@@ -8,7 +8,8 @@ const EXT = /\.(png|json|blockymodel|blockyanim|lang)$/;
 const LANG = 'Common/Languages/en-US/avatarCustomization/';
 const wanted = n => EXT.test(n) && !n.includes('..') && (
   n.startsWith('Cosmetics/CharacterCreator/') || n.startsWith(LANG) || n.startsWith('Common/Cosmetics/') || n.startsWith('Common/TintGradients/') ||
-  (n.startsWith('Common/Characters/') && !n.includes('/Animations/Items/') && !n.endsWith('_FPS.blockyanim')));
+  (n.startsWith('Common/Characters/') && !n.includes('/Animations/Items/') && !n.endsWith('_FPS.blockyanim')) ||
+  /^Common\/NPC\/Livestock\/(Horse|Camel|Ram)\/(Models\/|Animations\/Default\/)/.test(n));   // the animals players ride, for the Mount moves
 
 // skin field -> the game's catalogue file, in the game's own order
 export const SLOTS = [['bodyCharacteristic', 'BodyCharacteristics'], ['face', 'Faces'], ['eyes', 'Eyes'], ['eyebrows', 'Eyebrows'], ['mouth', 'Mouths'], ['ears', 'Ears'],

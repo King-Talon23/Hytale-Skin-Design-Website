@@ -88,6 +88,13 @@ export async function build(skin, R) {
   for (const [f, m, T] of loaded) if (f !== 'bodyCharacteristic') attach(m.nodes, T, bones, parts);
   root.userData.parts = parts; return root;
 }
+// an animal (or any model with attachments) built the same way, for the Mount moves
+export async function buildCreature(cfg) {
+  const m = await game.json(game.common(cfg.model)), T = await texture(cfg.tex), root = new THREE.Group(), bones = {}, parts = new Map();
+  for (const n of m.nodes) root.add(node(n, T, bones, parts));
+  for (const a of cfg.atts || []) { try { attach((await game.json(game.common(a.model))).nodes, await texture(a.tex), bones, parts); } catch (e) { console.warn(a.model, e.message); } }
+  root.userData.parts = parts; return root;
+}
 export function dispose(root) { root?.traverse(o => o.geometry?.dispose()); }
 
 // ---- animation: .blockyanim keyframes are deltas on the rest pose, 60 frames a second
@@ -172,10 +179,10 @@ export function stage(canvas, Controls) {
     grid.position.x = (grid.position.x - vel.x * dt) % CELL; grid.position.z = (grid.position.z - vel.y * dt) % CELL;   // the ground runs backwards under the figure
     grid.material.opacity += ((anim.move && anim.anim ? 0.5 : 0) - grid.material.opacity) * (1 - Math.exp(-dt * 6)); grid.visible = grid.material.opacity > 0.01; }
   let hl = null, helpers = [];   // outlines around picked boxes (see drawHL)
-  const anim = new Animator(); let figure = null, last = performance.now();
+  const anim = new Animator(), mountAnim = new Animator(); let figure = null, last = performance.now(), mountRoot = null, seat = null;
   function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
   new ResizeObserver(fit).observe(canvas); fit();
-  (function loop(now) { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000 || 0); anim.update(dt); travel(dt); for (const h of helpers) h.update(); last = now; renderer.render(scene, cam); })(last);
+  (function loop(now) { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000 || 0); anim.update(dt); mountAnim.playing = anim.playing; mountAnim.update(dt); travel(dt); for (const h of helpers) h.update(); last = now; renderer.render(scene, cam); })(last);
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   // the texel of `image` under a screen point, for painting straight on the model
   function texel(image) { for (const h of ray.intersectObject(figure, true)) { if (!h.uv || !h.object.visible || h.object.material?.map?.image !== image) continue;
@@ -235,12 +242,21 @@ export function stage(canvas, Controls) {
     tc.setMode(o.mode === 'move' ? 'translate' : o.mode === 'resize' ? 'scale' : 'rotate'); tc.setSpace('local'); tc.attach(handle);
   }
   const VIEWS = { front: [0, 62, 270], back: [0, 62, -270], side: [-270, 62, 0], top: [0, 330, 1], persp: [-75, 95, 255] };
-  const api = { anim, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
+  // a ridden animal under the figure: the figure sits at the animal's seat (in model units) and the view backs off to fit both
+  const seatAt = () => { if (figure) figure.position.set(0, seat ? seat[1] : 0, seat ? seat[2] : 0); };
+  function mount(root, at) {
+    const was = !!mountRoot; if (mountRoot) { scene.remove(mountRoot); dispose(mountRoot); }
+    mountRoot = root || null; seat = root ? at : null; if (root) { scene.add(root); mountAnim.setFigure(root); } else { mountAnim.anim = null; mountAnim.figure = null; }
+    seatAt();
+    if (was !== !!root) { const k = root ? 1.6 : 1 / 1.6, ty = root ? 62 + at[1] * 0.7 : 62, off = cam.position.clone().sub(ctl.target).multiplyScalar(k);
+      ctl.target.set(0, ty, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
+  }
+  const api = { anim, mountAnim, mount, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
     gizmoBusy: () => tc.dragging || tc.axis !== null,
     findMesh(keep) { let hit = null; figure?.traverse(o => { if (!hit && o.isMesh && keep(o)) hit = o; }); return hit; },
     setView(name) { const v = VIEWS[name] || VIEWS.persp; cam.position.set(...v); ctl.target.set(0, 62, 0); ctl.update(); },
     highlight(f) { hl = f; drawHL(); },
-    show(root) { if (figure) { scene.remove(figure); dispose(figure); } figure = root; scene.add(root); anim.setFigure(root); drawHL(); if (api.afterShow) api.afterShow(); },
+    show(root) { if (figure) { scene.remove(figure); dispose(figure); } figure = root; scene.add(root); seatAt(); anim.setFigure(root); drawHL(); if (api.afterShow) api.afterShow(); },
     view(front) { cam.position.set(front ? 0 : -75, 95, front ? 265 : 255); ctl.target.set(0, 62, 0); ctl.update(); } };
   return api;
 }
