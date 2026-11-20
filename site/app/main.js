@@ -233,8 +233,8 @@ function panelPicker() {
   const bar = el('div', { class: 'options lockbar' }, chip('all', 'All'), counts.fav ? chip('fav', `Favourites ${counts.fav}`) : null, counts.new ? chip('new', `New ${counts.new}`) : null,
     tiersHere.length > 1 ? tiersHere.map(t => chip('t' + t, TIERS[t])) : null, counts.mine ? chip('mine', 'Custom') : null,
     sortBox);
-  const detail = el('div', { class: 'detail' }), showDetail = e => { const t = e ? (e.custom ? 'Custom asset · site only' : TIERS[tierOf(e)]) : '';
-    detail.replaceChildren(el('b', { text: e ? itemName(e) : 'None' }), el('span', { text: ' · ' + LABEL[f] }), el('em', { class: e ? tierClass(e) : '', text: t })); };
+  const detail = el('div', { class: 'detail' }), showDetail = (e, trying) => { const t = e ? (e.custom ? 'Custom asset · site only' : TIERS[tierOf(e)]) : '';
+    detail.classList.toggle('trying', !!trying); detail.replaceChildren(el('span', { class: 'dim', text: trying ? 'Trying on: ' : 'Wearing: ' }), el('b', { text: e ? itemName(e) : 'None' }), el('span', { text: ' · ' + LABEL[f] }), el('em', { class: e ? tierClass(e) : '', text: t })); };
   const cardsBox = el('div', { class: 'cards lcards' });
   function drawCards() {
     const q = filter.toLowerCase(); let items = all.filter(e => itemName(e).toLowerCase().includes(q));
@@ -252,7 +252,7 @@ function panelPicker() {
             b._t = setTimeout(() => { b.classList.remove('sure'); b.textContent = '🗑'; b.title = 'Delete this custom piece'; }, 3000); return; }
           clearTimeout(b._t); deleteAsset(a); } }) : null;
       return el('button', { class: 'lcard ' + (e ? tierClass(e) : 'none') + (e === it ? ' on' : ''), title: e ? itemName(e) : 'None', onclick: () => change(e, color, variant),
-        onpointerenter: ev => { hv.onpointerenter(ev); showDetail(e); }, onpointerleave: ev => { hv.onpointerleave(ev); showDetail(it); } },
+        onpointerenter: ev => { hv.onpointerenter(ev); showDetail(e, e !== it); }, onpointerleave: ev => { hv.onpointerleave(ev); showDetail(it); } },
         e ? itemThumb(f, e, color, variant) : el('span', { class: 'nothing', text: '✕' }), star, bin, e && isNew(f, e) ? el('span', { class: 'new', text: 'NEW' }) : null, el('b', { text: e ? itemName(e) : 'None' })); };
     cardsBox.replaceChildren(...(REQUIRED.has(f) || lockFilter !== 'all' ? [] : [card(null)]), ...items.map(card));
     if (!cardsBox.children.length) cardsBox.append(el('p', { class: 'blank', text: 'Nothing here.' }));
