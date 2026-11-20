@@ -65,7 +65,7 @@ function shapeMesh(sh, T) {
 // a node: its pivot group, its own shape, and a child holder at the shape's offset (children hang from pivot + offset)
 function node(n, T, bones, parts) {
   const g = new THREE.Group(); g.position.set(...xyz(n.position)); const o = n.orientation; if (o) g.quaternion.set(o.x ?? 0, o.y ?? 0, o.z ?? 0, o.w ?? 1);
-  const sh = n.shape || {}; if ((sh.type === 'box' || sh.type === 'quad') && sh.visible !== false) { const m = shapeMesh(sh, T); if (m) { g.add(m); g.userData.mesh = m; } }
+  const sh = n.shape || {}; if ((sh.type === 'box' || sh.type === 'quad') && sh.visible !== false) { const m = shapeMesh(sh, T); if (m) { g.add(m); g.userData.mesh = m; m.userData.nodeName = n.name; } }
   const kids = new THREE.Group(); kids.position.set(...xyz(sh.offset)); g.add(kids); if (bones && !bones[n.name]) bones[n.name] = kids;
   if (n.name) { g.userData.rest = { p: g.position.clone(), q: g.quaternion.clone() }; (parts.get(n.name) || parts.set(n.name, []).get(n.name)).push(g); }
   for (const c of n.children || []) kids.add(node(c, T, bones, parts)); return g;
@@ -170,10 +170,11 @@ export function stage(canvas, Controls) {
   function travel(dt) { const v = anim.velocity; want.set(v ? v[0] : 0, v ? v[1] : 0); vel.lerp(want, 1 - Math.exp(-dt * 9));
     grid.position.x = (grid.position.x - vel.x * dt) % CELL; grid.position.z = (grid.position.z - vel.y * dt) % CELL;   // the ground runs backwards under the figure
     grid.material.opacity += ((anim.move && anim.anim ? 0.5 : 0) - grid.material.opacity) * (1 - Math.exp(-dt * 6)); grid.visible = grid.material.opacity > 0.01; }
+  let hl = null, helpers = [];   // outlines around picked boxes (see drawHL)
   const anim = new Animator(); let figure = null, last = performance.now();
   function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
   new ResizeObserver(fit).observe(canvas); fit();
-  (function loop(now) { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000 || 0); anim.update(dt); travel(dt); last = now; renderer.render(scene, cam); })(last);
+  (function loop(now) { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000 || 0); anim.update(dt); travel(dt); for (const h of helpers) h.update(); last = now; renderer.render(scene, cam); })(last);
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   // the texel of `image` under a screen point, for painting straight on the model
   function texel(image) { for (const h of ray.intersectObject(figure, true)) { if (!h.uv || !h.object.visible || h.object.material?.map?.image !== image) continue;
@@ -184,7 +185,13 @@ export function stage(canvas, Controls) {
     ray.ray.origin.x *= -1; ray.ray.direction.x *= -1; p.m = texel(image); return p; }   // the same ray flipped left to right lands on the matching spot of the other side
   // while painting, the left button paints and the right button turns the view
   function paintMode(on) { ctl.mouseButtons.LEFT = on ? -1 : THREE.MOUSE.ROTATE; ctl.mouseButtons.RIGHT = THREE.MOUSE.ROTATE; ctl.touches.ONE = on ? -1 : THREE.TOUCH.ROTATE; canvas.style.cursor = on ? 'crosshair' : ''; }
-  return { anim, pick, paintMode, show(root) { if (figure) { scene.remove(figure); dispose(figure); } figure = root; scene.add(root); anim.setFigure(root); },
+  // the box under a screen point (first hit that passes the filter), and outlines around the boxes a filter picks
+  function drawHL() { for (const h of helpers) { scene.remove(h); h.geometry.dispose(); } helpers = []; if (!hl || !figure) return;
+    figure.updateMatrixWorld(true); figure.traverse(o => { if (o.isMesh && o.visible && hl(o)) { const h = new THREE.BoxHelper(o, 0xf4c452); h.material.depthTest = false; h.renderOrder = 10; helpers.push(h); scene.add(h); } }); }
+  function pickMesh(cx, cy, keep) { if (!figure) return null; const r = canvas.getBoundingClientRect(); ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, cam);
+    for (const h of ray.intersectObject(figure, true)) if (h.object.visible && keep(h.object)) return h.object; return null; }
+  return { anim, pick, pickMesh, paintMode, highlight(f) { hl = f; drawHL(); },
+    show(root) { if (figure) { scene.remove(figure); dispose(figure); } figure = root; scene.add(root); anim.setFigure(root); drawHL(); },
     view(front) { cam.position.set(front ? 0 : -75, 95, front ? 265 : 255); ctl.target.set(0, 62, 0); ctl.update(); } };
 }
 let TR, tscene, tcam;

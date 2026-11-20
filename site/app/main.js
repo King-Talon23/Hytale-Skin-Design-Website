@@ -64,7 +64,10 @@ let found = [];   // skins brought in this session by a lookup or from files; no
 async function startApp() {
   META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); SHOWGAME = !!(await db.get('meta', 'showInGame').catch(() => false));
   $('connect').hidden = true; $('app').hidden = false;
-  if (!st) { st = fig.stage($('view'), OrbitControls); bindPaint($('view'), e => ED ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true); }
+  if (!st) { st = fig.stage($('view'), OrbitControls); bindPaint($('view'), e => ED && !ED.shapeOpen ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true);
+    $('view').addEventListener('pointerdown', e => { if (!ED || !ED.shapeOpen || e.button !== 0) return;
+      const hit = st.pickMesh(e.clientX, e.clientY, o => o.material?.map?.image === ED.canvas); if (!hit) return;
+      const k = boxesOf(ED.model).findIndex(b => b.node.name === hit.userData.nodeName); if (k >= 0 && k !== ED.box) { ED.box = k; render(); } }); }
   try { if (await store.resumeFolder(false)) await reloadAssets(); } catch (e) { console.warn(e); }
   FOLDER = await store.folderState(); WARD = await store.list(); ACCOUNT = await auth.account().catch(() => null);
   const draft = await db.get('meta', 'draft'), ds = sanitize(draft?.skin);
@@ -141,7 +144,7 @@ const portrait = skin => { const s = R.fit(skin); return lazyImg('p|' + JSON.str
 // ---------------------------------------------------------------- panels
 function setTab(t) { if (t !== 'editor' && picking) leavePicker(); if (ED && t !== 'creator') closeAsset(true).then(() => { playAnim('Default', 'Idle', 0.5); rebuild(); });
   tab = t; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t); if (R) render(); }
-function render() { jobGen++; plate(); drawEmotes(); drawGameSwitch(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
+function render() { jobGen++; plate(); drawEmotes(); drawGameSwitch(); outlineBox(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
   p.replaceChildren(...({ editor: panelEditor, wardrobe: panelWardrobe, animations: panelAnimations, lookup: panelLookup, feedback: panelFeedback, creator: panelCreator, help: panelHelp }[tab])());
   if (was === p.className && top) { const b = p.querySelector('.pbody'); if (b) b.scrollTop = top; } }
 // our own small symbols for the category rail (drawn here, not taken from the game)
@@ -427,7 +430,7 @@ function queueAssetSave() { clearTimeout(queueAssetSave.t); queueAssetSave.t = s
 async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; const e = ED, data = await new Promise(ok => e.canvas.toBlob(ok, 'image/png'));
   e.asset = await assets.save({ ...e.asset, data, shape: e.model && e.shapeN ? JSON.stringify(e.model) : e.asset.shape }); ASSETS = await assets.list(); syncFolder(); }
 async function closeAsset(quiet) {
-  if (!ED) return; await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; registerAssets(); st.paintMode(false); pics.clear(); lastPic.clear();
+  if (!ED) return; await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; registerAssets(); st.paintMode(false); st.highlight(null); pics.clear(); lastPic.clear();
   if (!quiet) { playAnim('Default', 'Idle', 0.5); rebuild(); render(); }
 }
 // painting: the same strokes whether the pointer is on the flat texture or on the 3D model
@@ -525,6 +528,9 @@ function shapeChanged() {   // the preview, the drawn-area guide and the saved c
 function maskFromRects() { const c = ED.canvas, m = new Uint8Array(c.width * c.height);
   for (const r of ED.rects) for (let y = Math.max(0, Math.floor(r.y)); y < Math.min(c.height, Math.ceil(r.y + r.h)); y++) for (let x = Math.max(0, Math.floor(r.x)); x < Math.min(c.width, Math.ceil(r.x + r.w)); x++) m[y * c.width + x] = 1;
   ED.painter.mask = ED.rects.length ? m : null; }
+function outlineBox() {   // the selected box, outlined on the model while the shape tools are open
+  if (!st) return; if (!ED || !ED.shapeOpen || !ED.model) return st.highlight(null);
+  const b = boxesOf(ED.model)[ED.box || 0]; st.highlight(b ? o => o.material?.map?.image === ED.canvas && o.userData.nodeName === b.node.name : null); }
 function shapePanel() {
   if (!ED.shapeOpen) return el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Edit shape', onclick: guard(async () => { await editModel(); ED.shapeOpen = true; ED.box = 0; render(); }) }));
   const boxes = boxesOf(ED.model), i = Math.min(ED.box || 0, boxes.length - 1), b = boxes[i], sh = b.node.shape;
@@ -544,7 +550,8 @@ function shapePanel() {
     el('div', { class: 'nums' }, el('b', { text: 'Size' }), num('W', sh.settings, 'size', 'x', 0, 64), num('H', sh.settings, 'size', 'y', 0, 64), num('D', sh.settings, 'size', 'z', 0, 64)),
     el('div', { class: 'nums' }, el('b', { text: 'Move' }), num('X', sh, 'offset', 'x', -64, 64), num('Y', sh, 'offset', 'y', -64, 64), num('Z', sh, 'offset', 'z', -64, 64)),
     el('div', { class: 'options' }, nudge('x', -1), nudge('x', 1), nudge('y', -1), nudge('y', 1), nudge('z', -1), nudge('z', 1)),
-    el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Reset shape', onclick: reset }), el('button', { class: 'btn ghost', text: 'Close shape', onclick: () => { ED.shapeOpen = false; render(); } })));
+    el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Reset shape', onclick: reset }), el('button', { class: 'btn ghost', text: 'Close shape', onclick: () => { ED.shapeOpen = false; render(); } })),
+    el('p', { class: 'need', text: 'Click a box on the model to pick it. Right-drag turns the model.' }));
 }
 
 function panelCreator() {
