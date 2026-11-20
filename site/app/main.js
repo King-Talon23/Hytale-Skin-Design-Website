@@ -70,7 +70,8 @@ let found = [];   // skins brought in this session by a lookup or from files; no
 async function startApp() {
   META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); SHOWGAME = !!(await db.get('meta', 'showInGame').catch(() => false));
   $('connect').hidden = true; $('app').hidden = false;
-  if (!st) { st = fig.stage($('view'), OrbitControls); bindPaint($('view'), e => ED && !ED.shapeOpen && ED.painter.tool !== 'select' ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true);
+  if (!st) { st = fig.stage($('view'), OrbitControls);
+    st.onFacing(f => { const t = $('facing') || $('view').parentElement.appendChild(el('div', { id: 'facing', class: 'facing' })); t.textContent = 'Facing you: ' + f; }); bindPaint($('view'), e => ED && !ED.shapeOpen && ED.painter.tool !== 'select' ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true);
     $('view').addEventListener('pointermove', e => { if (!ED) return; partHover(e); const p = ED.shapeOpen || ED.painter.tool === 'select' ? st.cursor(null) : st.cursor(e.clientX, e.clientY, ED.canvas, brushSize(), ED.mirror);
       ED.hover = p; ED.hoverM = p?.m || null; drawOvl(); });
     $('view').addEventListener('pointerleave', () => { if (!ED) return; st.cursor(null); ED.hover = ED.hoverM = null; drawOvl(); });
@@ -894,14 +895,14 @@ function tintAll(hex, node) {   // node: only that box's texture area
   ED.palette = P.palette(); render(); checkReplica(); say(node ? `${partName(node)} is now this colour.` : 'The whole item is now this colour. Ctrl+Z undoes it.');
 }
 function paintSide() {
-  const P = ED.painter, adj = { h: 0, s: 0, l: 0 };
+  const P = ED.painter, adj = (ED.adjVals ||= { h: 0, s: 0, l: 0 });   // kept on the editor: the panel redraws (switching Paint/Shape) must not zero what you set
   const slider = (label, min, max, step, get, set, fmt) => { const lab = el('span', { text: `${label} ${fmt(get())}` });
     return el('label', { class: 'wsslider' }, lab, el('input', { type: 'range', min, max, step, value: get(), oninput: e => { set(+e.target.value); lab.textContent = `${label} ${fmt(get())}`; } })); };
   const adjRow = (key, label, min, max) => { const set = v => { adj[key] = Math.max(min, Math.min(max, Math.round(v) || 0)); P.adjust(adj.h, adj.s / 100, adj.l / 100, false); };
-    const num = el('input', { type: 'number', min, max, step: 1, value: adj[key], class: 'adjnum', onchange: e => { set(+e.target.value); rng.value = adj[key]; } }),
+    const num = el('input', { type: 'number', min, max, step: 1, value: adj[key], class: 'adjnum', oninput: e => { if (e.target.value === '' || e.target.value === '-') return; set(+e.target.value); rng.value = adj[key]; }, onchange: e => { set(+e.target.value); rng.value = e.target.value = adj[key]; } }),
       rng = el('input', { type: 'range', min, max, step: 1, value: adj[key], oninput: e => { set(+e.target.value); num.value = adj[key]; } });
     return el('label', { class: 'wsslider adj' }, el('span', { text: label }), rng, num); };
-  const endAdjust = keep => { if (!keep) adj.h = adj.s = adj.l = 0; P.adjust(adj.h, adj.s / 100, adj.l / 100, true); ED.palette = P.palette(); render(); if (keep) checkReplica(); };
+  const endAdjust = keep => { if (!keep) adj.h = adj.s = adj.l = 0; P.adjust(adj.h, adj.s / 100, adj.l / 100, true); ED.adjVals = null; ED.palette = P.palette(); render(); if (keep) checkReplica(); };
   const toggle = (text, on, fn, title) => el('button', { class: 'chip' + (on ? ' on' : ''), text: `${text}: ${on ? 'on' : 'off'}`, title, onclick: fn });
   const chip = (text, fn, key, off) => el('button', { class: 'chip', text, title: key || '', disabled: !!off, onclick: () => { fn(); render(); } });
   if (ED.adjOpen) return [el('div', { class: 'wshead', text: 'Fine-tune colours of the whole item' }), el('p', { class: 'dim small', text: 'Type a number for exact steps. Keep saves it, Cancel puts it back.' }),

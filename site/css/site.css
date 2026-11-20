@@ -127,7 +127,7 @@ main { min-height: 0; }
 .viewhint { position: absolute; left: 10px; bottom: 10px; max-width: min(460px, calc(100% - 20px)); line-height: 1.35; background: #0b1422d8; border: 1px solid var(--line2); border-radius: 4px; padding: 5px 10px; font-size: 12.5px; color: #c5d6e2; pointer-events: none; }
 .sizebtns { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px; } .sizebtns .chip { text-align: center; }
 .finishpic { display: grid; place-items: center; } .finishpic img { width: 256px; height: 256px; } .finishpic img:not([src]) { visibility: hidden; }
-.wsslider.adj { display: grid; grid-template-columns: 76px 1fr 54px; align-items: center; gap: 6px; } .adjnum { width: 54px; }
+.wsslider.adj { display: grid; grid-template-columns: 1fr 54px; align-items: center; gap: 2px 6px; } .wsslider.adj > span { grid-column: 1 / -1; } .wsslider.adj input[type=range] { width: 100%; min-width: 0; } .adjnum { width: 54px; }
 .gamesteps { border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; background: #13233a; }
 .gamesteps summary { cursor: pointer; font-weight: 700; color: var(--gold); }
 .gamesteps ol { list-style: none; margin: 10px 0 2px; padding: 0; display: grid; gap: 8px; }
@@ -221,7 +221,7 @@ input[type=color] { width: 46px; height: 38px; padding: 2px; background: #0d1826
 .wstool { position: relative; width: 52px; height: 46px; flex: none; padding: 0; border-radius: 4px; border: 1px solid #2e4a6e; background: #1b2e48; color: #dce8eb; font-size: 17px; display: grid; align-content: center; justify-items: center; place-items: center; }
 .wstool:hover { border-color: var(--line2); } .wstool.on { border-color: var(--gold); color: var(--gold); background: #2a3340; }
 .wstool i { position: absolute; right: 3px; top: 1px; font: 700 9px var(--b); font-style: normal; color: var(--dim); }
-.wspanel { flex-direction: column; gap: 8px; min-height: 0; overflow: auto; background: #101d2f; border: 1px solid var(--line); border-radius: 4px; padding: 10px; }
+.wspanel { flex-direction: column; gap: 8px; min-height: 0; overflow: auto; scrollbar-gutter: stable; background: #101d2f; border: 1px solid var(--line); border-radius: 4px; padding: 10px; }
 #wsleft { grid-area: left; } #wsright { grid-area: right; }
 .wshead { font: 700 11px var(--h); text-transform: uppercase; letter-spacing: .08em; color: var(--dim); border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-top: 4px; }
 #wsleft .paintbox { margin: 0; max-height: none; min-height: 120px; flex: 1 1 auto; }
@@ -318,3 +318,7 @@ footer { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wr
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 .modrow > div { display: grid; gap: 2px; }
+
+/* which side of the figure faces the camera: shown while an item is edited (the body is see-through then) */
+.facing { display: none; position: absolute; left: 10px; top: 44px; z-index: 3; font: 700 11px var(--h); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); background: #0b1626cc; border: 1px solid #f4c45255; border-radius: 3px; padding: 3px 7px; pointer-events: none; }
+#app.ws .facing { display: block; }

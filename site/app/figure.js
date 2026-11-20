@@ -196,10 +196,10 @@ export function stage(canvas, Controls) {
     const wy = wallG.position.y - WALL_Y - (wallOn ? wallOn[1] : 0) * dt, wx = wallG.position.x - (wallOn ? wallOn[0] : 0) * dt;
     wallG.position.set(wx % CELL, WALL_Y + wy % CELL, WALL_Z); wallG.material.opacity += ((wallOn ? 0.5 : 0) - wallG.material.opacity) * (1 - Math.exp(-dt * 6)); wallG.visible = wallG.material.opacity > 0.01; }
   let hl = null, helpers = [];   // outlines around picked boxes (see drawHL)
-  const anim = new Animator(), mountAnim = new Animator(); let figure = null, held = [], perchY = 0, last = performance.now(), mountRoot = null, seat = null, hoverTo = 0, hoverAt = 0;
+  const anim = new Animator(), mountAnim = new Animator(); let figure = null, held = [], perchY = 0, faceCb = null, faced = '', last = performance.now(), mountRoot = null, seat = null, hoverTo = 0, hoverAt = 0;
   function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
   new ResizeObserver(fit).observe(canvas); fit();
-  (function loop(now) { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000 || 0); anim.update(dt); mountAnim.playing = anim.playing; mountAnim.update(dt); travel(dt); float(dt, now); for (const h of helpers) h.update(); dropHeld(); last = now; renderer.render(scene, cam); })(last);
+  (function loop(now) { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000 || 0); anim.update(dt); mountAnim.playing = anim.playing; mountAnim.update(dt); travel(dt); float(dt, now); for (const h of helpers) h.update(); dropHeld(); facing(); last = now; renderer.render(scene, cam); })(last);
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   // the texel of `image` under a screen point, for painting straight on the model
   function texel(image) { for (const h of ray.intersectObject(figure, true)) { if (!h.uv || !h.object.visible || h.object.material?.map?.image !== image) continue;
@@ -240,7 +240,14 @@ export function stage(canvas, Controls) {
       const base = o.material; if (!glow.has(base)) { const g = base.clone(); g.emissive = new THREE.Color(0x6a4a08); glow.set(base, g); } o.userData.baseMat = base; o.material = glow.get(base); lit.push(o); } }); }
   // the item being edited stands out: every other part of the character turns into a faint see-through mannequin
   const ghost = new THREE.MeshLambertMaterial({ color: 0xa9bfd6, transparent: true, opacity: 0.14, depthWrite: false }); let isoImage = null;
-  function applyIsolate() { figure?.traverse(o => { if (!o.isMesh) return; const real = o.userData.realMat || o.material, keep = !isoImage || real?.map?.image === isoImage;
+  // while one item is edited (the body see-through), a FRONT mark on the floor says which way the figure faces
+  const frontMark = (() => { const c = document.createElement('canvas'); c.width = 256; c.height = 128; const g = c.getContext('2d');
+    g.fillStyle = '#f4c452'; g.beginPath(); g.moveTo(128, 6); g.lineTo(168, 50); g.lineTo(88, 50); g.closePath(); g.fill();
+    g.font = '800 44px Lexend, Segoe UI, sans-serif'; g.textAlign = 'center'; g.fillText('FRONT', 128, 108);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(48, 24), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, opacity: 0.85 }));
+    m.rotation.x = -Math.PI / 2; m.position.set(0, 0.4, 46); m.visible = false; scene.add(m); return m; })();
+  function applyIsolate() { frontMark.visible = !!isoImage; figure?.traverse(o => { if (!o.isMesh) return; const real = o.userData.realMat || o.material, keep = !isoImage || real?.map?.image === isoImage;
     if (keep && o.userData.realMat) { o.material = o.userData.realMat; delete o.userData.realMat; } else if (!keep && !o.userData.realMat) { o.userData.realMat = o.material; o.material = ghost; } }); }
   function pickMesh(cx, cy, keep) { if (!figure) return null; const r = canvas.getBoundingClientRect(); ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, cam);
     for (const h of ray.intersectObject(figure, true)) if (h.object.visible && keep(h.object)) return h.object; return null; }
@@ -285,6 +292,9 @@ export function stage(canvas, Controls) {
   // things held in the hands (a glider, a sword ...): each hangs on a bone of the figure and moves with it; re-hung when the figure is rebuilt
   // a held thing can sit a little away from where the move puts it (shift: [x, y, z] in model units in the scene, the figure faces +z, whatever the hand's turn)
   const dq = new THREE.Quaternion(), dv = new THREE.Vector3(), ds = new THREE.Vector3();
+  // which side of the figure faces the camera (the figure faces +z): told to api.onFacing when it changes
+  function facing() { if (!faceCb) return; const a = Math.atan2(cam.position.x - ctl.target.x, cam.position.z - ctl.target.z) * 180 / Math.PI;
+    const f = Math.abs(a) <= 45 ? 'front' : Math.abs(a) >= 135 ? 'back' : a > 0 ? 'left side' : 'right side'; if (f !== faced) { faced = f; faceCb(f); } }
   function dropHeld() { for (const h of held) { const b = h.root.parent; if (!h.shift || !b) continue; b.updateWorldMatrix(true, false); b.getWorldQuaternion(dq).invert(); b.getWorldScale(ds);
     h.root.position.copy(dv.set(...h.shift).applyQuaternion(dq).divide(ds)); } }
   // the moves animate the held thing's own parts too (the glider's frame and flaps), so those parts join the figure's while it is held;
@@ -307,7 +317,7 @@ export function stage(canvas, Controls) {
     if (was !== !!root) { const k = root ? 1.6 : 1 / 1.6, ty = root ? 62 + at[1] * 0.7 : 62, off = cam.position.clone().sub(ctl.target).multiplyScalar(k);
       ctl.target.set(0, ty, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
   }
-  const api = { isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, props, lift, scenery, wall: v => { wallOn = v || null; }, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
+  const api = { isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, props, lift, scenery, onFacing: cb => { faceCb = cb; faced = ''; }, wall: v => { wallOn = v || null; }, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
     gizmoBusy: () => tc.dragging || tc.axis !== null,
     // where a click lands on a box: the point and the face's outward direction, in the box's own part (node) space
     pickHit(cx, cy, keep) { if (!figure) return null; aim(cx, cy); for (const h of ray.intersectObject(figure, true)) if (h.object.visible && keep(h.object)) {
