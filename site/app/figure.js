@@ -61,7 +61,7 @@ function shapeMesh(sh, T) {
   }
   if (!idx.length) return null;
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.setIndex(idx); geo.computeVertexNormals();
-  return new THREE.Mesh(geo, T.mat);
+  const mesh = new THREE.Mesh(geo, T.mat); mesh.userData.texel = st; return mesh;
 }
 // a node: its pivot group, its own shape, and a child holder at the shape's offset (children hang from pivot + offset)
 function node(n, T, bones, parts) {
@@ -181,6 +181,28 @@ export function stage(canvas, Controls) {
   function texel(image) { for (const h of ray.intersectObject(figure, true)) { if (!h.uv || !h.object.visible || h.object.material?.map?.image !== image) continue;
       return { x: Math.min(image.width - 1, Math.max(0, Math.floor(h.uv.x * image.width))), y: Math.min(image.height - 1, Math.max(0, Math.floor((1 - h.uv.y) * image.height))) }; }
     return null; }
+  // the brush outline on the model: a square of brush-size texels, snapped to the texel grid of the face under the pointer
+  const curs = [0xffffff, 0xf4c452].map(col => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3));
+    const l = new THREE.LineLoop(g, new THREE.LineBasicMaterial({ color: col, depthTest: false, transparent: true })); l.renderOrder = 12; l.visible = false; l.frustumCulled = false; scene.add(l); return l; });
+  const hitOn = image => { for (const h of ray.intersectObject(figure, true)) if (h.uv && h.face && h.object.visible && h.object.material?.map?.image === image) return h; return null; };
+  const texOf = (h, image) => ({ x: Math.min(image.width - 1, Math.max(0, Math.floor(h.uv.x * image.width))), y: Math.min(image.height - 1, Math.max(0, Math.floor((1 - h.uv.y) * image.height))) });
+  const tv = new THREE.Vector3();
+  function square(l, h, size) {
+    if (!h) { l.visible = false; return; }
+    const o = h.object, n = h.face.normal, ax = Math.abs(n.x) > 0.5 ? 0 : Math.abs(n.y) > 0.5 ? 1 : 2, ts = (o.userData.texel || [1, 1, 1]).map(v => Math.abs(v) || 1);
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); const mn = o.geometry.boundingBox.min.toArray(), lp = o.worldToLocal(h.point.clone()).toArray(), [u, v] = [0, 1, 2].filter(k => k !== ax);
+    for (const k of [u, v]) lp[k] = mn[k] + (Math.floor((lp[k] - mn[k]) / ts[k] + 1e-6) + 0.5) * ts[k];
+    lp[ax] += Math.sign(n.getComponent(ax)) * 0.15; const pos = l.geometry.attributes.position;
+    [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([a, b], i) => { const p = lp.slice(); p[u] += a * size * ts[u] / 2; p[v] += b * size * ts[v] / 2; o.localToWorld(tv.fromArray(p)); pos.setXYZ(i, tv.x, tv.y, tv.z); });
+    pos.needsUpdate = true; l.visible = true;
+  }
+  function aim(cx, cy) { const r = canvas.getBoundingClientRect(); ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, cam); }
+  function cursor(cx, cy, image, size, mirror) {   // draws the outline(s) and returns the texel under the pointer (with .m for the mirrored spot)
+    if (cx == null || !figure) { for (const l of curs) l.visible = false; return null; }
+    aim(cx, cy); const h = hitOn(image); square(curs[0], h, size); const p = h ? texOf(h, image) : null;
+    if (mirror && h) { ray.ray.origin.x *= -1; ray.ray.direction.x *= -1; const h2 = hitOn(image); square(curs[1], h2, size); if (h2) p.m = texOf(h2, image); } else curs[1].visible = false;
+    return p;
+  }
   function pick(cx, cy, image, mirror) { if (!figure) return null; const r = canvas.getBoundingClientRect(); ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, cam);
     const p = texel(image); if (!p || !mirror) return p;
     ray.ray.origin.x *= -1; ray.ray.direction.x *= -1; p.m = texel(image); return p; }   // the same ray flipped left to right lands on the matching spot of the other side
@@ -213,7 +235,7 @@ export function stage(canvas, Controls) {
     tc.setMode(o.mode === 'move' ? 'translate' : o.mode === 'resize' ? 'scale' : 'rotate'); tc.setSpace('local'); tc.attach(handle);
   }
   const VIEWS = { front: [0, 62, 270], back: [0, 62, -270], side: [-270, 62, 0], top: [0, 330, 1], persp: [-75, 95, 255] };
-  const api = { anim, pick, pickMesh, paintMode, gizmo, afterShow: null,
+  const api = { anim, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
     gizmoBusy: () => tc.dragging || tc.axis !== null,
     findMesh(keep) { let hit = null; figure?.traverse(o => { if (!hit && o.isMesh && keep(o)) hit = o; }); return hit; },
     setView(name) { const v = VIEWS[name] || VIEWS.persp; cam.position.set(...v); ctl.target.set(0, 62, 0); ctl.update(); },

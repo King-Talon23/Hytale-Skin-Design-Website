@@ -193,6 +193,7 @@ input[type=color] { width: 46px; height: 38px; padding: 2px; background: #0d1826
 #wsstatus { grid-area: status; background: #15263b; border: 1px solid var(--line); border-radius: 4px; padding: 5px 10px; font-size: 12.5px; color: var(--dim); }
 .viewbtns { position: absolute; top: 8px; right: 8px; gap: 3px; } .viewbtns button { background: #0b1422d0; border: 1px solid var(--line2); border-radius: 3px; padding: 3px 9px; font-size: 12px; color: #c5d6e2; }
 .viewbtns button:hover { border-color: var(--gold2); color: #fff; }
+.viewbtns .wsanim { background: #0b1422d0; border: 1px solid var(--line2); border-radius: 3px; padding: 2px 6px; font-size: 12px; color: #c5d6e2; min-height: 0; width: auto; }
 .outliner { display: flex; flex-direction: column; gap: 2px; min-height: 110px; max-height: 220px; overflow: auto; flex: none; }
 .outliner button { text-align: left; background: none; border: 1px solid transparent; border-radius: 3px; padding: 4px 8px; font-size: 13px; color: #c5d6e2; }
 .outliner button:hover { background: #1b2e48; } .outliner button.on { background: #22303f; border-color: var(--gold2); color: var(--gold); }

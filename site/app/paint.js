@@ -52,6 +52,7 @@ export function createPainter(canvas, onChange, onPick) {
       line(a, b); show(); },
     end() { if (!img) return; if (dirty) { redo.length = 0; onChange(true); } else undo.pop(); img = null; base = null; touched = null; },
     undo() { swap(undo, redo); }, redo() { swap(redo, undo); },
+    write(fn) { undo.push(copy()); if (undo.length > 40) undo.shift(); redo.length = 0; const d = ctx.getImageData(0, 0, W, H); fn(d.data, W, H); ctx.putImageData(d, 0, 0); onChange(true); },   // copy-paste and box paint areas
     replace(source) { undo.push(copy()); redo.length = 0; ctx.clearRect(0, 0, W, H); ctx.drawImage(source, 0, 0, W, H); onChange(true); },
     // recolour the whole item: hue in degrees, saturation and brightness from -1 to 1. Previews from the picture as it was when the sliders were first moved.
     adjust(h, s, l, commit) {
