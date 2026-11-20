@@ -14,21 +14,23 @@ export async function list() {
   return { game, custom };
 }
 function record(id, kind, name, skin, slot) { return { id, kind, slot: kind === 'game' ? slot : undefined, name: cleanName(name) || 'Unnamed', skin: sanitize(skin), updated: Date.now() }; }
-async function write(r) { if (!r.skin) throw new Error('That is not a skin.'); await db.put('skins', r.id, r); return r; }
+async function put(r) { if (!r.skin) throw new Error('That is not a skin.'); await db.put('skins', r.id, r); return r; }
+const write = async r => { await put(r); await mirror(); return r; };
 
 export async function saveCustom(name, skin, id) {
   if (!id && (await list()).custom.length >= CUSTOM_MAX) throw new Error(`Your wardrobe is full (${CUSTOM_MAX} skins). Delete one first.`);
   return write(record(id || crypto.randomUUID(), 'custom', name, skin));
 }
 export const saveGame = (slot, name, skin) => write(record(gameId(slot), 'game', name, skin, slot));
-export const remove = id => db.del('skins', id);
+export const remove = async id => { await db.del('skins', id); await mirror(); };
 
 // Put a custom skin into an in-game slot. Whatever was in the slot takes the custom skin's place, so nothing is lost.
 export async function swap(customId, slot) {
   const { game, custom } = await list(), c = custom.find(r => r.id === customId); if (!c) throw new Error('That skin is gone.');
   const old = game[slot];
-  await saveGame(slot, c.name, c.skin);
-  if (old) await write(record(c.id, 'custom', old.name, old.skin)); else await remove(c.id);
+  await put(record(gameId(slot), 'game', c.name, c.skin, slot));
+  if (old) await put(record(c.id, 'custom', old.name, old.skin)); else await db.del('skins', c.id);
+  await mirror();
 }
 
 export async function exportAll() { const { game, custom } = await list();
@@ -39,4 +41,51 @@ export async function importAll(data) {   // adds to what is there; never overwr
   for (const r of data.custom.slice(0, 500)) { const s = sanitize(r?.skin); if (!s) continue; if (room <= 0) { skipped++; continue; } await saveCustom(r.name, s); room--; added++; }
   for (let i = 0; i < GAME_SLOTS; i++) { const r = data.game?.[i], s = sanitize(r?.skin); if (s && !cur.game[i]) { await saveGame(i, r.name, s); added++; } }
   return { added, skipped };
+}
+
+// ---- a folder on the player's own computer (Chrome and Edge). The browser copy stays the working copy; every change is
+// mirrored into two subfolders as one small .json file per skin, and skins found there are brought in when the folder connects.
+export const folderSupported = typeof self.showDirectoryPicker === 'function';
+const SUB = { custom: 'My skins', game: 'In-game slots' };
+let dir = null; const written = new Map(), known = new Set();
+const safe = n => { let t = String(n).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/^[. ]+|[. ]+$/g, '').slice(0, 60) || 'Unnamed'; return /^(con|prn|aux|nul|com\d|lpt\d)$/i.test(t) ? '_' + t : t; };
+export async function folderState() {
+  if (!folderSupported) return { state: 'none' };
+  const h = await db.get('meta', 'folder'); if (!h) return { state: 'none' };
+  return { state: dir && (await h.queryPermission({ mode: 'readwrite' })) === 'granted' ? 'on' : 'ask', name: h.name };
+}
+export async function chooseFolder() { return useFolder(await self.showDirectoryPicker({ id: 'skins', mode: 'readwrite', startIn: 'documents' })); }
+export async function useFolder(h) { await db.put('meta', 'folder', h); dir = h; written.clear(); known.clear(); return attach(); }
+export async function resumeFolder(ask) {
+  if (!folderSupported) return null; const h = await db.get('meta', 'folder'); if (!h) return null;
+  let p = await h.queryPermission({ mode: 'readwrite' }); if (p !== 'granted' && ask) p = await h.requestPermission({ mode: 'readwrite' });
+  if (p !== 'granted') return null; dir = h; written.clear(); known.clear(); return attach();
+}
+export async function forgetFolder() { dir = null; await db.del('meta', 'folder'); }
+async function attach() {   // bring in skins the folder has and this browser does not, then write everything out
+  const cur = await list(); let imported = 0, room = CUSTOM_MAX - cur.custom.length;
+  const have = new Set(cur.custom.map(r => r.name + '|' + JSON.stringify(r.skin)));
+  for (const kind of ['custom', 'game']) { const d = await dir.getDirectoryHandle(SUB[kind], { create: true }); let n = 0;
+    for await (const [name, h] of d.entries()) { if (h.kind !== 'file' || !/\.json$/i.test(name) || ++n > 300) continue;
+      try { const f = await h.getFile(); if (f.size > 200000) continue; const j = JSON.parse(await f.text()), sk = sanitize(j && j.skin); if (!sk) continue;
+        known.add(SUB[kind] + '/' + name); const nm = cleanName(j.name || name.replace(/\.json$/i, ''));
+        if (kind === 'custom') { const key = nm + '|' + JSON.stringify(sk); if (have.has(key) || room <= 0) continue; have.add(key); await put(record(crypto.randomUUID(), 'custom', nm, sk)); room--; imported++; }
+        else { const i = Number.isInteger(j.slot) ? j.slot : -1; if (i < 0 || i >= GAME_SLOTS || cur.game[i]) continue; cur.game[i] = await put(record(gameId(i), 'game', nm, sk, i)); imported++; }
+      } catch { /* not one of ours */ } } }
+  await mirror(); return { imported };
+}
+let mirroring = Promise.resolve();
+function mirror() { if (!dir) return Promise.resolve(); return mirroring = mirroring.catch(() => {}).then(doMirror); }
+async function doMirror() {
+  if (!dir) return;
+  try {
+    const { game, custom } = await list(), want = new Map(), used = new Set();
+    const file = r => JSON.stringify({ format: 'skin-editor-skin', version: 1, name: r.name, kind: r.kind, slot: r.slot, skin: r.skin }, null, 1);
+    for (const r of game) if (r) want.set(`${SUB.game}/Slot ${r.slot + 1} - ${safe(r.name)}.json`, file(r));
+    for (const r of [...custom].sort((a, b) => a.id < b.id ? -1 : 1)) { let b = safe(r.name), n = b, i = 2; while (used.has(n.toLowerCase())) n = `${b} (${i++})`; used.add(n.toLowerCase()); want.set(`${SUB.custom}/${n}.json`, file(r)); }
+    for (const kind of ['custom', 'game']) { const d = await dir.getDirectoryHandle(SUB[kind], { create: true });
+      for (const [path, text] of want) { if (!path.startsWith(SUB[kind] + '/') || written.get(path) === text) continue;
+        const w = await (await d.getFileHandle(path.slice(SUB[kind].length + 1), { create: true })).createWritable(); await w.write(text); await w.close(); written.set(path, text); known.add(path); }
+      for (const path of [...known]) if (path.startsWith(SUB[kind] + '/') && !want.has(path)) { try { await d.removeEntry(path.slice(SUB[kind].length + 1)); } catch { /* already gone */ } known.delete(path); written.delete(path); } }
+  } catch (e) { console.error(e); throw new Error('Could not write to your skins folder. Your skins are still saved in this browser.'); }
 }
