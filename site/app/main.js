@@ -224,7 +224,7 @@ function panelLocker() {
 function panelPicker() {
   const f = slot, it = R.find(f, cur.skin[f]), { color, variant } = parse(cur.skin[f]);
   const change = (item, c, v) => setSkin({ ...cur.skin, [f]: R.partStr(item, c, v) });
-  const all = R.ITEMS[f], tiersHere = [...new Set(all.filter(e => !e.custom).map(tierOf))].sort();
+  const all = oneEach(R.ITEMS[f]).concat(it && !it.custom && !oneEach(R.ITEMS[f]).includes(it) ? [it] : []), tiersHere = [...new Set(all.filter(e => !e.custom).map(tierOf))].sort();
   const counts = { fav: all.filter(e => LOCK.favs.has(favKey(f, e))).length, new: all.filter(e => isNew(f, e)).length, mine: all.filter(e => e.custom).length };
   const chip = (id, label) => el('button', { class: 'chip' + (lockFilter === id ? ' on' : ''), text: label, onclick: () => { lockFilter = id; sortBox.hidden = id !== 'all'; drawCards(); for (const c of bar.querySelectorAll('.chip[data-f]')) c.classList.toggle('on', c.dataset.f === id); }, data: { f: id } });
   const sortBox = el('select', { class: 'sort', title: 'Order', hidden: lockFilter !== 'all', onchange: e => { lockSort = e.target.value; drawCards(); } },
@@ -510,6 +510,11 @@ function panelHelp() {
 // ---------------------------------------------------------------- asset creator
 let ASSETS = [], ED = null, edN = 0;
 const itemName = e => e && e.custom ? e.Name : (e && CAT.names && CAT.names[e.Name]) || nice(e ? e.Id : '');
+// names the game already uses (its items and moves): custom pieces may not take them, and items sharing one show once
+function gameNamed(n) { const k = String(n).trim().toLowerCase(); if (!gameNamed.set || gameNamed.cat !== CAT) {
+    gameNamed.cat = CAT; gameNamed.set = new Set([...Object.values(CAT.items).flat().filter(e => !e.custom).map(e => itemName(e).toLowerCase()), ...Object.values(CAT.anims || {}).flat().map(a => nice(a).toLowerCase())]); }
+  return gameNamed.set.has(k); }
+const oneEach = items => { const seen = new Set(); return items.filter(e => { if (e.custom) return true; const k = itemName(e).toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }); };
 const hasCustom = skin => Object.values(skin).some(v => typeof v === 'string' && v.startsWith('Custom_'));
 async function reloadAssets() { ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); SHOWGAME = !!(await db.get('meta', 'showInGame').catch(() => false)); cur.skin = R.fit(cur.skin); }
 const syncFolder = () => store.sync().catch(e => say(e.message, true));
@@ -756,7 +761,7 @@ function anyItem() {   // or start from any free item in the game, worn or not
   menu.onpointerleave = () => peek(at);
   menu.onclick = ev => { const o = ev.target.closest('[role=option]'); if (o) { choose(+o.dataset.i); item.focus(); } };
   const fill = () => { const q = find_.value.trim().toLowerCase(), from = q ? slots : [slot.value];   // a search looks in every slot
-    list = from.flatMap(f => CAT.items[f].filter(e => ok(e) && (!q || itemName(e).toLowerCase().includes(q))).map(e => [itemName(e) + (q ? ` (${LABEL[f]})` : ''), f, e])).sort((a, b) => a[0].localeCompare(b[0]));
+    list = from.flatMap(f => oneEach(CAT.items[f]).filter(e => ok(e) && (!q || itemName(e).toLowerCase().includes(q))).map(e => [itemName(e) + (q ? ` (${LABEL[f]})` : ''), f, e])).sort((a, b) => a[0].localeCompare(b[0]));
     if (!q) list.unshift(['None', slot.value, null]);   // None: the picture shows the slot empty; wearing nothing there starts on a random item
     menu.replaceChildren(...list.map(([n], i) => el('div', { role: 'option', class: 'anyopt', text: n, data: { i } })));
     const worn = !q && parse(cur.skin[slot.value]).id; at = q ? (list.length ? 0 : -1) : list.findIndex(r => r[2] && r[2].Id === worn); if (!q && at < 0 && list.length > 1) at = 1 + Math.floor(Math.random() * (list.length - 1)); act = Math.max(0, at); label(); item.disabled = !list.length; close(); clearTimeout(hov); draw(at); };
@@ -1060,7 +1065,7 @@ function renderWorkspace() {
   const P = ED.painter, a = ED.asset, c = ED.canvas, mode = ED.mode || 'paint'; ED.shapeOpen = mode === 'shape';
   const tools = mode === 'paint' ? PAINT_TOOLS : SHAPE_TOOLS, active = mode === 'paint' ? P.tool : ED.stool || 'select';
   $('wstop').replaceChildren(...[
-    el('input', { type: 'text', class: 'wsname', value: a.name, maxLength: 40, title: 'Name', onchange: e => { ED.asset = { ...ED.asset, name: cleanName(e.target.value) || a.name }; queueAssetSave(); } }),
+    el('input', { type: 'text', class: 'wsname', value: a.name, maxLength: 40, title: 'Name', onchange: e => { const v = cleanName(e.target.value); if (v && gameNamed(v)) { e.target.value = ED.asset.name; return say(`"${v}" is the name of something in the game. Pick your own name.`, true); } ED.asset = { ...ED.asset, name: v || a.name }; queueAssetSave(); } }),
     el('div', { class: 'wsmodes' }, [['paint', 'Paint'], ['shape', 'Shape']].map(([m, t]) => el('button', { class: mode === m ? 'on' : '', text: t, title: 'Tab switches', onclick: guard(() => setMode(m)) }))),
     el('span', { id: 'wssaved', class: 'wssaved', text: ED.saved === false ? 'Saving…' : 'Saved' }),
     el('span', { class: 'grow' }), a.flag ? el('button', { class: 'tag none', text: 'Site only: looks like ' + a.flag, title: FLAG_WHY(a.flag), onclick: () => say(FLAG_WHY(a.flag), true) }) : null,
