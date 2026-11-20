@@ -116,6 +116,7 @@ main { min-height: 0; }
 .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 .nameplate { position: absolute; top: 4px; right: 4px; display: flex; align-items: center; gap: 8px; background: #0d1826e6; border: 1px solid var(--line2); border-radius: 3px; padding: 8px 12px; max-width: 70%; }
 .nameplate b { font: 700 15px var(--b); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag.supporter { margin-left: 8px; background: #3a2a0c; color: var(--gold); border: 1px solid #8a6a1c; vertical-align: 2px; }
 .tag { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 2px; white-space: nowrap; }
 .tag.game { background: var(--gold); color: #2a1d00; } .tag.custom { background: var(--custom); color: #04233d; } .tag.none { background: #33475f; color: #c5d6e2; }
 .status { position: absolute; left: 6px; bottom: 58px; font-size: 13.5px; color: #cfe6d8; text-shadow: 0 1px 2px #000; }

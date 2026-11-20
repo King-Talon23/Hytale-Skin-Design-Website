@@ -16,5 +16,7 @@ export async function onRequestPost({ request, env }) {
   const row = await env.DB.prepare('SELECT banned FROM players WHERE uuid = ?1').bind(uuid).first();
   if (row && row.banned) return json({ error: 'This profile cannot publish skins.' }, 403);
   await env.DB.prepare('INSERT INTO players (uuid, username, updated) VALUES (?1, ?2, ?3) ON CONFLICT(uuid) DO UPDATE SET username = ?2, updated = ?3').bind(uuid, p.username, Date.now()).run();
+  const pend = await env.DB.prepare('DELETE FROM supporters_pending WHERE username = lower(?1) RETURNING username').bind(p.username).first();   // a tip that named this player before they signed in
+  if (pend) await env.DB.prepare('UPDATE players SET supporter = 1 WHERE uuid = ?1').bind(uuid).run();
   const res = json({ uuid, username: p.username }); res.headers.append('Set-Cookie', await sessionCookie(env, uuid)); return res;
 }

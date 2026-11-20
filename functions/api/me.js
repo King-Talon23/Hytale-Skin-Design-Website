@@ -7,7 +7,8 @@ export async function onRequestGet({ request, env }) {
   if (!switchedOn(env)) return json({ on: false });
   const me = await whoIs(request, env); if (!me) return json({ on: true, signedIn: false });
   const { results } = await env.DB.prepare('SELECT id, name, hidden, updated FROM skins WHERE owner_uuid = ?1 ORDER BY updated DESC').bind(me.uuid).all();
-  return json({ on: true, signedIn: true, uuid: me.uuid, username: me.username, skins: results.map(r => ({ id: r.id, name: r.name, hidden: !!r.hidden, updated: r.updated })) });
+  const sup = await env.DB.prepare('SELECT supporter FROM players WHERE uuid = ?1').bind(me.uuid).first();
+  return json({ on: true, signedIn: true, uuid: me.uuid, username: me.username, supporter: !!(sup && sup.supporter), skins: results.map(r => ({ id: r.id, name: r.name, hidden: !!r.hidden, updated: r.updated })) });
 }
 export async function onRequestDelete({ request, env }) {
   if (!sameSite(request)) return json({ error: 'Not allowed.' }, 403);
