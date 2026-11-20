@@ -23,3 +23,6 @@ Everyone in the world sees you dressed, because the server sends it.
 
 ## Build
 `bash build.sh` (JDK 25, compiles against your installed `HytaleServer.jar`) gives `out/SkinEditor-<version>.jar`. Released on CurseForge from 1.0.0.
+
+## License
+MIT (see `LICENSE` in this folder). This covers the mod only; the website code is not licensed for reuse.
