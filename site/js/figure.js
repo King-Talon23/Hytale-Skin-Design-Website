@@ -78,22 +78,41 @@ function span(keys, T, dur, loop) {   // the two keyframes around T and how far 
   }
   let i = 1; while (keys[i].time < T) i++; const a = keys[i - 1], b = keys[i]; return [a, b, (T - a.time) / (b.time - a.time || 1)];
 }
+// Moves that carry the player across the ground in game (walk, run, dash, roll, swim, fly ...). The animation files only hold the
+// body motion, so the stage shows the travel itself: the ground slides under the figure, in units a second ([sideways, forward]).
+const STILL = new Set(['Poses', 'Emote', 'Taunt', 'Flavor', 'Expressions', 'Climb', 'Mantle']);
+export function motionOf(group, n) {
+  if (STILL.has(group) || /Idle|Look|Float|Sink|Step_|Interact|Death|Hurt|Wake|Fall|^Jump(_Crouch)?$|^Crouch$/.test(n)) return null;
+  const back = /Back(ward)?$/.test(n), left = /_Left$/.test(n), right = /_Right$/.test(n);
+  let s = /^Dash/.test(n) ? 720 : /^Roll/.test(n) ? 380 : /^Slide/.test(n) ? 430 : /Sprint/.test(n) ? 440 : /^(Fly|Glide)_Fast/.test(n) ? 540 : /^Glide/.test(n) ? 380
+    : /^Fly_Crouch/.test(n) ? 130 : /^Fly/.test(n) ? 300 : /Run_Slow/.test(n) ? 200 : /Run/.test(n) ? 300 : /Crouch_Walk/.test(n) ? 85 : /Walk/.test(n) ? 140
+    : /^Jump_Far/.test(n) ? 260 : /^Swim_(Dive_)?Fast/.test(n) ? 260 : /^Swim(_Backward|_Dive|_Dive_Backward)?$/.test(n) ? 150 : 0;
+  if (!s) return null; if (back) s *= 0.75;
+  return left ? [s, 0] : right ? [-s, 0] : [0, back ? -s : s];
+}
 const BLEND = 0.28, HOLD = 1.4;   // seconds to ease into a new move; seconds a one-shot move rests on its last frame before it replays
 export class Animator {
-  constructor() { this.anim = null; this.t = 0; this.speed = 1; this.playing = true; this.figure = null; this.blend = 1; this.held = 0; }
+  constructor() { this.anim = null; this.t = 0; this.speed = 1; this.playing = true; this.figure = null; this.blend = 1; this.held = 0; this.move = null; this.pulse = false; this.resting = false; this.pt = 0; this.still = false; }
   setFigure(root) { this.figure = root; this.blend = 1; this.apply(); }
   set(anim, speed = 1, instant = false) {
     if (anim) for (const tr of Object.values(anim.nodeAnimations || {})) for (const k of ['position', 'orientation', 'shapeVisible']) (tr[k] ||= []).sort((a, b) => a.time - b.time);
     const times = new Set(); if (anim) for (const tr of Object.values(anim.nodeAnimations || {})) for (const ks of Object.values(tr)) if (Array.isArray(ks)) for (const k of ks) times.add(k.time);
     this.blendTime = anim && times.size <= 1 ? 0.5 : BLEND;   // a move that is one held pose gets a slower, visible ease into it
+    this.still = !!anim && times.size <= 1; this.move = null; this.pulse = false; this.resting = false; this.pt = 0;
     this.capture(instant); this.anim = anim; this.baseSpeed = speed; this.t = 0; this.held = 0; this.apply();
   }
+  // travel for this move; a held pose that travels (a dash) is shown as a burst: into the pose, across the ground, back to standing, again
+  setMove(v) { this.move = v || null; this.pulse = !!v && this.still; this.resting = false; this.pt = 0; if (this.pulse) this.blendTime = 0.15; }
+  get velocity() { return this.move && this.anim && this.playing && !this.resting ? this.move : null; }
   // remember the pose the figure is in now, so the next move eases out of it instead of snapping
   capture(instant) { this.blend = instant || !this.figure ? 1 : 0; if (this.blend) return;
     this.figure.userData.parts.forEach(gs => gs.forEach(g => { const f = g.userData.from ||= { p: new THREE.Vector3(), q: new THREE.Quaternion() }; f.p.copy(g.position); f.q.copy(g.quaternion); })); }
   get duration() { return Math.max(1, this.anim?.duration || 1); }
   update(dt) {
     if (this.blend < 1) this.blend = Math.min(1, this.blend + dt / (this.blendTime || BLEND));
+    if (this.pulse && this.playing) { this.pt += dt;
+      if (!this.resting && this.pt > 0.55) { this.capture(false); this.blendTime = 0.4; this.resting = true; this.pt = 0; }
+      else if (this.resting && this.pt > 1.0) { this.capture(false); this.blendTime = 0.15; this.resting = false; this.pt = 0; } }
     const A = this.anim;
     if (A && this.playing) { const end = this.duration;
       if (this.t < end) this.t += dt * 60 * this.speed * (this.baseSpeed || 1);
@@ -102,7 +121,7 @@ export class Animator {
     this.apply();
   }
   apply() {
-    const A = this.anim, parts = this.figure?.userData.parts; if (!parts) return;
+    const A = this.resting ? null : this.anim, parts = this.figure?.userData.parts; if (!parts) return;
     parts.forEach(gs => gs.forEach(g => { g.position.copy(g.userData.rest.p); g.quaternion.copy(g.userData.rest.q); if (g.userData.mesh) g.userData.mesh.visible = true; }));
     if (A) { const dur = this.duration, loop = !A.holdLastKeyframe, T = Math.min(this.t, dur);
       for (const [name, tr] of Object.entries(A.nodeAnimations || {})) { const gs = parts.get(name); if (!gs) continue;
@@ -125,10 +144,15 @@ export function stage(canvas, Controls) {
   const cam = new THREE.PerspectiveCamera(32, 1, 1, 2000); cam.position.set(-75, 95, 255);
   const ctl = new Controls(cam, canvas); ctl.target.set(0, 62, 0); ctl.enablePan = false; ctl.minDistance = 90; ctl.maxDistance = 480; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
   const disc = new THREE.Mesh(new THREE.CircleGeometry(58, 48), new THREE.MeshBasicMaterial({ color: 0x0b1626, transparent: true, opacity: 0.55 })); disc.rotation.x = -Math.PI / 2; disc.position.y = -0.2; scene.add(disc);
+  const CELL = 32, grid = new THREE.GridHelper(CELL * 40, 40, 0x4a76ad, 0x33557f); grid.material.transparent = true; grid.material.opacity = 0; grid.material.depthWrite = false; scene.add(grid);
+  const vel = new THREE.Vector2(), want = new THREE.Vector2();
+  function travel(dt) { const v = anim.velocity; want.set(v ? v[0] : 0, v ? v[1] : 0); vel.lerp(want, 1 - Math.exp(-dt * 9));
+    grid.position.x = (grid.position.x - vel.x * dt) % CELL; grid.position.z = (grid.position.z - vel.y * dt) % CELL;   // the ground runs backwards under the figure
+    grid.material.opacity += ((anim.move && anim.anim ? 0.5 : 0) - grid.material.opacity) * (1 - Math.exp(-dt * 6)); grid.visible = grid.material.opacity > 0.01; }
   const anim = new Animator(); let figure = null, last = performance.now();
   function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
   new ResizeObserver(fit).observe(canvas); fit();
-  (function loop(now) { requestAnimationFrame(loop); anim.update(Math.min(0.1, (now - last) / 1000 || 0)); last = now; renderer.render(scene, cam); })(last);
+  (function loop(now) { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000 || 0); anim.update(dt); travel(dt); last = now; renderer.render(scene, cam); })(last);
   return { anim, show(root) { if (figure) { scene.remove(figure); dispose(figure); } figure = root; scene.add(root); anim.setFigure(root); },
     view(front) { cam.position.set(front ? 0 : -75, 95, front ? 265 : 255); ctl.target.set(0, 62, 0); ctl.update(); } };
 }
