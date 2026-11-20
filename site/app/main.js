@@ -504,9 +504,10 @@ async function openAsset(a) {
   registerAssets(); if (!(cur.skin[a.field] || '').startsWith('Custom_' + a.id)) setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' });
   setMount(null); ED.iso = true; st.isolate(c); st.anim.set(null); st.paintMode(true); tab = 'creator'; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === 'creator'); render(); rebuild();
 }
-function queueAssetSave() { clearTimeout(queueAssetSave.t); queueAssetSave.t = setTimeout(() => flushAsset().catch(e => say(e.message, true)), 900); }
+const markSaved = ok => { if (!ED) return; ED.saved = ok; const s = $('wssaved'); if (s) { s.textContent = ok ? 'Saved' : 'Saving…'; s.classList.toggle('busy', !ok); } };
+function queueAssetSave() { markSaved(false); clearTimeout(queueAssetSave.t); queueAssetSave.t = setTimeout(() => flushAsset().catch(e => say(e.message, true)), 900); }
 async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; const e = ED, data = await new Promise(ok => e.canvas.toBlob(ok, 'image/png'));
-  e.asset = await assets.save({ ...e.asset, data, shape: e.model && e.shapeN ? JSON.stringify(e.model) : e.asset.shape }); ASSETS = await assets.list(); syncFolder(); }
+  try { e.asset = await assets.save({ ...e.asset, data, shape: e.model && e.shapeN ? JSON.stringify(e.model) : e.asset.shape }); ASSETS = await assets.list(); syncFolder(); } finally { if (ED === e) markSaved(true); } }
 async function closeAsset(quiet) {
   if (!ED) return; if (ED.float) placeFloat(); st.cursor(null); await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; registerAssets(); st.isolate(null); st.paintMode(false); st.highlight(null); st.gizmo(null); st.setView('persp'); pics.clear(); lastPic.clear();
   if (!quiet) { playAnim('Default', 'Idle', 0.5); rebuild(); render(); }
@@ -692,7 +693,7 @@ function placeGizmo() {
 function scrub(label, get, set, step = 1, min = -64, max = 64) {
   const clamp = v => Math.max(min, Math.min(max, Math.round(v / step) * step));
   const inp = el('input', { type: 'number', step, min, max, value: Math.round(get() * 100) / 100, onchange: e => shapeEdit(() => set(clamp(Number(e.target.value) || 0))) });
-  const lab = el('span', { class: 'scrub', text: label, title: 'Drag left or right' });
+  const lab = el('span', { class: 'scrub', text: label, title: 'Drag left or right to change it, or type a number' });
   lab.onpointerdown = e => { e.preventDefault(); const x0 = e.clientX, v0 = get(), before = JSON.stringify(ED.model), tw = symTwin(), me = curBox(); let moved = false, t = 0; lab.setPointerCapture(e.pointerId);
     lab.onpointermove = ev => { const v = clamp(v0 + Math.round((ev.clientX - x0) / 6) * step); if (v === get()) return; set(v); if (tw && me) mirrorNode(me.node, tw); inp.value = v; moved = true;
       clearTimeout(t); t = setTimeout(() => { registerAssets(); rebuild(); }, 60); };
@@ -716,8 +717,9 @@ function paintSide() {
     P.tool === 'select' || ED.sel || ED.float || ED.clip ? [el('div', { class: 'wshead', text: 'Selection' }), el('div', { class: 'options' },
       ...(ED.float ? [chip('Place', placeFloat, 'Enter'), chip('Flip ↔', () => flipFloat(true)), chip('Flip ↕', () => flipFloat(false)), chip('Cancel', () => { ED.float = null; render(); }, 'Esc')]
         : [chip('Copy', () => copySel(false), 'Ctrl+C', !ED.sel), chip('Cut', () => copySel(true), 'Ctrl+X', !ED.sel), chip('Paste', pasteClip, 'Ctrl+V', !ED.clip), chip('Clear', clearSel, 'Del', !ED.sel)]))] : null,
-    el('div', { class: 'wshead', text: 'Recolour whole item' }), adjRow('h', 'Hue', -180, 180), adjRow('s', 'Saturation', -100, 100), adjRow('l', 'Brightness', -100, 100),
-    el('div', { class: 'row' }, el('button', { class: 'btn primary', text: 'Keep', onclick: () => endAdjust(true) }), el('button', { class: 'btn ghost', text: 'Cancel', onclick: () => endAdjust(false) }))];
+    ED.adjOpen ? [el('div', { class: 'wshead', text: 'Adjust colours of the whole item' }), adjRow('h', 'Hue', -180, 180), adjRow('s', 'Saturation', -100, 100), adjRow('l', 'Brightness', -100, 100),
+      el('div', { class: 'row' }, el('button', { class: 'btn primary', text: 'Keep', onclick: () => { ED.adjOpen = false; endAdjust(true); } }), el('button', { class: 'btn ghost', text: 'Cancel', onclick: () => { ED.adjOpen = false; endAdjust(false); } }))]
+      : el('button', { class: 'btn ghost wide', text: 'Adjust colours…', title: 'Shift the hue, saturation or brightness of the whole item', onclick: () => { ED.adjOpen = true; render(); } })];
 }
 // boxes get readable names: the player's own, else one made from the game's node name ("L-ArmCostume" -> "Left arm", new boxes -> "Box 2")
 function boxLabel(node) {
@@ -776,6 +778,7 @@ function renderWorkspace() {
   $('wstop').replaceChildren(...[
     el('input', { type: 'text', class: 'wsname', value: a.name, maxLength: 40, title: 'Name', onchange: e => { ED.asset = { ...ED.asset, name: cleanName(e.target.value) || a.name }; queueAssetSave(); } }),
     el('div', { class: 'wsmodes' }, [['paint', 'Paint'], ['shape', 'Shape']].map(([m, t]) => el('button', { class: mode === m ? 'on' : '', text: t, title: 'Tab switches', onclick: guard(() => setMode(m)) }))),
+    el('span', { id: 'wssaved', class: 'wssaved', text: ED.saved === false ? 'Saving…' : 'Saved' }),
     el('span', { class: 'grow' }), a.flag ? el('span', { class: 'tag none', text: 'Too close to ' + a.flag }) : null,
     el('button', { class: 'btn icon', text: '↶', title: 'Undo (Ctrl+Z)', disabled: !ED.hist.length, onclick: () => wsUndo(false) }),
     el('button', { class: 'btn icon', text: '↷', title: 'Redo (Ctrl+Y)', disabled: !ED.fut.length, onclick: () => wsUndo(true) }),
@@ -790,7 +793,7 @@ function renderWorkspace() {
       el('button', { class: 'chip' + (ED.wide ? ' on' : ''), text: ED.wide ? 'Smaller' : 'Bigger', title: 'Make the texture panel wider', onclick: () => { ED.wide = !ED.wide; $('app').classList.toggle('ws-wide', ED.wide); requestAnimationFrame(() => { fitTexture(); render(); }); } })),
     ED.box_,
     el('div', { class: 'row' }, el('button', { class: 'btn icon', text: '−', title: 'Zoom out (mouse wheel)', onclick: () => { ED.zoom = Math.max(1, ED.zoom - 1); render(); } }), el('button', { class: 'btn icon', text: '+', title: 'Zoom in (mouse wheel)', onclick: () => { ED.zoom = Math.min(24, ED.zoom + 1); render(); } }),
-      ED.rects.length ? el('button', { class: 'chip' + (P.inside ? ' on' : ''), text: `Inside only: ${P.inside ? 'on' : 'off'}`, title: 'Only paint the parts of the texture the model shows', onclick: () => { P.inside = !P.inside; render(); } }) : null),
+      ED.rects.length ? el('button', { class: 'chip' + (P.inside ? '' : ' on'), text: `Paint outside the item: ${P.inside ? 'off' : 'on'}`, title: 'The dimmed parts of the texture never show on the model. Turn this on to paint there anyway.', onclick: () => { P.inside = !P.inside; render(); } }) : null),
     ].filter(Boolean));
   $('wsright').replaceChildren(...(mode === 'paint' ? paintSide() : shapeSide()).flat(Infinity).filter(Boolean));
   $('viewbtns').replaceChildren(...[['front', 'Front', '1'], ['side', 'Side', '3'], ['top', 'Top', '7'], ['persp', 'Persp', '5']].map(([v, t, k]) => el('button', { text: t, title: `${t} view (${k})`, onclick: () => st.setView(v) })), animPicker(),
@@ -936,12 +939,13 @@ const animPicker = () => el('select', { class: 'wsanim', title: 'Preview a move 
 function panelCreator() {
   if (!ED) { const worn = game.FIELDS.filter(f => R.resolve(f, cur.skin));
     const paidIn = f => { const it = R.find(f, cur.skin[f]), b = it && it.custom ? CAT.items[f].find(e => e.Id === it.baseId) : it; return b && tierOf(b) > 0; };
-    const sel = el('select', {}, worn.map(f => el('option', { value: f, disabled: paidIn(f), text: `${LABEL[f]}: ${itemName(R.find(f, cur.skin[f]))}${paidIn(f) ? ' (paid item)' : ''}` })));
-    sel.value = worn.find(f => !paidIn(f)) || '';
-    return [head('Asset Creator'), el('div', { class: 'pbody' }, disclosure(),
-      el('h3', { text: 'Start from something you are wearing' }), el('div', { class: 'row' }, sel, el('button', { class: 'btn primary', text: 'Create', onclick: () => newAsset(sel.value) })),
+    const tile = f => { const it = R.find(f, cur.skin[f]), p = parse(cur.skin[f]), paid = paidIn(f);
+      return el('div', { class: 'skin starttile' + (paid ? ' paid' : '') }, el('div', { class: 'pic' }, itemThumb(f, it, p.color, p.variant)), el('b', { text: itemName(it) }), el('small', { text: LABEL[f] }),
+        paid ? el('small', { class: 'dim', text: 'Paid item' }) : el('button', { class: 'mini primary', text: 'Edit a copy', onclick: () => newAsset(f) })); };
+    return [head('Asset Creator'), el('div', { class: 'pbody' },
+      el('h3', { text: 'Make your own version of something you wear' }), el('div', { class: 'cards' }, worn.map(tile)),
       el('h3', { text: `My custom assets (${ASSETS.length} / ${assets.MAX})` }),
-      ASSETS.length ? el('div', { class: 'cards' }, ASSETS.map(assetCard)) : el('p', { class: 'blank', text: 'None yet. Pick a slot above and press Create.' }))]; }
+      ASSETS.length ? el('div', { class: 'cards' }, ASSETS.map(assetCard)) : el('p', { class: 'blank', text: 'None yet. Pick an item above and press Edit a copy.' }))]; }
   return [];
 }
 
