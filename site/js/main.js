@@ -113,9 +113,14 @@ function lazyImg(key, make, prev) { const img = el('img', { alt: '', draggable: 
   else { if (prev && lastPic.has(prev)) img.src = lastPic.get(prev);
     img._load = async () => { const u = await picture(key, make); if (u) { img.src = u; if (prev) lastPic.set(prev, u); } }; lazy.observe(img); }
   return img; }
+// in a picture of one face item, the things that would cover it come off (a hood hides hair, a beard hides the mouth ...)
+const HIDE = { haircut: ['headAccessory'], face: ['headAccessory', 'faceAccessory', 'facialHair', 'haircut'], eyes: ['headAccessory', 'faceAccessory', 'haircut'],
+  eyebrows: ['headAccessory', 'faceAccessory', 'haircut'], mouth: ['headAccessory', 'faceAccessory', 'facialHair'], facialHair: ['headAccessory', 'faceAccessory'],
+  skinFeature: ['headAccessory', 'faceAccessory', 'facialHair'], ears: ['headAccessory', 'haircut', 'earAccessory', 'faceAccessory', 'facialHair'], earAccessory: ['headAccessory', 'haircut', 'faceAccessory', 'facialHair'], faceAccessory: ['headAccessory'] };
+const FACE_FRAME = { face: 'face', eyes: 'face', eyebrows: 'face', mouth: 'face', facialHair: 'face', faceAccessory: 'face', ears: 'ear', earAccessory: 'ear' };
 function itemThumb(f, it, color, variant) {   // the current character, wearing this option
-  const s = { ...cur.skin, [f]: R.partStr(it, color, variant) };
-  const frame = HEADF.has(f) ? 'head' : LEGF.has(f) ? 'legs' : f === 'bodyCharacteristic' || f === 'skinFeature' ? 'body' : 'torso';
+  const s = { ...cur.skin, [f]: R.partStr(it, color, variant) }; for (const k of HIDE[f] || []) s[k] = null;
+  const frame = FACE_FRAME[f] || (HEADF.has(f) ? 'head' : LEGF.has(f) ? 'legs' : f === 'bodyCharacteristic' || f === 'skinFeature' ? 'body' : 'torso');
   return lazyImg('i|' + f + '|' + JSON.stringify(s), async () => fig.snapshot(await fig.build(s, R), frame, f === 'cape'), f + '|' + it.Id);
 }
 // an animation's picture: the current skin caught part-way through the move
