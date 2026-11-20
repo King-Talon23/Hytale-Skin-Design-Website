@@ -116,8 +116,11 @@ function lazyImg(key, make, prev) { const img = el('img', { alt: '', draggable: 
 // in a picture of one face item, the things that would cover it come off (a hood hides hair, a beard hides the mouth ...)
 const HIDE = { haircut: ['headAccessory'], face: ['headAccessory', 'faceAccessory', 'facialHair', 'haircut'], eyes: ['headAccessory', 'faceAccessory', 'haircut'],
   eyebrows: ['headAccessory', 'faceAccessory', 'haircut'], mouth: ['headAccessory', 'faceAccessory', 'facialHair'], facialHair: ['headAccessory', 'faceAccessory'],
-  skinFeature: ['headAccessory', 'faceAccessory', 'facialHair'], ears: ['headAccessory', 'haircut', 'earAccessory', 'faceAccessory', 'facialHair'], earAccessory: ['headAccessory', 'haircut', 'faceAccessory', 'facialHair'], faceAccessory: ['headAccessory'] };
-const FACE_FRAME = { face: 'face', eyes: 'face', eyebrows: 'face', mouth: 'face', facialHair: 'face', faceAccessory: 'face', ears: 'ear', earAccessory: 'ear' };
+  skinFeature: ['headAccessory', 'faceAccessory', 'facialHair'], ears: ['headAccessory', 'haircut', 'earAccessory', 'faceAccessory', 'facialHair'], earAccessory: ['headAccessory', 'haircut', 'faceAccessory', 'facialHair'], faceAccessory: ['headAccessory'],
+  gloves: ['overtop', 'cape'], overpants: ['shoes', 'pants'], underwear: ['pants', 'overpants', 'undertop', 'overtop', 'cape', 'shoes'], undertop: ['overtop', 'cape'], pants: ['cape', 'shoes', 'overpants'], shoes: ['cape'] };
+const FACE_FRAME = { face: 'face', eyes: 'face', eyebrows: 'face', mouth: 'face', facialHair: 'face', faceAccessory: 'face', ears: 'ear', earAccessory: 'ear',
+  headAccessory: 'hat', haircut: 'head', pants: 'pants', overpants: 'socks', shoes: 'shoes', gloves: 'gloves', underwear: 'hips', undertop: 'top', overtop: 'top' };
+// pieces that hide the one in the picture: a coat over the gloves, boots over the socks, trousers over underwear
 function itemThumb(f, it, color, variant) {   // the current character, wearing this option
   const s = { ...cur.skin, [f]: R.partStr(it, color, variant) }; for (const k of HIDE[f] || []) s[k] = null;
   const frame = FACE_FRAME[f] || (HEADF.has(f) ? 'head' : LEGF.has(f) ? 'legs' : f === 'bodyCharacteristic' || f === 'skinFeature' ? 'body' : 'torso');
@@ -185,7 +188,7 @@ function panelPicker() {
   const bar = el('div', { class: 'options lockbar' }, chip('all', 'All'), counts.fav ? chip('fav', `Favourites ${counts.fav}`) : null, counts.new ? chip('new', `New ${counts.new}`) : null,
     tiersHere.length > 1 ? tiersHere.map(t => chip('t' + t, TIERS[t])) : null, counts.mine ? chip('mine', 'Mine') : null,
     el('select', { class: 'sort', title: 'Sort', onchange: e => { lockSort = e.target.value; drawCards(); } }, [['default', 'Game order'], ['name', 'Name'], ['tier', 'Tier']].map(([v, t]) => el('option', { value: v, text: t, selected: v === lockSort }))));
-  const detail = el('div', { class: 'detail' }), showDetail = e => { const t = e ? (e.custom ? 'Custom asset' : TIERS[tierOf(e)]) : '';
+  const detail = el('div', { class: 'detail' }), showDetail = e => { const t = e ? (e.custom ? 'Custom asset · site only' : TIERS[tierOf(e)]) : '';
     detail.replaceChildren(el('b', { text: e ? itemName(e) : 'None' }), el('span', { text: ' · ' + LABEL[f] }), el('em', { class: e ? tierClass(e) : '', text: t })); };
   const cardsBox = el('div', { class: 'cards lcards' });
   function drawCards() {
@@ -222,7 +225,7 @@ async function loadEmotes() { const m = await db.get('meta', 'emotes').catch(() 
 function toggleEmote(g, n) { const k = g + '/' + n, i = EMOTES.indexOf(k); if (i >= 0) EMOTES.splice(i, 1); else { EMOTES.push(k); if (EMOTES.length > 6) EMOTES.shift(); } db.put('meta', 'emotes', EMOTES).catch(() => {}); drawEmotes(); }
 function drawEmotes() { const box = $('emotes'); if (!box || !EMOTES) return; box.hidden = !!ED;
   box.replaceChildren(...EMOTES.map(k => { const [g, n] = k.split('/');
-    return el('button', { class: 'emote' + (st.anim.anim && playing.group === g && playing.name === n ? ' on' : ''), title: nice(n), onclick: () => { playAnim(g, n); drawEmotes(); } }, animThumb(g, n)); })); }
+    return el('button', { class: 'emote' + (st.anim.anim && playing.group === g && playing.name === n ? ' on' : ''), title: nice(n), onclick: () => playAnim(g, n, 1, true) }, animThumb(g, n)); })); }
 
 function card(rec, kind, i) {
   if (!rec) return el('div', { class: 'skin empty ' + kind }, el('div', { class: 'pic' }, el('span', { text: '+' })), el('b', { text: 'Slot ' + (i + 1) }), el('small', { text: 'Empty' }));
@@ -300,7 +303,10 @@ async function saveAs() {
 // animations
 let playing = { group: 'Default', name: 'Idle' };
 const ORDER = ['Emote', 'Default', 'Poses', 'Taunt', 'Flavor', 'Expressions'];
-async function playAnim(g, n, speed = 1) { try { const a = await fig.loadAnim(g, n); playing = { group: g, name: n }; st.anim.set(a, speed); st.anim.setMove(fig.motionOf(g, n)); st.anim.playing = true; drawEmotes(); } catch (e) { say('That animation could not be loaded.', true); } if (tab === 'animations') render(); }
+let onceT;
+async function playAnim(g, n, speed = 1, once = false) { clearTimeout(onceT); try { const a = await fig.loadAnim(g, n); playing = { group: g, name: n }; st.anim.set(a, speed);
+    if (once) { const still = fig.motionOf(g, n) && st.anim.still, ms = still ? 1700 : (Math.max(1, a.duration || 60) / 60 / speed) * 1000 + (a.holdLastKeyframe ? 700 : 0) + 250;
+      onceT = setTimeout(() => { if (playing.group === g && playing.name === n) playAnim('Default', 'Idle', 0.5); }, ms); } st.anim.setMove(fig.motionOf(g, n)); st.anim.playing = true; drawEmotes(); } catch (e) { say('That animation could not be loaded.', true); } if (tab === 'animations') render(); }
 let animGroup = 'Emote';
 function panelAnimations() {
   const groups = Object.keys(CAT.anims).sort((a, b) => (ORDER.indexOf(a) + 99) % 99 - (ORDER.indexOf(b) + 99) % 99 || a.localeCompare(b)); if (!groups.includes(animGroup)) animGroup = groups[0];
@@ -430,10 +436,11 @@ function assetCard(a) {
       act('Delete', guard(async () => { if (!await confirmBox('Delete custom asset', `Delete "${a.name}"? Skins wearing it lose that part. This cannot be undone.`, 'Delete', true)) return;
         await assets.remove(a.id); ASSETS = await assets.list(); syncFolder(); registerAssets(); cur.skin = R.fit(cur.skin); pics.clear(); rebuild(); render(); }), 'danger')));
 }
+const disclosure = () => el('div', { class: 'disclose' }, el('b', { text: 'Site only' }), el('span', { text: 'Custom assets can’t be used in Hytale, in singleplayer or multiplayer, and other players never see them.' }));
 function panelCreator() {
   if (!ED) { const worn = game.FIELDS.filter(f => R.resolve(f, cur.skin));
     const sel = el('select', {}, worn.map(f => el('option', { value: f, text: `${LABEL[f]}: ${itemName(R.find(f, cur.skin[f]))}` })));
-    return [head('Asset Creator'), el('div', { class: 'pbody' },
+    return [head('Asset Creator'), el('div', { class: 'pbody' }, disclosure(),
       el('h3', { text: 'Start from something you are wearing' }), el('div', { class: 'row' }, sel, el('button', { class: 'btn primary', text: 'Create', onclick: () => newAsset(sel.value) })),
       el('h3', { text: `My custom assets (${ASSETS.length} / ${assets.MAX})` }),
       ASSETS.length ? el('div', { class: 'cards' }, ASSETS.map(assetCard)) : el('p', { class: 'blank', text: 'None yet. Pick a slot above and press Create.' }))]; }
@@ -447,7 +454,7 @@ function panelCreator() {
   const endAdjust = keep => { if (!keep) adj.h = adj.s = adj.l = 0; P.adjust(adj.h, adj.s / 100, adj.l / 100, true); ED.palette = P.palette(); render(); };
   const file = el('input', { type: 'file', accept: 'image/png', hidden: true, onchange: guard(async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; if (f.size > 2_000_000) throw new Error('That image is too large.');
     const bmp = await createImageBitmap(f); if (bmp.width !== c.width || bmp.height !== c.height) throw new Error(`The image must be ${c.width} by ${c.height} pixels, the size of this texture.`); P.replace(bmp); ED.palette = P.palette(); render(); }) });
-  return [head('Asset Creator'), el('div', { class: 'pbody' },
+  return [head('Asset Creator'), el('div', { class: 'pbody' }, disclosure(),
     el('div', { class: 'row' }, el('input', { type: 'text', value: a.name, maxLength: 40, onchange: e => { ED.asset = { ...ED.asset, name: cleanName(e.target.value) || a.name }; queueAssetSave(); } }), btn('Done', () => closeAsset(), 'primary')),
     el('div', { class: 'options' }, tool('brush', 'Brush'), tool('erase', 'Eraser'), tool('fill', 'Fill'), tool('replace', 'Replace colour'), tool('pick', 'Pick colour'), tool('light', 'Lighten'), tool('dark', 'Darken'), tool('noise', 'Noise'),
       tool('line', 'Line'), tool('box', 'Box'), tool('boxfill', 'Filled box'),

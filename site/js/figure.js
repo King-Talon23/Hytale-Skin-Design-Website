@@ -174,12 +174,13 @@ export function stage(canvas, Controls) {
 }
 let TR, tscene, tcam;
 // [look-at height, half size, sideways camera offset, camera height above the target]
-const FRAME = { head: [112, 36, -120, 40], face: [112, 24, -55, 12], ear: [114, 32, -170, 14], legs: [30, 34, -120, 40], body: [64, 70, -120, 40], torso: [74, 36, -120, 40], full: [66, 76, -120, 40] };
+const FRAME = { head: [112, 36, -120, 40], face: [112, 24, -55, 12], ear: [114, 32, -170, 14], hat: [118, 34, -110, 70],
+  pants: [34, 36, -110, 10], socks: [22, 30, -130, 8], shoes: [10, 22, -150, 34], gloves: [52, 18, -130, 12, -22], hips: [44, 28, -120, 20], top: [76, 34, -110, 30], legs: [30, 34, -120, 40], body: [64, 70, -120, 40], torso: [74, 36, -120, 40], full: [66, 76, -120, 40] };
 export function snapshot(root, frame = 'full', back = false) {   // a 128 px picture of a built figure, as a data URL
   if (!TR) { TR = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); TR.setSize(128, 128);
     tscene = new THREE.Scene(); lights(tscene); tcam = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 2000); }
-  const [cy, h, sx, up] = FRAME[frame] || FRAME.full, s = back ? -1 : 1;
-  tcam.left = -h; tcam.right = h; tcam.top = h; tcam.bottom = -h; tcam.updateProjectionMatrix(); tcam.position.set(sx * s, cy + up, 300 * s); tcam.lookAt(0, cy, 0);
+  const [cy, h, sx, up, tx = 0] = FRAME[frame] || FRAME.full, s = back ? -1 : 1;
+  tcam.left = -h; tcam.right = h; tcam.top = h; tcam.bottom = -h; tcam.updateProjectionMatrix(); tcam.position.set(sx * s + tx, cy + up, 300 * s); tcam.lookAt(tx, cy, 0);
   tscene.add(root); TR.render(tscene, tcam); tscene.remove(root); dispose(root);
   return TR.domElement.toDataURL();
 }
