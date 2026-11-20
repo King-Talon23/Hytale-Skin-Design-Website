@@ -61,6 +61,8 @@ export async function importAll(data) {   // adds to what is there; never overwr
 export const folderSupported = typeof self.showDirectoryPicker === 'function';
 const SUB = { custom: 'My skins', game: 'In-game slots' }, ASSET_DIR = 'Custom assets';
 export const sync = () => mirror();
+export let lockedOf = () => false;   // set by the page: repaints of edition and reward items, which the mod will not wear
+export const setLockedOf = f => { lockedOf = f; };
 let dir = null; const written = new Map(), known = new Set();
 const safe = n => { let t = String(n).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/^[. ]+|[. ]+$/g, '').slice(0, 60) || 'Unnamed'; return /^(con|prn|aux|nul|com\d|lpt\d)$/i.test(t) ? '_' + t : t; };
 export async function folderState() {
@@ -108,7 +110,7 @@ async function doMirror() {
       for (const path of [...known]) if (path.startsWith(SUB[kind] + '/') && !want.has(path)) { try { await d.removeEntry(path.slice(SUB[kind].length + 1)); } catch { /* already gone */ } known.delete(path); written.delete(path); } }
     // custom assets: the painted picture as a PNG, with a small .json beside it saying which item it belongs to
     const ad = await dir.getDirectoryHandle(ASSET_DIR, { create: true }), keep = new Set();
-    for (const a of await assets.list()) { const stem = `${safe(a.name)} (${a.id})`, files = [[stem + '.png', a.data, a.id + '@' + a.updated], [stem + '.json', JSON.stringify({ format: 'skin-editor-asset', version: 1, id: a.id, name: a.name, field: a.field, baseId: a.baseId, model: a.model, w: a.w, h: a.h }, null, 1), null]];
+    for (const a of await assets.list()) { const stem = `${safe(a.name)} (${a.id})`, files = [[stem + '.png', a.data, a.id + '@' + a.updated], [stem + '.json', JSON.stringify({ format: 'skin-editor-asset', version: 1, id: a.id, name: a.name, field: a.field, baseId: a.baseId, model: a.model, w: a.w, h: a.h, locked: !!lockedOf(a) }, null, 1), null]];
       for (const [name, body, stamp] of files) { const path = ASSET_DIR + '/' + name, mark = stamp || body; keep.add(path); if (written.get(path) === mark) continue;
         const w = await (await ad.getFileHandle(name, { create: true })).createWritable(); await w.write(body); await w.close(); written.set(path, mark); known.add(path); } }
     for (const path of [...known]) if (path.startsWith(ASSET_DIR + '/') && !keep.has(path)) { try { await ad.removeEntry(path.slice(ASSET_DIR.length + 1)); } catch { /* already gone */ } known.delete(path); written.delete(path); }

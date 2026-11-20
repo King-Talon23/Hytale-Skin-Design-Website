@@ -18,6 +18,7 @@ import com.hypixel.hytale.server.core.modules.entity.player.PlayerSkinComponent;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
+import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
@@ -29,6 +30,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -61,15 +65,108 @@ public final class SkinEditorPlugin extends JavaPlugin {
 
     static final Map<UUID, PlayerSkin> ORIGINAL = new ConcurrentHashMap<>();          // the skin a player had before wearing custom assets
     static final Map<UUID, Map<String, Asset>> WORN = new ConcurrentHashMap<>();     // skin field -> custom asset, per player
-    private Path modsDir;
+    private Path modsDir, dataDir;
+    private volatile Path skinsDir;
+    private ScheduledExecutorService tick;
+    static final String LIVE = "SkinEditor_Live";   // the folder pack this mod keeps filled from the skins folder
 
-    public SkinEditorPlugin(JavaPluginInit init) { super(init); }
+    public SkinEditorPlugin(JavaPluginInit init) {
+        super(init);
+        // the live pack must be a valid pack before the server loads asset packs, which happens after plugins are found but before setup()
+        try { dataDir = getDataDirectory().toAbsolutePath(); modsDir = dataDir.getParent(); ensureLivePack(); } catch (Throwable ignored) { }
+    }
 
     @Override
     protected void setup() {
-        modsDir = getDataDirectory().toAbsolutePath().getParent();
+        dataDir = getDataDirectory().toAbsolutePath(); modsDir = dataDir.getParent();
+        try { Files.createDirectories(dataDir); } catch (Exception ignored) { }
+        skinsDir = loadFolder(); loadWorn();
+        try { ensureLivePack(); syncFolder(); } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] could not prepare " + LIVE + ": " + e); }
         getCommandRegistry().registerCommand(new Skins(this));
+        tick = Executors.newSingleThreadScheduledExecutor(r -> { Thread t = new Thread(r, "SkinEditor"); t.setDaemon(true); return t; });
+        tick.scheduleWithFixedDelay(this::keepOn, 2, 1, TimeUnit.SECONDS);
+        tick.scheduleWithFixedDelay(() -> { try { syncFolder(); } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] sync: " + e); } }, 5, 5, TimeUnit.SECONDS);
     }
+
+    // ------------------------------------------------------------------ keeping custom pieces on
+    /** after a respawn, a world change or a rejoin the server puts the plain skin back: take it as the new base and dress again */
+    private void keepOn() {
+        for (UUID who : WORN.keySet()) {
+            try {
+                PlayerRef pr = Universe.get().getPlayer(who); if (pr == null) continue;
+                Ref<EntityStore> ref = pr.getReference(); if (ref == null || !ref.isValid()) continue;
+                World w = ref.getStore().getExternalData().getWorld();
+                w.execute(() -> { try {
+                    if (!ref.isValid() || !WORN.containsKey(who)) return;
+                    PlayerSkinComponent pc = ref.getStore().getComponent(ref, PlayerSkinComponent.getComponentType());
+                    if (pc == null) return;   // still dressed by us
+                    ORIGINAL.put(who, new PlayerSkin(pc.getPlayerSkin()));
+                    refreshWorn(who); if (WORN.containsKey(who)) dress(ref.getStore(), ref, who);
+                } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] could not dress " + who + ": " + e); } });
+            } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] keepOn: " + e); }
+        }
+    }
+    /** worn entries point at assets that may have been repainted or deleted since: take the current ones */
+    private void refreshWorn(UUID who) {
+        Map<String, Asset> worn = WORN.get(who); if (worn == null) return; Map<String, Asset> all = assets();
+        for (String f : List.copyOf(worn.keySet())) { Asset now = all.get(worn.get(f).id()); if (now == null) worn.remove(f); else worn.put(f, now); }   // no nulls: the map does not take them
+        if (worn.isEmpty()) WORN.remove(who);
+    }
+    private Path wornFile() { return dataDir.resolve("worn.txt"); }
+    void saveWorn() {   // "<uuid> <field> <id>" per line, so worn pieces come back after a restart
+        StringBuilder sb = new StringBuilder();
+        WORN.forEach((u, m) -> m.forEach((f, a) -> sb.append(u).append(' ').append(f).append(' ').append(a.id()).append('\n')));
+        try { Files.writeString(wornFile(), sb.toString()); } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] could not save worn.txt: " + e); }
+    }
+    private void loadWorn() {
+        try { if (!Files.isRegularFile(wornFile())) return; Map<String, Asset> all = assets();
+            for (String line : Files.readAllLines(wornFile())) { String[] p = line.trim().split(" "); if (p.length != 3) continue;
+                Asset a = all.get(p[2]); if (a == null || !a.field().equals(p[1])) continue;
+                WORN.computeIfAbsent(UUID.fromString(p[0]), k -> new ConcurrentHashMap<>()).put(p[1], a); }
+        } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] could not read worn.txt: " + e); }
+    }
+
+    // ------------------------------------------------------------------ the website's skins folder
+    /** the folder the website writes to (Wardrobe -> Save skins to a folder); "Hytale Skins" in Documents unless /skins folder set another */
+    private Path loadFolder() {
+        try { Path f = dataDir.resolve("folder.txt"); if (Files.isRegularFile(f)) { String s = Files.readString(f).trim(); if (!s.isEmpty()) return Path.of(s); } } catch (Exception ignored) { }
+        Path home = Path.of(System.getProperty("user.home"));
+        for (Path p : List.of(home.resolve("Documents").resolve("Hytale Skins"), home.resolve("OneDrive").resolve("Documents").resolve("Hytale Skins"))) if (Files.isDirectory(p)) return p;
+        return home.resolve("Documents").resolve("Hytale Skins");
+    }
+    void setFolder(Path p) throws Exception { Files.writeString(dataDir.resolve("folder.txt"), p.toString()); skinsDir = p; syncFolder(); }
+    Path folder() { return skinsDir; }
+    private void ensureLivePack() throws Exception {
+        Path live = modsDir.resolve(LIVE);
+        Files.createDirectories(live.resolve("Common").resolve("Characters").resolve("SkinEditor")); Files.createDirectories(live.resolve("Server").resolve("SkinEditor"));
+        Path m = live.resolve("manifest.json");
+        if (!Files.isRegularFile(m)) Files.writeString(m, "{\n \"Group\": \"SkinEditorPack\",\n \"Name\": \"Live\",\n \"Version\": \"1.0.0\",\n"
+            + " \"Description\": \"Kept up to date by the Skin Editor mod from your skins folder. Do not edit.\",\n \"Authors\": [{ \"Name\": \"Skin Editor\" }],\n \"ServerVersion\": \"*\"\n}\n");
+    }
+    /** copies the custom assets in "<skins folder>/Custom assets" into the live pack; the server's asset monitor sends new textures to players */
+    synchronized void syncFolder() throws Exception {
+        Path src = skinsDir == null ? null : skinsDir.resolve("Custom assets"); if (src == null || !Files.isDirectory(src)) return;
+        ensureLivePack(); Path live = modsDir.resolve(LIVE), texDir = live.resolve("Common").resolve("Characters").resolve("SkinEditor"), entDir = live.resolve("Server").resolve("SkinEditor");
+        java.util.Set<String> keep = new java.util.HashSet<>();
+        try (Stream<Path> files = Files.list(src)) {
+            for (Path f : (Iterable<Path>) files::iterator) {
+                String n = f.getFileName().toString(); if (!n.endsWith(".json") || Files.size(f) > 20_000) continue;
+                String json = Files.readString(f); if ("true".equals(rawValue(json, "locked"))) continue;   // repaints of edition and reward items stay on the site
+                Asset a = parse(json); if (a == null) continue;
+                Path png = src.resolve(n.substring(0, n.length() - 5) + ".png"); if (!Files.isRegularFile(png) || Files.size(png) > 2_000_000) continue;
+                byte[] head = new byte[8]; try (var in = Files.newInputStream(png)) { if (in.read(head) != 8 || (head[0] & 0xff) != 0x89 || head[1] != 'P' || head[2] != 'N' || head[3] != 'G') continue; }
+                keep.add(a.id());
+                Path tex = texDir.resolve(a.id() + ".png"), ent = entDir.resolve(a.id() + ".json");
+                if (!Files.isRegularFile(tex) || Files.size(tex) != Files.size(png) || Files.getLastModifiedTime(tex).compareTo(Files.getLastModifiedTime(png)) < 0) Files.copy(png, tex, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                String entry = "{\"format\": \"skin-editor-asset\", \"version\": 1, \"id\": \"" + a.id() + "\", \"name\": \"" + a.name().replace("\\", "").replace("\"", "'") + "\", \"field\": \"" + a.field() + "\", \"model\": \"" + a.model() + "\"}\n";
+                if (!Files.isRegularFile(ent) || !Files.readString(ent).equals(entry)) Files.writeString(ent, entry);
+            }
+        }
+        for (Path dir : List.of(texDir, entDir)) try (Stream<Path> files = Files.list(dir)) {   // assets deleted on the site go here too
+            for (Path f : (Iterable<Path>) files::iterator) { String n = f.getFileName().toString(), id = n.replaceAll("\\..*$", ""); if (ID.matcher(id).matches() && !keep.contains(id)) Files.deleteIfExists(f); }
+        }
+    }
+    private static String rawValue(String json, String key) { Matcher m = Pattern.compile("\"" + key + "\"\\s*:\\s*(true|false)").matcher(json); return m.find() ? m.group(1) : null; }
 
     // ------------------------------------------------------------------ packs
     /** every custom asset in the folder packs of this world's mods folder, read fresh each time so new packs show without a restart of the mod */
@@ -182,7 +279,7 @@ public final class SkinEditorPlugin extends JavaPlugin {
     static final class Skins extends AbstractCommandCollection {
         Skins(SkinEditorPlugin p) {
             super("skins", "Wear custom assets made on the Skin Editor website");
-            addSubCommand(new ListCmd(p)); addSubCommand(new WearCmd(p)); addSubCommand(new OffCmd());
+            addSubCommand(new ListCmd(p)); addSubCommand(new WearCmd(p)); addSubCommand(new OffCmd(p)); addSubCommand(new FolderCmd(p));
         }
     }
 
@@ -190,8 +287,10 @@ public final class SkinEditorPlugin extends JavaPlugin {
         private final SkinEditorPlugin p;
         ListCmd(SkinEditorPlugin p) { super("list", "List the custom assets in this world's packs"); this.p = p; }
         @Override protected void execute(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> ref, PlayerRef player, World world) {
-            Map<String, Asset> all = p.assets();
-            if (all.isEmpty()) { ctx.sendMessage(Message.raw("No custom assets found. Put a pack from the Skin Editor website in this world's mods folder.")); return; }
+            Map<String, Asset> all = new LinkedHashMap<>();
+            try { p.syncFolder(); } catch (Exception ignored) { }
+            if (all.isEmpty()) all = p.assets();
+            if (all.isEmpty()) { ctx.sendMessage(Message.raw("No custom assets found. On the website, save your skins to " + p.folder() + " (Wardrobe, Save skins to a folder), or set the folder with /skins folder <path>.")); return; }
             Map<String, Asset> worn = WORN.getOrDefault(player.getUuid(), Map.of());
             StringBuilder sb = new StringBuilder("Custom assets (/skins wear <id>):");
             for (Asset a : all.values()) sb.append("\n  ").append(a.id()).append("  ").append(a.name()).append(" (").append(SLOTS.get(a.field())).append(')')
@@ -207,15 +306,27 @@ public final class SkinEditorPlugin extends JavaPlugin {
             String want = String.valueOf(id.get(ctx)).trim().toLowerCase();
             Asset a = p.assets().get(want);
             if (a == null) { ctx.sendMessage(Message.raw("No custom asset " + want + ". See /skins list.")); return; }
-            try { wear(store, ref, player.getUuid(), a); ctx.sendMessage(Message.raw("Wearing " + a.name() + ". /skins off to take it off.")); }
+            try { wear(store, ref, player.getUuid(), a); p.saveWorn(); ctx.sendMessage(Message.raw("Wearing " + a.name() + ". /skins off to take it off.")); }
             catch (Exception e) { ctx.sendMessage(Message.raw("Could not wear " + a.name() + ": " + e.getMessage())); }
         }
     }
 
-    static final class OffCmd extends AbstractPlayerCommand {
-        OffCmd() { super("off", "Take off all custom assets"); }
+    static final class FolderCmd extends AbstractPlayerCommand {
+        private final SkinEditorPlugin p; private final RequiredArg<String> path;
+        FolderCmd(SkinEditorPlugin p) { super("folder", "Set the skins folder the website saves to"); this.p = p; path = withRequiredArg("path", "the folder chosen on the website", ArgTypes.GREEDY_STRING); }
         @Override protected void execute(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> ref, PlayerRef player, World world) {
-            try { takeOff(store, ref, player.getUuid(), null); ctx.sendMessage(Message.raw("Back to your own skin.")); }
+            Path d = Path.of(String.valueOf(path.get(ctx)).trim().replace("\"", ""));
+            if (!Files.isDirectory(d)) { ctx.sendMessage(Message.raw("No such folder: " + d)); return; }
+            try { p.setFolder(d); ctx.sendMessage(Message.raw("Using " + d + ". /skins list to see your custom assets.")); }
+            catch (Exception e) { ctx.sendMessage(Message.raw("Could not use that folder: " + e.getMessage())); }
+        }
+    }
+
+    static final class OffCmd extends AbstractPlayerCommand {
+        private final SkinEditorPlugin p;
+        OffCmd(SkinEditorPlugin p) { super("off", "Take off all custom assets"); this.p = p; }
+        @Override protected void execute(CommandContext ctx, Store<EntityStore> store, Ref<EntityStore> ref, PlayerRef player, World world) {
+            try { takeOff(store, ref, player.getUuid(), null); p.saveWorn(); ctx.sendMessage(Message.raw("Back to your own skin.")); }
             catch (Exception e) { ctx.sendMessage(Message.raw("Could not take them off: " + e.getMessage())); }
         }
     }
