@@ -73,7 +73,7 @@ async function startApp() {
       const hit = st.pickMesh(e.clientX, e.clientY, o => o.material?.map?.image === ED.canvas); if (!hit) return;
       const k = boxesOf(ED.model).findIndex(b => b.node.name === hit.userData.nodeName); if (k >= 0 && k !== ED.box) { ED.box = k; render(); placeGizmo(); } }); }
   try { if (await store.resumeFolder(false)) await reloadAssets(); } catch (e) { console.warn(e); }
-  FOLDER = await store.folderState(); WARD = await store.list(); ACCOUNT = await auth.account().catch(() => null);
+  FOLDER = await store.folderState(); WARD = await store.list(); ACCOUNT = await auth.account().catch(() => null); await loadPub();
   const draft = await db.get('meta', 'draft'), ds = sanitize(draft?.skin);
   cur = ds ? { id: draft.id || null, kind: draft.kind || null, slot: draft.slot ?? null, name: cleanName(draft.name), skin: R.fit(ds) } : { id: null, kind: null, slot: null, name: '', skin: R.blank() };
   if (cur.id && ![...WARD.game, ...WARD.custom].some(r => r && r.id === cur.id)) { cur.id = null; cur.kind = null; }
@@ -244,11 +244,35 @@ function drawEmotes() { const box = $('emotes'); if (!box || !EMOTES) return; bo
   box.replaceChildren(...EMOTES.map(k => { const [g, n] = k.split('/');
     return el('button', { class: 'emote' + (st.anim.anim && playing.group === g && playing.name === n ? ' on' : ''), title: nice(n), onclick: () => playAnim(g, n, 1, true) }, animThumb(g, n)); })); }
 
+// ---- publishing: skins made of game items can be shared under the player's name (needs Sign in with Hytale)
+let PUB = { on: false, signedIn: false }, PUBMAP = {};   // PUBMAP: local skin id -> published id
+const api = async (path, method = 'GET', data) => { const r = await fetch('/api' + path, { method, credentials: 'same-origin', cache: 'no-store', headers: data ? { 'Content-Type': 'application/json' } : {}, body: data ? JSON.stringify(data) : undefined });
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'The skin server did not answer. Try again.'); return j; };
+async function loadPub() {
+  PUBMAP = (await db.get('meta', 'published').catch(() => null)) || {};
+  try { PUB = await api('/me'); } catch { PUB = { on: false, signedIn: false }; }
+  if (PUB.signedIn) { const live = new Set(PUB.skins.map(s => s.id)); for (const k of Object.keys(PUBMAP)) if (!live.has(PUBMAP[k])) delete PUBMAP[k]; await savePubMap(); }
+}
+const savePubMap = () => db.put('meta', 'published', PUBMAP).catch(() => {});
+const canPublish = () => auth.enabled && PUB.on && PUB.signedIn;
+const publish = guard(async (rec, quiet) => {
+  if (hasCustom(rec.skin)) throw new Error('Skins with custom assets can only be shared as files. Custom assets stay on your computer.');
+  const r = await api('/skins', 'POST', { id: PUBMAP[rec.id] || null, name: rec.name, skin: rec.skin }); PUBMAP[rec.id] = r.id; await savePubMap();
+  if (!quiet) { say(`Published "${rec.name}"`); render(); } });
+const unpublish = guard(async (rec, quiet) => { const id = PUBMAP[rec.id]; if (!id) return; await api('/skins/' + id, 'DELETE').catch(e => { if (!/Unknown skin/.test(e.message)) throw e; });
+  delete PUBMAP[rec.id]; await savePubMap(); if (!quiet) { say(`Unpublished "${rec.name}"`); render(); } });
+const movePub = async (from, to) => { if (PUBMAP[from] && to) { PUBMAP[to] = PUBMAP[from]; delete PUBMAP[from]; await savePubMap(); } };
+const pubButton = rec => !canPublish() ? locked('Publish', 'publishing', 'mini') : el('button', { class: 'mini' + (PUBMAP[rec.id] ? ' on' : ''), text: PUBMAP[rec.id] ? 'Unpublish' : 'Publish',
+  title: PUBMAP[rec.id] ? 'Published: anyone who looks you up sees it. Saving updates it.' : 'Let anyone who looks you up see this skin', onclick: e => { e.stopPropagation(); (PUBMAP[rec.id] ? unpublish : publish)(rec); } });
+const forgetMe = guard(async () => {
+  if (!await confirmBox('Delete my published data', 'Remove every skin you published and your profile from this site’s server? Skins on your computer stay.', 'Delete', true)) return;
+  await api('/me', 'DELETE'); PUBMAP = {}; await savePubMap(); await auth.signOut(); ACCOUNT = null; PUB = { on: PUB.on, signedIn: false }; say('Your published data was deleted'); render(); });
+
 function card(rec, kind, i) {
   if (!rec) return el('div', { class: 'skin empty ' + kind }, el('div', { class: 'pic' }, el('span', { text: '+' })), el('b', { text: 'Slot ' + (i + 1) }), el('small', { text: 'Empty' }));
   const act = (label, fn, cls) => el('button', { class: 'mini ' + (cls || ''), text: label, onclick: e => { e.stopPropagation(); fn(); } });
-  const acts = kind === 'game' ? [act('Set in game', () => checklist(rec)), act('Move out', () => moveOut(rec)), locked('Send to game', 'sending this skin to your in-game preset', 'mini')]
-    : kind === 'custom' ? [act('To in-game', () => toGame(rec)), act('Copy', () => duplicate(rec)), act('Export', () => download(rec.name.replace(/[^\w -]/g, '') + '.skin.json', { name: rec.name, skin: rec.skin })), act('Delete', () => removeSkin(rec), 'danger')]
+  const acts = kind === 'game' ? [act('Set in game', () => checklist(rec)), act('Move out', () => moveOut(rec)), pubButton(rec), locked('Send to game', 'sending this skin to your in-game preset', 'mini')]
+    : kind === 'custom' ? [act('To in-game', () => toGame(rec)), act('Copy', () => duplicate(rec)), pubButton(rec), act('Export', () => download(rec.name.replace(/[^\w -]/g, '') + '.skin.json', { name: rec.name, skin: rec.skin })), act('Delete', () => removeSkin(rec), 'danger')]
     : [act('Save', () => { open(rec, true); saveAs(); })];
   return el('div', { class: 'skin ' + kind + (cur.id && cur.id === rec.id ? ' on' : ''), tabIndex: 0, title: 'Open in the editor', onclick: () => { if (kind === 'pub') { open(rec, true, true); return render(); } open(rec, kind === 'found'); setTab('editor'); },
     onkeydown: e => { if (e.key === 'Enter') e.currentTarget.click(); } },
@@ -267,7 +291,8 @@ function accountRow() {
     el('button', { class: 'btn primary', text: 'Connect Hytale account', onclick: guard(() => auth.start()) }));
   return el('div', { class: 'folder account on' }, el('div', {}, el('b', { text: 'Signed in as ' + ACCOUNT.username })),
     el('button', { class: 'btn ghost', text: 'Show my skin', onclick: () => { setTab('lookup'); lookup(ACCOUNT.username); } }),
-    el('button', { class: 'btn ghost', text: 'Sign out', onclick: guard(async () => { await auth.signOut(); ACCOUNT = null; render(); }) }));
+    el('button', { class: 'btn ghost', text: 'Sign out', onclick: guard(async () => { await auth.signOut(); ACCOUNT = null; PUB = { on: PUB.on, signedIn: false }; render(); }) }),
+    PUB.signedIn ? el('button', { class: 'btn ghost danger', text: 'Delete my published data', onclick: forgetMe }) : null);
 }
 function folderRow() {
   if (!store.folderSupported) return el('p', { class: 'note', text: 'Saving to a folder needs Chrome or Edge.' });
@@ -290,23 +315,24 @@ function panelWardrobe() {
       WARD.custom.length ? el('div', { class: 'cards' }, WARD.custom.map(r => card(r, 'custom'))) : el('p', { class: 'blank', text: 'Nothing saved yet. Design a skin in the Editor and press Save.' })))];
 }
 async function refreshWard() { WARD = await store.list(); if (cur.id && ![...WARD.game, ...WARD.custom].some(r => r && r.id === cur.id)) { cur.id = null; cur.kind = null; cur.slot = null; } render(); }
-const guard = fn => async (...a) => { try { await fn(...a); } catch (e) { if (e && e.name === 'AbortError') return; console.error(e); say(e.message || 'That did not work.', true); } };
+function guard(fn) { return async (...a) => { try { await fn(...a); } catch (e) { if (e && e.name === 'AbortError') return; console.error(e); say(e.message || 'That did not work.', true); } }; }
 const slotButtons = () => WARD.game.map((r, i) => ({ label: `Slot ${i + 1}${r ? ': ' + r.name : ' (empty)'}`, value: String(i) }));
 const toGame = guard(async rec => {
   if (hasCustom(rec.skin)) throw new Error('In-game slots cannot hold custom assets, because the game does not have them.');
   const v = await ask('Move to an in-game slot', el('p', { text: `"${rec.name}" goes into the slot you pick. A skin already in that slot moves to My skins, so nothing is lost.` }), [...slotButtons(), { label: 'Cancel', value: '' }]);
-  if (v === '') return; await store.swap(rec.id, +v); if (cur.id === rec.id) { cur.id = 'game-' + v; cur.kind = 'game'; cur.slot = +v; } await refreshWard(); say('Moved to in-game slot ' + (+v + 1));
+  if (v === '') return; await store.swap(rec.id, +v); await movePub(rec.id, 'game-' + v); if (cur.id === rec.id) { cur.id = 'game-' + v; cur.kind = 'game'; cur.slot = +v; } await refreshWard(); say('Moved to in-game slot ' + (+v + 1));
 });
-const moveOut = guard(async rec => { await store.saveCustom(rec.name, rec.skin); await store.remove(rec.id); await refreshWard(); say('Moved to My skins'); });
+const moveOut = guard(async rec => { const n = await store.saveCustom(rec.name, rec.skin); await movePub(rec.id, n && n.id); await store.remove(rec.id); await refreshWard(); say('Moved to My skins'); });
 const duplicate = guard(async rec => { await store.saveCustom(cleanName(rec.name + ' copy'), rec.skin); await refreshWard(); });
-const removeSkin = guard(async rec => { if (!await confirmBox('Delete skin', `Delete "${rec.name}"? This cannot be undone.`, 'Delete', true)) return; await store.remove(rec.id); await refreshWard(); });
+const removeSkin = guard(async rec => { if (!await confirmBox('Delete skin', `Delete "${rec.name}"? This cannot be undone.`, 'Delete', true)) return; if (PUBMAP[rec.id] && canPublish()) await unpublish(rec, true); await store.remove(rec.id); await refreshWard(); });
 function checklist(rec) {
   const rows = GROUPS.flatMap(([g, fs]) => fs.filter(f => rec.skin[f]).map(f => { const p = parse(rec.skin[f]), item = R.find(f, rec.skin[f]);
     return el('tr', {}, el('td', { text: g + ' ▸ ' + LABEL[f] }), el('td', { text: item ? itemName(item) : nice(p.id) }), el('td', { text: [p.color && nice(p.color), p.variant && nice(p.variant)].filter(Boolean).join(', ') })); }));
   ask(`Set "${rec.name}" in game`, [el('p', { text: `In Hytale, open My Avatar, choose preset ${rec.slot + 1} and pick these parts:` }), el('table', { class: 'parts' }, el('tbody', {}, rows))], [{ label: 'Done', value: '', primary: true }]);
 }
 async function save() { if (!cur.id) return saveAs();
-  await guard(async () => { const r = cur.kind === 'game' ? await store.saveGame(cur.slot, cur.name, cur.skin) : await store.saveCustom(cur.name, cur.skin, cur.id); dirty = false; await refreshWard(); say(`Saved "${r.name}"`); })(); }
+  await guard(async () => { const r = cur.kind === 'game' ? await store.saveGame(cur.slot, cur.name, cur.skin) : await store.saveCustom(cur.name, cur.skin, cur.id); dirty = false; await refreshWard(); say(`Saved "${r.name}"`);
+    if (PUBMAP[r.id] && canPublish() && !hasCustom(r.skin)) publish(r, true); })(); }
 async function saveAs() {
   const name = el('input', { type: 'text', value: cur.name || '', maxLength: 40, placeholder: 'Skin name', autofocus: true });
   const where = el('select', {}, el('option', { value: 'custom', text: `My skins (${WARD.custom.length} / ${store.CUSTOM_MAX})` }), WARD.game.map((r, i) => el('option', { value: String(i), text: `In-game slot ${i + 1}${r ? ', replaces "' + r.name + '"' : ' (empty)'}` })));

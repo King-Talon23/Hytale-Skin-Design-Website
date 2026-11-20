@@ -19,10 +19,10 @@
 </header>
 <main class="page">
 <h1>Privacy</h1>
-<p class="lead">Short version: the Skin Editor has no accounts, no tracking and no server of its own. What you make stays on your computer.</p>
+<p class="lead">Short version: no tracking, no ads, no analytics. What you make stays on your computer, unless you choose to publish a skin, and then only what this page lists is kept.</p>
 
 <h2>What we collect</h2>
-<p>Nothing. The site has no sign-up, sets no cookies, runs no analytics and shows no ads. We have no database, so there is nothing of yours for us to hold, sell or lose.</p>
+<p>Nothing, unless you sign in with Hytale and publish a skin (see below). The site runs no analytics and shows no ads. The only cookie is the sign-in cookie described below, set only after you sign in.</p>
 
 <h2>Your game files</h2>
 <p>When you connect <b>Assets.zip</b>, your browser reads the character files out of it and keeps a copy in its own storage on your device, so you only connect once. Those files are never uploaded. The website hosts no Hytale files. You can remove the copy at any time from Help, with "Forget game files".</p>
@@ -39,15 +39,17 @@
 <h2>Feedback</h2>
 <p>Bug reports and feature requests are posted on GitHub and are public. GitHub's own privacy terms apply there. Please do not include personal details or game files in a report.</p>
 
-<h2>Sign in with Hytale (planned)</h2>
-<p>Signing in with a Hytale account is not available on this site yet. If it is added, the site would receive only what you approve on Hytale's own consent screen: an anonymous identifier and, if you allow it, the game profile you select (its UUID and username). It would be kept in your browser and used to show your own skins. We would never see your password, and we would not store your details on a server or share them.</p>
+<h2>Sign in with Hytale and published skins</h2>
+<p>Signing in is optional and only needed to publish skins. You sign in on Hytale's own page, so we never see your password. You approve sharing the game profile you pick: its UUID and username. Our server checks that profile with Hytale once and then forgets the sign-in token. It keeps your UUID and username so it knows who published what, and sets one cookie (<code>__Host-se_session</code>, 30 days) that keeps you signed in for publishing. It is not used for anything else.</p>
+<p>When you press Publish on a skin, our server stores that skin's name and the list of game items it uses, with your UUID, so anyone who looks you up in the Players tab can see it. Custom assets are never uploaded: skins that use them cannot be published. A short count of your recent changes is kept for an hour to stop spam.</p>
+<p>You can unpublish any skin at any time. "Delete my published data" in the Locker removes every skin you published and your profile from the server straight away. Published data is stored with Cloudflare (D1). It is not sold, shared or used for anything else.</p>
 
 <h2>Children</h2>
-<p>The site collects no personal information from anyone, including children.</p>
+<p>Using the editor needs no personal information. Publishing needs a Hytale account, so it follows Hytale's own age rules for accounts.</p>
 
 <h2>Changes and contact</h2>
 <p>If this page changes, the date below changes with it. Questions can be raised through <a href="https://github.com/King-Talon23/Hytale-Skin-Design-Website/issues/new/choose" target="_blank" rel="noopener noreferrer">the project's GitHub page</a>.</p>
-<p class="fine">Last updated 19 November 2026.</p>
+<p class="fine">Last updated 20 November 2026.</p>
 </main>
 <footer>
   <span>Unofficial fan tool. Not affiliated with or endorsed by Hypixel Studios.</span>

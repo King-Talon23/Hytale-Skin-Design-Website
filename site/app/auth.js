@@ -1,6 +1,7 @@
 // Sign in with Hytale: OpenID Connect, Authorization Code flow with PKCE, as a public (browser-only) client with no secret.
 // The site keeps one thing from a sign-in: the game profile the player picked (UUID and username), in this browser only.
-// Tokens are used once to read that profile and then dropped; nothing is sent to any server of ours, because there is none.
+// The access token is used once to read that profile, then handed once to this site's own server (/api/session), which checks
+// it with Hytale itself and starts a publishing session. Tokens are never stored, here or there.
 import { HYTALE_CLIENT_ID } from './config.js';
 import * as db from './db.js';
 
@@ -38,8 +39,9 @@ export async function finish(query) {   // runs on /auth/callback
   const u = await fetch(`${ISSUER}/userinfo`, { ...opts, headers: { Authorization: 'Bearer ' + tokens.access_token } });
   const me = u.ok ? await u.json().catch(() => null) : null, p = me && me.profile;
   if (!p || typeof p.uuid !== 'string' || typeof p.username !== 'string' || !UUID.test(p.uuid) || !NAME.test(p.username)) throw new Error('No game profile was shared. Sign in again and pick a profile.');
+  await fetch('/api/session', { method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_token: tokens.access_token }) }).catch(() => null);   // publishing; optional
   const account = { uuid: p.uuid.toLowerCase(), username: p.username, at: Date.now() };
   await db.put('meta', 'account', account); return account;   // the tokens go out of scope here and are never stored
 }
 export async function account() { const a = await db.get('meta', 'account'); return a && UUID.test(a.uuid) && NAME.test(a.username) ? a : null; }
-export const signOut = () => db.del('meta', 'account');
+export const signOut = async () => { await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => null); await db.del('meta', 'account'); };
