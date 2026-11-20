@@ -250,7 +250,7 @@ function card(rec, kind, i) {
   const acts = kind === 'game' ? [act('Set in game', () => checklist(rec)), act('Move out', () => moveOut(rec)), locked('Send to game', 'sending this skin to your in-game preset', 'mini')]
     : kind === 'custom' ? [act('To in-game', () => toGame(rec)), act('Copy', () => duplicate(rec)), act('Export', () => download(rec.name.replace(/[^\w -]/g, '') + '.skin.json', { name: rec.name, skin: rec.skin })), act('Delete', () => removeSkin(rec), 'danger')]
     : [act('Save', () => { open(rec, true); saveAs(); })];
-  return el('div', { class: 'skin ' + kind + (cur.id && cur.id === rec.id ? ' on' : ''), tabIndex: 0, title: 'Open in the editor', onclick: () => { open(rec, kind === 'found'); setTab('editor'); },
+  return el('div', { class: 'skin ' + kind + (cur.id && cur.id === rec.id ? ' on' : ''), tabIndex: 0, title: 'Open in the editor', onclick: () => { if (kind === 'pub') { open(rec, true, true); return render(); } open(rec, kind === 'found'); setTab('editor'); },
     onkeydown: e => { if (e.key === 'Enter') e.currentTarget.click(); } },
     el('div', { class: 'pic' }, portrait(rec.skin)), el('b', { text: rec.name }), kind === 'game' ? el('small', { text: 'Slot ' + (rec.slot + 1) }) : null, el('div', { class: 'acts' }, acts));
 }
@@ -339,7 +339,7 @@ function panelAnimations() {
 }
 
 // other players' skins
-let lookupMsg = '';
+let lookupMsg = '', shown = null;   // shown: the last player found, with the skins they published on this site
 const lookup = guard(async name => {
   name = name.trim(); if (!/^[A-Za-z0-9_-]{2,36}$/.test(name)) { lookupMsg = 'Type a Hytale username or a player UUID.'; return render(); }
   lookupMsg = 'Looking…'; render();
@@ -347,10 +347,18 @@ const lookup = guard(async name => {
     const r = await fetch('https://playerdb.co/api/player/hytale/' + encodeURIComponent(name), { credentials: 'omit', referrerPolicy: 'no-referrer' });
     const j = r.ok ? await r.json() : null, p = j?.data?.player, s = sanitize(p?.skin);
     if (!s) lookupMsg = r.status === 429 ? 'Too many lookups for now. Try again in a minute.' : 'No player with that name or UUID was found.';
-    else { const nm = cleanName(p.username) || name; found = [{ name: nm, skin: s }, ...found.filter(f => f.name !== nm)].slice(0, 60); lookupMsg = ''; open(found[0], true, true); }
+    else { const nm = cleanName(p.username) || name; found = [{ name: nm, skin: s }, ...found.filter(f => f.name !== nm)].slice(0, 60); lookupMsg = ''; open(found[0], true, true); loadPublished(nm, p.id); }
   } catch { lookupMsg = 'The lookup service could not be reached.'; }
   render();
 });
+async function loadPublished(name, id) {
+  if (!/^[0-9a-f-]{32,36}$/i.test(id || '')) { shown = null; return; }
+  const me = shown = { name, uuid: id, skins: null }; render();
+  try { const r = await fetch('/api/players/' + encodeURIComponent(id) + '/skins', { credentials: 'omit', cache: 'no-store' }), j = r.ok ? await r.json() : null;
+    me.skins = (Array.isArray(j?.skins) ? j.skins : []).map(k => ({ id: 'pub_' + String(k.id).slice(0, 24), name: cleanName(k.name) || 'Skin', skin: sanitize(k.skin) })).filter(k => k.skin).slice(0, 45);
+  } catch { me.skins = []; me.failed = true; }
+  if (shown === me) render();
+}
 async function importSkinFiles(files) { let n = 0;
   for (const f of [...files].slice(0, 200)) { try { const j = await readJsonFile(f), s = sanitize(j?.skin || j); if (s) { found.unshift({ name: cleanName(j?.name || f.name.replace(/(_portrait\.png)?\.(skin|json)+$/gi, '')).slice(0, 40) || 'Imported', skin: s }); n++; } } catch { /* not a skin file */ } }
   found = found.slice(0, 200); say(n ? `Brought in ${n} skin${n > 1 ? 's' : ''}` : 'No skins were found in those files.', !n); tab = 'lookup'; setTab('lookup'); }
@@ -360,6 +368,8 @@ function panelLookup() {
   const file = el('input', { type: 'file', accept: '.json,.skin,application/json', multiple: true, hidden: true, onchange: e => { importSkinFiles(e.target.files); e.target.value = ''; } });
   return [head('Players'), el('div', { class: 'pbody' },
     el('h3', { text: 'Find a player' }), form, el('p', { class: 'err', text: lookupMsg }),
+    shown ? [el('h3', { text: 'Published by ' + shown.name }), shown.skins === null ? el('p', { class: 'need', text: 'Looking…' })
+      : shown.skins.length ? el('div', { class: 'cards' }, shown.skins.map(r => card(r, 'pub'))) : el('p', { class: 'need', text: shown.failed ? 'Published skins could not be loaded.' : `${shown.name} has not published any skins here yet.` })] : null,
     el('h3', { text: 'Open skin files' }), el('label', { class: 'btn ghost' }, 'Choose skin files', file),
     found.length ? [el('h3', { text: 'Found this session' }), el('div', { class: 'cards' }, found.map(r => card(r, 'found')))] : null)];
 }
