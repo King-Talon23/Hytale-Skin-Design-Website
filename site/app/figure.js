@@ -212,65 +212,60 @@ const disposeTree = root => root.traverse(o => { if (o.isInstancedMesh) o.dispos
 const turnOf = r => new THREE.Quaternion().setFromEuler(new THREE.Euler(((r >> 2) & 3) * Math.PI / 2, (r & 3) * Math.PI / 2, ((r >> 4) & 3) * Math.PI / 2, 'YXZ'));
 // a small piece of the zone: rolling land of its ground blocks, its own grasses and flowers, and a few of its trees, from the game's prefabs
 async function buildWorld(sc, tint) {
-  // The land repeats every P blocks both ways. Two lanes FLAT blocks either side of the lines x = 0 and z = 0 stay level, so a moving
-  // animation (always straight along x or z) carries the character down a lane: the whole land slides past as one piece, and nothing
-  // solid ever reaches the character or the camera. Hills, trees and tall plants fill the squares between the lanes.
+  // An open plain that slides under moving animations in any direction for ever (ground and plants, repeating every P blocks), with the
+  // place's hills and trees as a fixed ring of distant scenery standing on it, from RIN blocks out into the haze. Nothing that slides is
+  // solid and nothing solid moves, so nothing can ever reach the character or the camera, and no move ever needs a correction.
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const P = 80, FLAT = 10, R = 27, TAU = Math.PI * 2, sym = v => { const w = ((v % P) + P) % P; return w >= P / 2 ? w - P : w; };
-  const lane = (x, z) => Math.min(Math.abs(sym(x)), Math.abs(sym(z)));   // blocks to the nearest lane's middle line
-  const height = (x, z) => { const d = lane(x, z); if (d < FLAT) return 0;
-    const n = Math.sin(TAU * 2 * x / P + 1.3) * Math.cos(TAU * 3 * z / P - 0.7) + 0.7 * Math.sin(TAU * (x + z) / P + 2.1) + 0.4 * Math.cos(TAU * 4 * (x - z) / P);
-    return Math.max(0, Math.round((n + 0.5) * sc.hills * 0.55 * Math.min(1, (d - FLAT) / 4))); };
-  const H = []; for (let x = 0; x < P; x++) for (let z = 0; z < P; z++) H[x * P + z] = height(x, z);
-  const h = (x, z) => H[(((x % P) + P) % P) * P + (((z % P) + P) % P)];
-  const items = new Map(), put = (key, x, y, z, q, plant) => (items.get(key) || items.set(key, { plant, list: [] }).get(key)).list.push([x, y, z, q]);
+  const P = 80, RIN = 17, R = 27, TAU = Math.PI * 2, sym = v => { const w = ((v % P) + P) % P; return w >= P / 2 ? w - P : w; };
+  const raw = (x, z) => { const n = Math.sin(TAU * 2 * x / P + 1.3) * Math.cos(TAU * 3 * z / P - 0.7) + 0.7 * Math.sin(TAU * (x + z) / P + 2.1) + 0.4 * Math.cos(TAU * 4 * (x - z) / P);
+    return Math.max(0, (n + 0.5) * sc.hills * 0.55); };
+  const h = (x, z) => { const d = Math.hypot(x, z); return d < RIN ? 0 : Math.round(raw(x, z) * Math.min(1, (d - RIN) / 5)); };   // the ring's hills rise gently from its inner edge
+  const items = new Map(), put = (key, x, y, z, q, plant, slide) => { const k = key + (slide ? '|s' : '|f'); (items.get(k) || items.set(k, { plant, slide, name: key, list: [] }).get(k)).list.push([x, y, z, q]); };
   const nTops = (await blockParts(sc.ground, tint)).length;
-  // plant sizes (third value): 1 low, 2 knee-high, none tall; the closer to a lane's middle, the lower
+  // plant sizes (third value): 1 low, 2 knee-high, none tall
   const pick = size => { const from = sc.plants.filter(p => size === 1 ? p[2] === 1 : size === 2 ? p[2] : true); if (!from.length) return null; let r = rnd() * from.reduce((t, p) => t + p[1], 0);
     for (const [n, w] of from) if ((r -= w) <= 0) return n; return from[0][0]; };
-  // trees in the squares between the lanes, each wholly inside (reach = how far its blocks spread from the trunk), never touching another
+  // trees in the ring, each wholly inside it, never touching another
   const taken = new Set(), trees = await Promise.all(sc.trees.map(p => game.json(p))), placed = [];
-  for (let i = 0, tries = 0; placed.length < 5 && tries < 400; tries++) { const tb = trees[i % trees.length].blocks, reach = Math.max(0, ...tb.map(b => Math.hypot(b.x, b.z)));
-    const cx = Math.round(FLAT + reach + 2 + rnd() * (P - 2 * (FLAT + reach + 2))), cz = Math.round(FLAT + reach + 2 + rnd() * (P - 2 * (FLAT + reach + 2)));
-    if (P - 2 * (FLAT + reach + 2) < 0 || placed.some(t => Math.hypot(sym(t[0] - cx), sym(t[1] - cz)) < t[2] + reach + 2)) { if (tries % 40 === 39) i++; continue; }
+  for (let i = 0, tries = 0; placed.length < 7 && tries < 600; tries++) { const tb = trees[i % trees.length].blocks, reach = Math.max(0, ...tb.map(b => Math.hypot(b.x, b.z)));
+    const a = rnd() * TAU, d = RIN + reach + 2 + rnd() * Math.max(0, R - 2 - (RIN + reach + 2)), cx = Math.round(Math.cos(a) * d), cz = Math.round(Math.sin(a) * d);
+    if (placed.some(t => Math.hypot(t[0] - cx, t[1] - cz) < t[2] + reach + 2)) { if (tries % 40 === 39) i++; continue; }
     placed.push([cx, cz, reach]); i++;
     const trunks = tb.filter(b => /Trunk/.test(b.name)), lift = trunks.length ? -Math.min(...trunks.map(b => b.y)) : 0, base = h(cx, cz);   // the trunk's foot on the ground
     for (const b0 of tb) { if (!BLOCKS[b0.name]) continue; const x = cx + b0.x, z = cz + b0.z, y = base + b0.y + lift;
-      put(b0.name + '|0', x, y, z, b0.rotation ? turnOf(b0.rotation) : null, false); if (b0.y + lift === 0) taken.add(sym(x) + ',' + sym(z)); } }
-  for (let x = 0; x < P; x++) for (let z = 0; z < P; z++) { const top = h(x, z), low = Math.min(top, h(x + 1, z), h(x - 1, z), h(x, z + 1), h(x, z - 1));
-    for (let y = low; y <= top; y++) put(y === top ? sc.ground + '|' + Math.floor(rnd() * nTops) : sc.under + '|0', x, y - 1, z, null, false);
-    if (taken.has(sym(x) + ',' + sym(z)) || rnd() >= sc.density) continue; const px = x + (rnd() - 0.5) * 0.5, pz = z + (rnd() - 0.5) * 0.5, d = lane(px, pz);
-    const name = pick(d < 3.2 ? 1 : d < FLAT ? 2 : 0); if (name) put(name + '|0', px, top, pz, rnd() * TAU, true); }
+      put(b0.name + '|0', x, y, z, b0.rotation ? turnOf(b0.rotation) : null, false, false); if (b0.y + lift === 0) taken.add(x + ',' + z); } }
+  // the ring's hills: columns standing on the plain (the plain's own ground is under them), plants on their tops
+  for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) { const top = h(x, z); if (!top) continue; const low = Math.min(top, h(x + 1, z), h(x - 1, z), h(x, z + 1), h(x, z - 1));
+    for (let y = Math.max(1, low); y <= top; y++) put(y === top ? sc.ground + '|' + Math.floor(rnd() * nTops) : sc.under + '|0', x, y - 1, z, null, false, false);
+    if (!taken.has(x + ',' + z) && rnd() < sc.density) { const name = pick(0); if (name) put(name + '|0', x + (rnd() - 0.5) * 0.5, top, z + (rnd() - 0.5) * 0.5, rnd() * TAU, true, false); } }
+  // the plain: one ground block per cell and its plants, repeating every P blocks, sliding with the move
+  for (let x = 0; x < P; x++) for (let z = 0; z < P; z++) { put(sc.ground + '|' + Math.floor(rnd() * nTops), x, -1, z, null, false, true);
+    if (rnd() >= sc.density) continue; const r = rnd(), name = pick(r < 0.45 ? 1 : r < 0.8 ? 2 : 0); if (name) put(name + '|0', x + (rnd() - 0.5) * 0.5, 0, z + (rnd() - 0.5) * 0.5, rnd() * TAU, true, true); }
   const root = new THREE.Group(), M = new THREE.Matrix4(), V = new THREE.Vector3(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), ONE = new THREE.Vector3(1, 1, 1), SC = new THREE.Vector3();
-  const sets = []; for (const [key, { plant, list }] of items) { const [name, k] = key.split('|'), parts = await blockParts(name, tint), p = parts[+k] || parts[0];
-    const im = new THREE.InstancedMesh(p.geo, p.mat, list.length); im.frustumCulled = false; root.add(im); sets.push({ im, list, plant }); }
-  let ax = 0, az = 0, laid = null;   // how far the land has slid (scene units), and where it was last laid out
+  const sets = []; for (const [, { name: key, plant, slide, list }] of items) { const [name, k] = key.split('|'), parts = await blockParts(name, tint), p = parts[+k] || parts[0];
+    const im = new THREE.InstancedMesh(p.geo, p.mat, list.length); im.frustumCulled = false; root.add(im); sets.push({ im, list, plant, slide }); }
+  let ax = 0, az = 0;   // how far the plain has slid (scene units)
   const avoid = () => root.userData.avoid || [];   // set pieces' ground rectangles [x0, z0, x1, z1] in blocks: no plant inside them
-  // lay out the land for the current slide: wrapped round the character, only what is within R blocks (the fog hides the edge)
-  const layout = (plantsOnly) => { const ox = ax / BLOCK, oz = az / BLOCK, c = root.userData.cam, clear = root.userData.clear || 1, rects = avoid(), fade = root.userData.plantFade ?? 1;
-    for (const st of sets) { if (plantsOnly && !st.plant) continue; let n = 0;
-      for (const [x0, y, z0, q] of st.list) { const x = sym(x0 + ox), z = sym(z0 + oz); if (x * x + z * z > R * R) continue;
-        let k = 1; if (st.plant) { const d = Math.hypot(x, z);   // a plant shrinks away near the character, the camera's lens and any set piece
+  const layout = (plantsOnly) => { const ox = ax / BLOCK, oz = az / BLOCK, c = root.userData.cam, clear = root.userData.clear || 1, rects = avoid();
+    for (const st of sets) { if (plantsOnly && !st.plant) continue; if (!st.slide && st.laid && plantsOnly) continue; let n = 0;
+      for (const [x0, y, z0, q] of st.list) { const x = st.slide ? sym(x0 + ox) : x0, z = st.slide ? sym(z0 + oz) : z0; if (x * x + z * z > R * R) continue;
+        let k = 1; if (st.plant && st.slide) { if (h(Math.round(x), Math.round(z)) > 0) continue;   // never inside a hill of the ring
+          const d = Math.hypot(x, z);   // a plant shrinks away near the character, the camera's lens and any set piece
           k = Math.min(1, Math.max(0, (d - clear) / 0.7), c ? Math.max(0, (Math.hypot(x * BLOCK - c.x, z * BLOCK - c.z) / BLOCK - 2.2) / 1.2) : 1);
           if (c && k > 0) { const cx = c.x / BLOCK, cz = c.z / BLOCK, L = cx * cx + cz * cz, t = L ? Math.max(0, Math.min(1, (x * cx + z * cz) / L)) : 0;   // and along the line from the lens to the character, so no clump fills the foreground
             k = Math.min(k, Math.max(0, (Math.hypot(x - t * cx, z - t * cz) - 0.9) / 0.8)); }
           for (const r of rects) if (x > r[0] - 0.6 && x < r[2] + 0.6 && z > r[1] - 0.6 && z < r[3] + 0.6) k = 0;
-          k *= fade; if (k < 0.02) continue; }
+          if (k < 0.02) continue; }
         st.im.setMatrixAt(n++, M.compose(V.set(x * BLOCK, y * BLOCK, z * BLOCK), st.plant ? Q.setFromAxisAngle(Y, q) : q || Q.identity(), st.plant ? SC.setScalar(k) : ONE)); }
-      st.im.count = n; st.im.instanceMatrix.needsUpdate = true; } };
+      st.im.count = n; st.im.instanceMatrix.needsUpdate = true; if (!st.slide) st.laid = true; } };
   const span = P * BLOCK;
-  root.userData.move = (dx, dz) => {
-    ax = (ax + dx) % span; az = (az + dz) % span;
-    const key = ax.toFixed(1) + ',' + az.toFixed(1); if (key !== laid) { laid = key; layout(false); } else layout(true); };
+  root.userData.move = (dx, dz) => { if (!dx && !dz) return layout(true); ax = (ax + dx) % span; az = (az + dz) % span; layout(false); };
   root.userData.offset = () => [ax, az]; root.userData.span = span;
-  // a move along one lane must start from the crossing, or it would run down the other lane into the squares: back to it (under the mist)
-  root.userData.snap = along => { if (along === 'x') az = 0; else ax = 0; laid = null; layout(false); };
-  root.userData.solids = () => sets.filter(t => !t.plant).flatMap(t => t.list.filter(b => b[1] >= 0).map(b => [sym(b[0]), b[1], sym(b[2])]));   // for tests: blocks above the ground, in blocks
-  // for tests: the nearest solid block above the ground to a point (scene units), in blocks, as the land lies now
-  root.userData.solidNear = (px = 0, pz = 0) => { let best = Infinity; const ox = ax / BLOCK, oz = az / BLOCK;
-    for (const st of sets) { if (st.plant) continue; for (const [x0, y, z0] of st.list) { if (y < 0) continue; const x = sym(x0 + ox), z = sym(z0 + oz);
-      best = Math.min(best, Math.max(0, Math.hypot(x - px / BLOCK, z - pz / BLOCK) - 0.71)); } } return best; };
-  root.userData.relayout = () => { laid = null; layout(false); };
+  root.userData.snap = () => {};   // kept for callers: nothing ever needs putting back now
+  root.userData.solids = () => sets.filter(t => !t.plant && !t.slide).flatMap(t => t.list.filter(b => b[1] >= 0).map(b => [b[0], b[1], b[2]]));   // for tests: blocks above the plain, in blocks
+  root.userData.solidNear = (px = 0, pz = 0) => { let best = Infinity;   // for tests: the nearest solid block above the plain to a point (scene units), in blocks
+    for (const st of sets) { if (st.plant || st.slide) continue; for (const [x, y, z] of st.list) { if (y < 0) continue; best = Math.min(best, Math.max(0, Math.hypot(x - px / BLOCK, z - pz / BLOCK) - 0.71)); } } return best; };
+  root.userData.relayout = () => { for (const st of sets) st.laid = false; layout(false); };
   layout(false); root.position.y = -0.5; return root; }
 // ---- the stage (main view) and a small off-screen renderer for thumbnails
 function lights(scene) { scene.add(new THREE.AmbientLight(0xffffff, 1.7)); const l = new THREE.DirectionalLight(0xfff4e0, 1.9); l.position.set(-60, 160, 120); scene.add(l); }
@@ -291,17 +286,6 @@ export function stage(canvas, Controls) {
     // the clearing's floor slides with the move (a horse needs more room round it than a person)
     if (world) { world.userData.cam = cam.position; world.userData.clear = Math.max(mountRoot ? 2.3 : 1, plantClear, painting ? 4 : 0);
       let mx = anim.move ? -vel.x * dt : 0, mz = anim.move ? -vel.y * dt : 0; const [ox, oz] = world.userData.offset(), span = world.userData.span;
-      const along = Math.abs(want.x) > Math.abs(want.y) ? 'x' : Math.abs(want.y) > 0 ? 'z' : null;   // the lane the new move runs down
-      if (along === 'x') mz = 0; else if (along === 'z') mx = 0;   // the land only ever slides down the current move's lane
-      // the character must be on the lane the move runs down. It is always on the lane of the move before, and sliding along that lane is
-      // safe, so the land glides (eased, no haze, no jump) along it to the nearest crossing while the new move starts; the new move can't
-      // leave the old lane before the glide ends. A small offset (a short dash) just drifts back.
-      const sym = c => { c = ((c % span) + span) % span; return c > span / 2 ? c - span : c; }, cross = along === 'x' ? sym(oz) : along === 'z' ? sym(ox) : 0;
-      if (!mist && along && Math.abs(cross) > 2.5 * BLOCK) { const speed = Math.max(60, Math.hypot(want.x, want.y)); mist = { t: 0, along, c0: cross, dur: Math.min(2, Math.max(0.6, 0.9 * 8 * BLOCK / speed, Math.abs(cross) / BLOCK / 45)) }; }
-      if (mist && mist.along !== along && along) mist = null;
-      if (mist) { mist.t = Math.min(1, mist.t + dt / mist.dur); const e = mist.t * mist.t * (3 - 2 * mist.t), goal = mist.c0 * (1 - e), now = mist.along === 'x' ? sym(oz) : sym(ox), step = goal - now;
-        if (mist.along === 'x') mz = step; else mx = step; if (mist.t >= 1) mist = null; }
-      else if (along && Math.abs(cross) > 0.01) { const step = -Math.sign(cross) * Math.min(Math.abs(cross), (0.3 + Math.abs(cross) / BLOCK * 0.9) * BLOCK * dt); if (along === 'x') mz = step; else mx = step; }
       world.userData.move(mx, mz); }
     for (const w of flowing) { const [ox, oz] = world ? world.userData.offset() : [0, 0], m = w.material.map; if (m) m.offset.set(-ox / w.userData.flow, oz / w.userData.flow); }   // water drifts with the land
     grid.position.x = (grid.position.x - vel.x * dt) % CELL; grid.position.z = (grid.position.z - vel.y * dt) % CELL;   // the ground runs backwards under the figure
