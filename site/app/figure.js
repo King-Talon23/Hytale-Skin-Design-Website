@@ -251,11 +251,10 @@ async function buildWorld(sc, tint) {
   const layout = (plantsOnly) => { const ox = ax / BLOCK, oz = az / BLOCK, c = root.userData.cam, clear = root.userData.clear || 1, rects = avoid();
     for (const st of sets) { if (plantsOnly && !st.plant) continue; if (!st.slide && st.laid && plantsOnly) continue; let n = 0;
       for (const [x0, y, z0, q] of st.list) { const x = st.slide ? sym(x0 + ox) : x0, z = st.slide ? sym(z0 + oz) : z0; if (x * x + z * z > R * R) continue;
-        let k = 1; if (st.plant && st.slide) { if (h(Math.round(x), Math.round(z)) > 0) continue;   // never inside a hill of the ring
+        let k = 1; if (st.plant && st.slide) { if (h(Math.round(x), Math.round(z)) > 2) continue;   // deep inside a hill it can't be seen; at a hill's foot it stays (the blocks cover it), so nothing pops there
           const d = Math.hypot(x, z);   // a plant shrinks away near the character, the camera's lens and any set piece
-          k = Math.min(1, Math.max(0, (d - clear) / 0.7), c ? Math.max(0, (Math.hypot(x * BLOCK - c.x, z * BLOCK - c.z) / BLOCK - 2.2) / 1.2) : 1);
-          if (c && k > 0) { const cx = c.x / BLOCK, cz = c.z / BLOCK, L = cx * cx + cz * cz, t = L ? Math.max(0, Math.min(1, (x * cx + z * cz) / L)) : 0;   // and along the line from the lens to the character, so no clump fills the foreground
-            k = Math.min(k, Math.max(0, (Math.hypot(x - t * cx, z - t * cz) - 0.9) / 0.8)); }
+          const e = v => v <= 0 ? 0 : v >= 1 ? 1 : v * v * (3 - 2 * v);   // long, eased fades, so a plant sliding past never visibly pops in or out
+          k = Math.min(e((d - clear) / 1.8), c ? e((Math.hypot(x * BLOCK - c.x, z * BLOCK - c.z) / BLOCK - 1.2) / 2.2) : 1);
           for (const r of rects) if (x > r[0] - 0.6 && x < r[2] + 0.6 && z > r[1] - 0.6 && z < r[3] + 0.6) k = 0;
           if (k < 0.02) continue; }
         st.im.setMatrixAt(n++, M.compose(V.set(x * BLOCK, y * BLOCK, z * BLOCK), st.plant ? Q.setFromAxisAngle(Y, q) : q || Q.identity(), st.plant ? SC.setScalar(k) : ONE)); }
