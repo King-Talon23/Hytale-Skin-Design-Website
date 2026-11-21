@@ -97,7 +97,7 @@ async function startApp() {
       ED.hover = p; ED.hoverM = p?.m || null; drawOvl(); });
     $('view').addEventListener('pointerleave', () => { if (!ED) return; st.cursor(null); ED.hover = ED.hoverM = null; drawOvl(); });
     st.afterShow = () => { outlineBox(); placeGizmo(); if (ED && ED.frame) { ED.frame = false; st.frameOn(ED.canvas); } };
-    $('view').addEventListener('pointerdown', e => { if (!ED || !ED.shapeOpen || e.button !== 0 || st.gizmoBusy()) return;
+    $('view').addEventListener('pointerdown', e => { if (!ED || !ED.shapeOpen || e.button !== 0 || st.gizmoBusy(e.clientX, e.clientY)) return;
       const mine = o => o.material?.map?.image === ED.canvas;
       if (ED.placing) { const h = st.pickHit(e.clientX, e.clientY, mine); if (!h) { say('That missed the item: click right on it (zoom in with the wheel for thin parts). Esc cancels.', true); return; } e.stopImmediatePropagation(); ED.placing = false;
         const k = boxesOf(ED.model).findIndex(b => b.node.name === h.mesh.userData.nodeName); if (k >= 0) { ED.box = k; addBox('add', h); } return; }
@@ -752,7 +752,7 @@ function bindPaint(target, toPixel, reach, onModel) { let down = false, last = n
   target.addEventListener('pointerdown', e => { if (!ED || e.button !== 0 || (!onModel && (ED.painter.tool === 'select' || ED.mode === 'shape'))) return;
     if (ED.painter.tool === 'part' && ED.mode !== 'shape') { const node = partAt(e, onModel, toPixel); if (node) { e.preventDefault(); colourPart(node).catch(err => say(err.message, true)); return; } if (!onModel) return; }
     const p = onModel && (ED.painter.tool === 'select' || ED.painter.tool === 'part') ? null : toPixel(e);
-    if (!p) { if (onModel && !st.gizmoBusy() && !(ED.mode === 'shape' && st.pickMesh(e.clientX, e.clientY, o => o.material?.map?.image === ED.canvas))) turnDrag(e); return; } e.preventDefault(); try { target.setPointerCapture(e.pointerId); } catch { /* fine */ }
+    if (!p) { if (onModel && !st.gizmoBusy(e.clientX, e.clientY) && !(ED.mode === 'shape' && st.pickMesh(e.clientX, e.clientY, o => o.material?.map?.image === ED.canvas))) turnDrag(e); return; } e.preventDefault(); try { target.setPointerCapture(e.pointerId); } catch { /* fine */ }
     down = true; last = p; lastC = startC = { x: e.clientX, y: e.clientY }; ED.painter.begin();
     if (onModel && SHAPES.has(ED.painter.tool)) shapeOnModel(startC, false); else { ED.painter.stroke(p, p); twin(null, p); } });
   const paintTo = p => { if (!p) { last = null; return; } const from = last && Math.abs(last.x - p.x) + Math.abs(last.y - p.y) <= reach ? last : p; ED.painter.stroke(from, p); twin(from === last ? last : null, p); last = p; };
