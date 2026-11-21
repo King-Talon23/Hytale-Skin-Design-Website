@@ -383,3 +383,20 @@ input.hex { width: 84px; font: 600 12px ui-monospace, Consolas, monospace; backg
 .viewhint:not(.fresh) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .82; }
 /* Creator: a plain-words name beside each number */
 .namedfield { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: center; gap: 6px; } .namedfield small { color: #c5d6e2; font-size: 12px; }
+
+/* Creator, one big view: the tools float in a bar under the character, the settings of the chosen tool sit on the right,
+   and the texture shows only when asked for ("Show texture") */
+#app.ws, #app.ws.ws-wide { grid-template-columns: minmax(0, 1fr) minmax(250px, 290px); grid-template-areas: "top top" "view right"; }
+#app.ws #wsleft { display: none; }
+#app.ws.ws-tex { grid-template-columns: minmax(240px, 28vw) minmax(0, 1fr) minmax(250px, 290px); grid-template-areas: "top top top" "left view right"; }
+#app.ws.ws-tex.ws-wide { grid-template-columns: minmax(340px, 40vw) minmax(0, 1fr) minmax(240px, 270px); }
+#app.ws.ws-tex #wsleft { display: flex; }
+@media (max-width: 1250px) and (min-width: 981px) { #app.ws:not(.ws-wide), #app.ws.ws-wide { grid-template-columns: minmax(0, 1fr) minmax(230px, 260px); gap: 6px; padding: 10px 12px; }
+  #app.ws.ws-tex { grid-template-columns: minmax(200px, 26vw) minmax(0, 1fr) minmax(220px, 250px); } }
+#app.ws #wstools { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 4; flex-direction: row; align-items: stretch; gap: 10px; max-width: calc(100% - 24px); overflow-x: auto;
+  background: #102036ee; border: 1px solid var(--line2); border-radius: 10px; padding: 6px 8px; grid-area: auto; }
+#wstools .wsgroup2 { display: flex; gap: 4px; } #wstools .wsgroup2 + .wsgroup2 { border-left: 1px solid var(--line); padding-left: 10px; }
+#wstools .wstool { width: 54px; height: 50px; }
+#app.ws .viewhint { top: 54px; bottom: auto; left: 50%; transform: translateX(-50%); }
+#app.ws .facing { top: 54px; bottom: auto; right: 10px; }
+#app.ws .viewhint { left: 10px; transform: none; max-width: calc(100% - 190px); }

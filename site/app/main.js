@@ -234,7 +234,7 @@ function viewInset() {   // the character is centred above the buttons at the bo
   st.inset(bh, emOn ? sr.right - em.getBoundingClientRect().left + 4 : 0); if (!viewInset.ro) { viewInset.ro = new ResizeObserver(() => viewInset()); viewInset.ro.observe(stg); } }
 function render() { if (pressing) { renderLater = true; return; } jobGen++; plate(); drawEmotes(); drawStageBtns(); drawGameSwitch(); outlineBox(); viewInset();
   if (!!ED !== $('app').classList.contains('ws')) scrollTo(0, 0);   // opening or closing the Creator workspace starts at the top of the page
-  $('app').classList.toggle('ws', !!ED); if (ED) return renderWorkspace(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
+  $('app').classList.toggle('ws', !!ED); $('app').classList.toggle('ws-tex', !!ED && !!ED.showTex); if (ED) return renderWorkspace(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
   p.replaceChildren(...({ editor: panelEditor, wardrobe: panelWardrobe, animations: panelAnimations, lookup: panelLookup, creator: panelCreator, help: panelHelp }[tab])());
   if (was === p.className && top) { const b = p.querySelector('.pbody'); if (b) b.scrollTop = top; } }
 // our own small symbols for the category rail (drawn here, not taken from the game)
@@ -1245,18 +1245,25 @@ function renderWorkspace() {
   const tools = mode === 'paint' ? PAINT_TOOLS : SHAPE_TOOLS, active = mode === 'paint' ? P.tool : ED.stool || 'select';
   $('wstop').replaceChildren(...[
     el('input', { type: 'text', class: 'wsname', value: a.name, maxLength: 40, title: 'Name', onchange: e => { const v = cleanName(e.target.value); if (v && gameNamed(v)) { e.target.value = ED.asset.name; return say(`"${v}" is the name of something in the game. Pick your own name.`, true); } ED.asset = { ...ED.asset, name: v || a.name }; queueAssetSave(); } }),
-    el('div', { class: 'wsmodes' }, [['paint', 'Paint'], ['shape', 'Shape']].map(([m, t]) => el('button', { class: mode === m ? 'on' : '', text: t, title: 'Tab switches', onclick: guard(() => setMode(m)) }))),
     el('span', { id: 'wssaved', class: 'wssaved', text: ED.saved === false ? 'Saving…' : 'Saved' }),
     el('span', { class: 'grow' }), a.flag ? el('button', { class: 'tag none', text: 'Site only: looks like ' + a.flag, title: FLAG_WHY(a.flag), onclick: () => say(FLAG_WHY(a.flag), true) }) : null,
     el('button', { class: 'btn icon', text: '↶', title: 'Undo (Ctrl+Z)', disabled: !ED.hist.length, onclick: () => wsUndo(false) }),
     el('button', { class: 'btn icon', text: '↷', title: 'Redo (Ctrl+Y)', disabled: !ED.fut.length, onclick: () => wsUndo(true) }),
     el('button', { class: 'btn icon', text: '?', title: 'Show the tips again', onclick: () => tour(0) }),
-    el('button', { id: 'wsequip', class: 'btn', text: 'Equip', title: 'Save it, close, and keep it on your character', onclick: () => finishAsset(true) }), el('button', { id: 'wsdone', class: 'btn primary', text: 'Done', title: 'Save it and close; your outfit goes back to how it was', onclick: () => finishAsset() })].filter(Boolean));
+    el('button', { id: 'wsequip', class: 'btn', text: 'Wear it', title: 'Save it, close, and keep it on your character', onclick: () => finishAsset(true) }), el('button', { id: 'wsdone', class: 'btn primary', text: 'Done', title: 'Save it and close; your outfit goes back to how it was', onclick: () => finishAsset() })].filter(Boolean));
   const tool = (id, label, key, ic, on, fn) => el('button', { class: 'wstool' + (on ? ' on' : ''), title: label + (key ? ` (${key})` : ''), onclick: fn }, el('span', { text: ic }), el('b', { text: SHORT[id] || label }), key && key.length === 1 ? el('i', { text: key }) : null);
-  const shown = mode === 'paint' ? tools.filter(t => ED.moreTools || CORE_TOOLS.includes(t[0]) || t[0] === active) : tools;
-  $('wstools').replaceChildren(...shown.map(([id, label, key, ic]) => tool(id, label, key, ic, active === id, () => pickTool(id))),
-    ...(mode === 'paint' ? [tool('more', ED.moreTools ? 'Fewer tools' : 'More tools', '', ED.moreTools ? '−' : '⋯', false, () => { ED.moreTools = !ED.moreTools; render(); })] : []),
-    );
+  const pickAny = (kind, id) => guard(async () => { if (ED.mode !== kind) await setMode(kind); pickTool(id); })();
+  const paintIds = ['brush', 'erase', 'fill', 'pick'], extra = PAINT_TOOLS.filter(t => !paintIds.includes(t[0]));
+  const NAMES = { brush: 'Paint', erase: 'Erase', fill: 'Fill', pick: 'Pick', move: 'Move', resize: 'Resize', rotate: 'Turn' };
+  const btn = (kind, [id, label, key, ic]) => { const on = ED.mode === kind && (kind === 'paint' ? P.tool : ED.stool) === id;
+    return el('button', { class: 'wstool' + (on ? ' on' : ''), title: label + (key ? ` (${key})` : ''), onclick: () => pickAny(kind, id) }, el('span', { text: ic }), el('b', { text: NAMES[id] || SHORT[id] || label })); };
+  const stg = $('view').parentElement; if ($('wstools').parentElement !== stg) stg.appendChild($('wstools'));   // the toolbar floats in the view, under the character
+  $('wstools').replaceChildren(
+    el('div', { class: 'wsgroup2' }, ...PAINT_TOOLS.filter(t => paintIds.includes(t[0])).sort((a, b) => paintIds.indexOf(a[0]) - paintIds.indexOf(b[0])).map(t => btn('paint', t)),
+      ...(ED.moreTools ? extra.map(t => btn('paint', t)) : []),
+      el('button', { class: 'wstool', title: ED.moreTools ? 'Fewer paint tools' : 'More paint tools (select, whole part, lines, boxes, lighten …)', onclick: () => { ED.moreTools = !ED.moreTools; render(); } }, el('span', { text: ED.moreTools ? '‹' : '⋯' }), el('b', { text: ED.moreTools ? 'Less' : 'More' }))),
+    el('div', { class: 'wsgroup2' }, ...SHAPE_TOOLS.map(t => btn('shape', t)),
+      el('button', { class: 'wstool', title: 'Add a new box: then click on the item where it should go', onclick: guard(async () => { if (ED.mode !== 'shape') await setMode('shape'); startPlacing(); }) }, el('span', { text: '+' }), el('b', { text: 'Add' }))));
   c.style.width = c.width * ED.zoom + 'px';
   if (!ED.box_) { ED.box_ = el('div', { class: 'paintbox' }); bindTexView(ED.box_); }
   ED.box_.replaceChildren(el('div', { class: 'paintwrap' }, c, limits(c), sizeOvl()));
@@ -1269,6 +1276,7 @@ function renderWorkspace() {
   $('wsright').replaceChildren(...(mode === 'paint' ? paintSide() : shapeSide()).flat(Infinity).filter(Boolean));
   viewHint();
   $('viewbtns').replaceChildren(   // just the item/whole-body switch: turning and zooming are drag and wheel (number keys still jump to a view)
+    el('button', { class: ED.showTex ? 'on' : '', text: ED.showTex ? 'Hide texture' : 'Show texture', title: 'The flat picture the item is painted on, to paint pixel by pixel', onclick: () => { ED.showTex = !ED.showTex; render(); requestAnimationFrame(() => { fitTexture(); render(); }); } }),
     el('button', { class: ED.iso ? 'on' : '', text: ED.iso ? 'Item only' : 'Whole body', title: 'Show only the item you are editing, or the whole character', onclick: () => { ED.iso = !ED.iso; st.isolate(ED.iso ? ED.canvas : null); render(); } }));
 }
 // shortcuts while the workspace is open (caught before the page's own Ctrl+Z, which undoes the skin)
