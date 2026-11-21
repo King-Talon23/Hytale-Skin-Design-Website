@@ -307,7 +307,10 @@ export function stage(canvas, Controls) {
     wallG.material.opacity += ((wallOn && !scrollers.length ? 0.5 : 0) - wallG.material.opacity) * (1 - Math.exp(-dt * 6)); wallG.visible = wallG.material.opacity > 0.01; }
   let hl = null, helpers = [];   // outlines around picked boxes (see drawHL)
   const anim = new Animator(), mountAnim = new Animator(); let figure = null, held = [], perchY = 0, faceCb = null, faced = '', last = performance.now(), mountRoot = null, seat = null, hoverTo = 0, hoverAt = 0;
-  function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
+  let inset = 0;   // the height of the buttons over the bottom of the view: the picture is centred on what is left above them, at the same scale
+  function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false);
+    const b = inset > 0 && inset < h * 0.45 ? inset : 0; cam.aspect = w / (h + b); cam.fov = 2 * Math.atan(Math.tan(16 * Math.PI / 180) * (h + b) / h) * 180 / Math.PI;
+    if (b) cam.setViewOffset(w, h + b, 0, b, w, h); else cam.clearViewOffset(); cam.updateProjectionMatrix(); }
   new ResizeObserver(fit).observe(canvas); fit();
   (function loop(now) { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000 || 0); anim.update(dt); mountAnim.playing = anim.playing; mountAnim.update(dt); travel(dt); float(dt, now); for (const h of helpers) h.update(); dropHeld(); facing(); last = now; renderer.render(scene, cam); })(last);
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -443,7 +446,8 @@ export function stage(canvas, Controls) {
     if (was !== !!root) { const k = root ? 1.6 : 1 / 1.6, ty = root ? 62 + at[1] * 0.7 : 62, off = cam.position.clone().sub(ctl.target).multiplyScalar(k);
       ctl.target.set(0, ty, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
   }
-  const api = { plantClear: r => { plantClear = r || 0; }, isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, props, lift, scenery, onFacing: cb => { faceCb = cb; faced = ''; }, wall: v => { wallOn = v || null; }, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
+  const fitLen = () => { const h = canvas.clientHeight || 1, b = inset > 0 && inset < h * 0.45 ? inset : 0; return Math.min(470, 150 * h / (2 * Math.tan(16 * Math.PI / 180) * (h - b))); };   // far enough that the whole character fits above the buttons
+  const api = { inset: px => { px = Math.max(0, Math.round(px || 0)); if (px !== inset) { inset = px; fit(); const off = cam.position.clone().sub(ctl.target); if (!lifted && Math.abs(off.length() - 268) < 12 && off.length() < fitLen()) { off.setLength(fitLen()); cam.position.copy(ctl.target).add(off); ctl.update(); } } }, plantClear: r => { plantClear = r || 0; }, isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, props, lift, scenery, onFacing: cb => { faceCb = cb; faced = ''; }, wall: v => { wallOn = v || null; }, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
     gizmoBusy: () => tc.dragging || tc.axis !== null,
     // where a click lands on a box: the point and the face's outward direction, in the box's own part (node) space
     pickHit(cx, cy, keep) { if (!figure) return null; aim(cx, cy); for (const h of ray.intersectObject(figure, true)) if (h.object.visible && keep(h.object)) {
@@ -468,7 +472,7 @@ export function stage(canvas, Controls) {
     highlight(f) { hl = f; drawHL(); },
     show(root) { if (figure) { unhang(); scene.remove(figure); dispose(figure); } figure = root; scene.add(root); seatAt(); anim.setFigure(root); hang(); lit = []; applyIsolate(); drawHL(); if (api.afterShow) api.afterShow(); },
     view(front) { const off = new THREE.Vector3(front ? 0 : -75, 33, front ? 265 : 255);   // during a tall move (gliding, flying, climbing) keep its raised aim and distance
-      if (lifted) off.setLength(Math.max(off.length(), 360)); else ctl.target.set(0, 62, 0); cam.position.copy(ctl.target).add(off); ctl.update(); },
+      if (lifted) off.setLength(Math.max(off.length(), 360)); else { ctl.target.set(0, 62, 0); off.setLength(Math.max(off.length(), fitLen())); } cam.position.copy(ctl.target).add(off); ctl.update(); },
     behind() { if (cam.position.z - ctl.target.z < 0) return; const off = cam.position.clone().sub(ctl.target); off.x = -off.x; off.z = -off.z; cam.position.copy(ctl.target).add(off); ctl.update(); } };   // a climb is watched from behind, as in the game
   // ---- in-game backgrounds: a sky dome from the zone's sky and fog colours, and a floor of its ground blocks fading into that fog
   const shadow = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);

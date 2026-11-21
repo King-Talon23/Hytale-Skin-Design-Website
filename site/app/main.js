@@ -212,7 +212,11 @@ let pressing = false, renderLater = false;
 const flushRender = () => { pressing = false; if (renderLater) { renderLater = false; render(); } };
 addEventListener('pointerdown', e => { if (e.target.closest?.('button, a, summary, label, select, .skin')) { pressing = true; setTimeout(flushRender, 1500); } }, true);
 for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { if (pressing) setTimeout(flushRender, 0); }, true);
-function render() { if (pressing) { renderLater = true; return; } jobGen++; plate(); drawEmotes(); drawStageBtns(); drawGameSwitch(); outlineBox();
+function viewInset() {   // the character is centred above the buttons at the bottom of the view, not behind them
+  const stg = $('view')?.parentElement, bar = stg?.querySelector('.bar'); if (!st || !stg) return;
+  const on = bar && bar.offsetParent && !stg.classList.contains('clean') && !$('app').classList.contains('ws');
+  st.inset(on ? stg.getBoundingClientRect().bottom - bar.getBoundingClientRect().top : 0); if (!viewInset.ro) { viewInset.ro = new ResizeObserver(() => viewInset()); viewInset.ro.observe(stg); } }
+function render() { if (pressing) { renderLater = true; return; } jobGen++; plate(); drawEmotes(); drawStageBtns(); drawGameSwitch(); outlineBox(); viewInset();
   if (!!ED !== $('app').classList.contains('ws')) scrollTo(0, 0);   // opening or closing the Creator workspace starts at the top of the page
   $('app').classList.toggle('ws', !!ED); if (ED) return renderWorkspace(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
   p.replaceChildren(...({ editor: panelEditor, wardrobe: panelWardrobe, animations: panelAnimations, lookup: panelLookup, creator: panelCreator, help: panelHelp }[tab])());
@@ -340,10 +344,10 @@ function drawStageBtns() {
   box.replaceChildren(...[
     el('button', { class: 'stbtn', title: 'Change the background behind your character (the game\u2019s own places)', 'aria-label': 'Background: ' + name, onclick: () => { const i = BACKDROPS.findIndex(b => b[0] === bd); store_.set('se_backdrop', BACKDROPS[(i + 1) % BACKDROPS.length][0]); drawStageBtns(); } },
       el('span', { class: 'bdchip bd-' + bd }), el('b', { text: name })),
-    ED ? null : el('button', { class: 'stbtn', title: clean ? 'Show the buttons again (Esc)' : 'Hide the buttons for a clean look at your character', 'aria-label': clean ? 'Show buttons' : 'Clean view', onclick: () => { stg.classList.toggle('clean'); drawStageBtns(); } },
+    ED ? null : el('button', { class: 'stbtn', title: clean ? 'Show the buttons again (Esc)' : 'Hide the buttons for a clean look at your character', 'aria-label': clean ? 'Show buttons' : 'Clean view', onclick: () => { stg.classList.toggle('clean'); drawStageBtns(); viewInset(); } },
       el('span', { text: clean ? '\u25c9' : '\u25ce' }), el('b', { text: clean ? 'Show buttons' : 'Clean view' }))].filter(Boolean));
 }
-addEventListener('keydown', e => { if (e.key === 'Escape' && !ED) { const stg = $('view')?.parentElement; if (stg?.classList.contains('clean')) { stg.classList.remove('clean'); drawStageBtns(); } } });
+addEventListener('keydown', e => { if (e.key === 'Escape' && !ED) { const stg = $('view')?.parentElement; if (stg?.classList.contains('clean')) { stg.classList.remove('clean'); drawStageBtns(); viewInset(); } } });
 // six favourite moves under the character, one click to play
 let EMOTES = null;
 const EMOTE_DEFAULT = ['Wave', 'Clap', 'Dance_Boogie', 'Shrug', 'Salute_Chest', 'Laugh_Strong'];
