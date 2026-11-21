@@ -414,15 +414,18 @@ function card(rec, kind, i) {
   const acts = kind === 'game' ? [act('Set in game', () => checklist(rec)), act('Rename', () => renameSkin(rec)), act('Move out', () => moveOut(rec)), pubButton(rec), locked('Send to game', 'sending this skin to your in-game preset', 'mini')]
     : kind === 'custom' ? [act('To in-game', () => toGame(rec)), act('Rename', () => renameSkin(rec)), act('Copy', () => duplicate(rec)), pubButton(rec), act('Export', () => download(rec.name.replace(/[^\w -]/g, '') + '.skin.json', { name: rec.name, skin: rec.skin })), act('Delete', () => removeSkin(rec), 'danger')]
     : [act('Save', () => { open(rec, true); saveAs(); })];
-  return el('div', { class: 'skin ' + kind + (cur.id && cur.id === rec.id ? ' on' : ''), tabIndex: 0, title: 'Open in the editor', onclick: () => { if (kind === 'pub') { open(rec, true, true); return render(); } open(rec, kind === 'found'); setTab('editor'); },
+  const menuBtn = acts.filter(Boolean).length > 1 ? el('button', { class: 'cardmenu', text: '⋯', title: 'More', 'aria-label': 'More', onclick: e => { e.stopPropagation(); const m = e.currentTarget.nextElementSibling; const open_ = m.hidden; document.querySelectorAll('.cardacts').forEach(x => x.hidden = true); m.hidden = !open_;
+      if (open_) { const close = ev => { if (!m.contains(ev.target) && ev.target !== e.target) { m.hidden = true; removeEventListener('pointerdown', close, true); } }; addEventListener('pointerdown', close, true); } } }) : null;   /* card actions live in a ⋯ menu, as in file browsers */
+  return el('div', { class: 'skin ' + kind + (cur.id && cur.id === rec.id ? ' on' : ''), tabIndex: 0, onclick: () => { if (kind === 'pub') { open(rec, true, true); return render(); } open(rec, kind === 'found'); setTab('editor'); },
     onkeydown: e => { if (e.key === 'Enter') e.currentTarget.click(); } },
-    el('div', { class: 'pic' }, portrait(rec.skin)), el('b', { text: rec.name }), kind === 'game' ? el('small', { text: 'Slot ' + (rec.slot + 1) }) : null, el('div', { class: 'acts' }, acts));
+    el('div', { class: 'pic' }, portrait(rec.skin)), el('b', { text: rec.name }), kind === 'game' ? el('small', { text: 'Slot ' + (rec.slot + 1) }) : null,
+    menuBtn ? [menuBtn, el('div', { class: 'cardacts', hidden: true }, acts)] : el('div', { class: 'acts' }, acts));
 }
 // Features that need a Hytale account. Sign in with Hytale is not available to this site yet, so they are shown greyed out.
 const NEED = f => ACCOUNT ? `Hytale does not offer ${f} to other apps yet` : !auth.enabled ? `Coming soon: ${f} needs Sign in with Hytale, which is waiting on Hytale's approval` : `Connect your Hytale account to enable ${f}`;
-const locked = (label, feature, cls = 'btn ghost') => el('button', { class: cls + ' locked', 'aria-disabled': 'true', title: NEED(feature), text: label, onclick: e => { e.stopPropagation(); say(NEED(feature)); } });   // not disabled: a click says why it can't be used yet
+const locked = (label, feature, cls = 'btn ghost') => !auth.enabled ? null :   /* features waiting on Sign in with Hytale stay hidden until it exists */ el('button', { class: cls + ' locked', 'aria-disabled': 'true', title: NEED(feature), text: label, onclick: e => { e.stopPropagation(); say(NEED(feature)); } });   // not disabled: a click says why it can't be used yet
 const need = feature => el('p', { class: 'need', text: NEED(feature) + '.' });
-function accountRow() {
+function accountRow() { if (!auth.enabled) return null;
   if (!auth.enabled) return el('div', { class: 'folder account' }, el('div', {}, el('b', {}, 'Hytale account ', el('span', { class: 'tag none', text: 'WIP' })),
     ),
     el('button', { class: 'btn primary locked', disabled: true, title: 'Coming soon', text: 'Connect Hytale account' }));
