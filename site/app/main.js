@@ -658,8 +658,8 @@ async function makeAsset(f, val) {
   if (src) a = await assets.save({ ...src, id: assets.newId(), name: copyName(src.name), flag: undefined });
   else { const c = await fig.bakedCanvas(r.tex, r.tint).catch(() => { throw new Error(`${itemName(it)} is not in your game files, so it can't be edited here.`); }), data = await new Promise(ok => c.toBlob(ok, 'image/png'));
     a = await assets.save({ id: assets.newId(), name: itemName(it) + ' (mine)', field: f, baseId: it.Id, model: r.model, w: c.width, h: c.height, data }); }
-  const was = cur.skin[f] && R.find(f, cur.skin[f]); ASSETS = await assets.list(); registerAssets(); setSkin({ ...cur.skin, [f]: 'Custom_' + a.id + '.Mine' }); await openAsset(a);
-  say(was && was.Id !== it.Id ? `You are wearing it in place of ${itemName(was)} (one ${LABEL[f]} at a time).` : '');
+  ASSETS = await assets.list(); registerAssets(); beforeEdit = cur.skin; setSkin({ ...cur.skin, [f]: 'Custom_' + a.id + '.Mine' }); await openAsset(a);
+  say('Shown on your character while you edit. Done saves it and puts your outfit back; Equip saves it and keeps it on.');
 }
 const makePainter = (c, a) => createPainter(c, final => { fig.refreshCustom(a.id); if (final) { queueAssetSave(); recordPaint(); if (ED && !ED.replaying) render(); } }, () => render());
 // a texture with no free room grows downwards (twice as tall, up to 256): the old paint stays where it was, the new rows are empty
@@ -681,7 +681,7 @@ async function openAsset(a) {
   const flatPx = e => { const r = c.getBoundingClientRect(); return { x: Math.min(c.width - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * c.width))), y: Math.min(c.height - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * c.height))) }; };
   bindPaint(c, flatPx, 1e9); bindSelect(c, flatPx);
   c.addEventListener('pointermove', e => { if (!ED) return; ED.hover = flatPx(e); ED.hoverM = null; drawOvl(); }); c.addEventListener('pointerleave', () => { if (!ED) return; ED.hover = null; drawOvl(); });
-  registerAssets(); if (!(cur.skin[a.field] || '').startsWith('Custom_' + a.id)) setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' });
+  registerAssets(); ED.before = beforeEdit || cur.skin; beforeEdit = null; if (!(cur.skin[a.field] || '').startsWith('Custom_' + a.id)) setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' });
   setMount(null); ED.iso = true; st.isolate(c); st.anim.set(null); st.paintMode(true); tab = 'creator'; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === 'creator'); render(); rebuild();
 }
 const BRUSH = (() => { try { const b = JSON.parse(store_.get('se_brush') || '{}'), o = {}; if (/^#[0-9a-f]{6}$/i.test(b.color)) o.color = b.color; if (b.size >= 1 && b.size <= 8) o.size = Math.round(b.size); if (b.opacity > 0 && b.opacity <= 1) o.opacity = b.opacity; if (['area', 'side', 'every'].includes(b.fillMode)) o.fillMode = b.fillMode; if (['brush', 'erase', 'part', 'fill', 'pick', 'replace', 'line', 'box', 'boxfill', 'light', 'dark', 'noise'].includes(b.tool)) o.tool = b.tool; return o; } catch { return {}; } })();
@@ -690,9 +690,10 @@ const markSaved = ok => { if (!ED) return; ED.saved = ok; const s = $('wssaved')
 function queueAssetSave() { markSaved(false); clearTimeout(queueAssetSave.t); queueAssetSave.t = setTimeout(() => flushAsset().catch(e => say(e.message, true)), 900); }
 async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; const e = ED, data = await new Promise(ok => e.canvas.toBlob(ok, 'image/png'));
   try { e.asset = await assets.save({ ...e.asset, data, shape: e.model && e.shapeN ? JSON.stringify(e.model) : e.asset.shape }); ASSETS = await assets.list(); syncFolder(); } finally { if (ED === e) markSaved(true); } }
+let beforeEdit = null;   // the outfit before an item went on for editing: Done puts it back, Equip keeps the item on
 const STEPS = new Map();   // undo history per custom item, kept for this visit so reopening an item can still undo
-async function closeAsset(quiet) {
-  if (!ED) return; keepBrush(); if (ED.float) placeFloat(); STEPS.set(ED.asset.id, { hist: ED.hist, fut: ED.fut, paint: ED.painter.keepSteps() }); tour(99); if ($('viewhint')) $('viewhint').hidden = true; st.cursor(null); await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; if ($('viewhint')) $('viewhint').hidden = true; registerAssets(); st.highlight(null); st.isolate(null); st.paintMode(false); st.gizmo(null); st.setView('persp'); pics.clear(); lastPic.clear();
+async function closeAsset(quiet, keep = false) {
+  if (!ED) return; const before = ED.before, fld = ED.asset.field; keepBrush(); if (ED.float) placeFloat(); STEPS.set(ED.asset.id, { hist: ED.hist, fut: ED.fut, paint: ED.painter.keepSteps() }); tour(99); if ($('viewhint')) $('viewhint').hidden = true; st.cursor(null); await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; if ($('viewhint')) $('viewhint').hidden = true; registerAssets(); if (!keep && before && cur.skin[fld] !== before[fld]) { const s = { ...cur.skin }; if (before[fld] == null) delete s[fld]; else s[fld] = before[fld]; cur.skin = s; setSkin(s); } st.highlight(null); st.isolate(null); st.paintMode(false); st.gizmo(null); st.setView('persp'); pics.clear(); lastPic.clear();
   if (!quiet) { playAnim('Default', 'Idle', 0.5); rebuild(); render(); }
 }
 // painting: the same strokes whether the pointer is on the flat texture or on the 3D model
@@ -1126,8 +1127,8 @@ function useColour(h) { const P = ED.painter; P.color = h; if (!ED.altFrom && P.
   RECENT = [h, ...RECENT.filter(x => x !== h)].slice(0, 8); store_.set('se_recent', JSON.stringify(RECENT)); render(); }
 const swatchRow = list => el('div', { class: 'swatches' }, list.map(h => { const b = el('button', { title: h, class: h === ED.painter.color ? 'on' : '', onclick: () => useColour(h) }); b.style.background = h; return b; }));
 // ---- the finish: after Done, say what happens next
-async function finishAsset() {
-  const a = ED.asset; await closeAsset(); const linked = FOLDER.state === 'on';
+async function finishAsset(equip = false) {
+  const a = ED.asset; await closeAsset(false, equip); if (!equip) return say(`Saved ${a.name}. It is under Custom in the Wardrobe; Wear on its card puts it on.`); const linked = FOLDER.state === 'on';
   const text = linked ? (SHOWGAME ? 'It is on your character in your own worlds too, through the Skin Editor Sync mod.' : 'Turn on In game to wear it in your own Hytale worlds (needs the Skin Editor Sync mod).')
     : 'To wear it in Hytale, install the Skin Editor Sync mod and pick a skins folder in the Locker.';
   const upd = cur.id && cur.name ? ` "${cur.name}" now wears it too.` : '';
@@ -1210,7 +1211,7 @@ function renderWorkspace() {
     el('button', { class: 'btn icon', text: '↶', title: 'Undo (Ctrl+Z)', disabled: !ED.hist.length, onclick: () => wsUndo(false) }),
     el('button', { class: 'btn icon', text: '↷', title: 'Redo (Ctrl+Y)', disabled: !ED.fut.length, onclick: () => wsUndo(true) }),
     el('button', { class: 'btn icon', text: '?', title: 'Show the tips again', onclick: () => tour(0) }),
-    el('button', { id: 'wsdone', class: 'btn primary', text: 'Done', onclick: () => finishAsset() })].filter(Boolean));
+    el('button', { id: 'wsequip', class: 'btn', text: 'Equip', title: 'Save it, close, and keep it on your character', onclick: () => finishAsset(true) }), el('button', { id: 'wsdone', class: 'btn primary', text: 'Done', title: 'Save it and close; your outfit goes back to how it was', onclick: () => finishAsset() })].filter(Boolean));
   const tool = (id, label, key, ic, on, fn) => el('button', { class: 'wstool' + (on ? ' on' : ''), title: label + (key ? ` (${key})` : ''), onclick: fn }, el('span', { text: ic }), el('b', { text: SHORT[id] || label }), key && key.length === 1 ? el('i', { text: key }) : null);
   const shown = mode === 'paint' ? tools.filter(t => ED.moreTools || CORE_TOOLS.includes(t[0]) || t[0] === active) : tools;
   $('wstools').replaceChildren(...shown.map(([id, label, key, ic]) => tool(id, label, key, ic, active === id, () => pickTool(id))),
