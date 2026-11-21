@@ -1004,7 +1004,7 @@ function shapeEdit(fn) {   // with Symmetry on, the box's twin on the other side
   const before = JSON.stringify(ED.model), b0 = curBox(), tw = symTwin(); fn();
   if (tw && b0 && b0.node !== tw && boxesOf(ED.model).some(x => x.node === b0.node) && boxesOf(ED.model).some(x => x.node === tw)) mirrorNode(b0.node, tw);
   finishShape(before); }
-async function setMode(m) { if (ED.float) placeFloat(); say(''); if (m === 'shape') { await editModel(); ED.box ||= 0; ED.stool ||= 'select'; st.cursor(null); ED.hover = ED.hoverM = null; } ED.mode = m; ED.shapeOpen = m === 'shape'; render(); placeGizmo(); }
+async function setMode(m) { if (ED.float) placeFloat(); say(''); if (m === 'shape') { await editModel(); if (boxesOf(ED.model).filter(b => /^Box_/.test(b.node.name) && bakeOffset(b.node)).length) shapeChanged(); ED.box ||= 0; ED.stool ||= 'select'; st.cursor(null); ED.hover = ED.hoverM = null; } ED.mode = m; ED.shapeOpen = m === 'shape'; render(); placeGizmo(); }
 function pickTool(id) { if (ED.mode === 'shape') { if (ED.stool !== id) say(''); ED.stool = id; } else { if (id !== 'select' && ED.float) placeFloat(); ED.painter.tool = id; } render(); placeGizmo(); }
 function curBox() { return ED.model ? boxesOf(ED.model)[ED.box || 0] : null; }
 function placeGizmo() {
@@ -1191,7 +1191,12 @@ function tidyResized(beforeJson) {
   }
   return paints;
 }
+// a box the player added turns about its own middle: any shift of it goes into its place (position), never its offset from that place
+function bakeOffset(n) { const o = n.shape?.offset; if (!o || !(o.x || o.y || o.z)) return false; const q = n.orientation || { x: 0, y: 0, z: 0, w: 1 }, p = n.position || { x: 0, y: 0, z: 0 }, r = v => Math.round(v * 100) / 100;
+  const ix = q.w * o.x + q.y * o.z - q.z * o.y, iy = q.w * o.y + q.z * o.x - q.x * o.z, iz = q.w * o.z + q.x * o.y - q.y * o.x, iw = -q.x * o.x - q.y * o.y - q.z * o.z;
+  n.position = { x: r(p.x + ix * q.w - iw * q.x - iy * q.z + iz * q.y), y: r(p.y + iy * q.w - iw * q.y - iz * q.x + ix * q.z), z: r(p.z + iz * q.w - iw * q.z - ix * q.y + iy * q.x) }; n.shape.offset = { x: 0, y: 0, z: 0 }; return true; }
 function finishShape(before) {
+  for (const b of boxesOf(ED.model)) if (/^Box_/.test(b.node.name)) bakeOffset(b.node);
   const paints = tidyResized(before); recordShape(before);
   if (paints.length) { ED.painter.write((d, W, H) => paints.forEach(p => p(d, W, H))); ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); }
   shapeChanged();
@@ -1211,7 +1216,8 @@ function shapeSide() {
     el('div', { class: 'options' }, el('button', { class: 'chip' + (ED.sym ? ' on' : ''), text: `Symmetry: ${ED.sym ? 'on' : 'off'}`, title: 'Changes to a box also change its twin on the other side',
       onclick: () => { ED.sym = !ED.sym; render(); } }), ED.sym ? el('small', { class: 'dim', text: twinOf(b) ? 'Twin: ' + boxLabel(twinOf(b)) : 'No twin for this box' }) : null),
     el('div', { class: 'wshead', text: boxLabel(b.node) }),
-    el('div', { class: 'wsgroup' }, el('b', { text: 'Position' }), axisField('X', sh, 'offset', 'x', -64, 64, 0.5), axisField('Y', sh, 'offset', 'y', -64, 64, 0.5), axisField('Z', sh, 'offset', 'z', -64, 64, 0.5)),
+    el('div', { class: 'wsgroup' }, el('b', { text: 'Position' }), ...(/^Box_/.test(b.node.name) ? [axisField('X', b.node, 'position', 'x', -64, 64, 0.5), axisField('Y', b.node, 'position', 'y', -64, 64, 0.5), axisField('Z', b.node, 'position', 'z', -64, 64, 0.5)]
+      : [axisField('X', sh, 'offset', 'x', -64, 64, 0.5), axisField('Y', sh, 'offset', 'y', -64, 64, 0.5), axisField('Z', sh, 'offset', 'z', -64, 64, 0.5)])),
     el('div', { class: 'wsgroup' }, el('b', { text: 'Size' }),
       el('div', { class: 'sizebtns' }, ...[['Longer', 'y', 2], ['Shorter', 'y', -2], ['Wider', 'x', 2], ['Narrower', 'x', -2], ['Thicker', 'z', 2], ['Thinner', 'z', -2]].map(([t, ax, d]) =>
         el('button', { class: 'chip', text: t, title: ax === 'y' ? 'Changes the height; the top stays where it is' : '', onclick: () => shapeEdit(() => { const cur_ = sh.settings.size?.[ax] ?? 0, nv = Math.max(1, cur_ + d), dd = nv - cur_;
