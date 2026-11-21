@@ -400,3 +400,8 @@ input.hex { width: 84px; font: 600 12px ui-monospace, Consolas, monospace; backg
 #app.ws .viewhint { top: 54px; bottom: auto; left: 50%; transform: translateX(-50%); }
 #app.ws .facing { top: 54px; bottom: auto; right: 10px; }
 #app.ws .viewhint { left: 10px; transform: none; max-width: calc(100% - 190px); }
+/* Add another item: a wider dialog with a scrolling grid of item pictures */
+dialog.wide { width: min(760px, 94vw); }
+.combinegrid { max-height: 46vh; overflow: auto; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); padding: 2px; }
+.combinegrid .skin { text-align: left; } .combinegrid .skin.on { border-color: var(--gold); }
+.combinegrid .skin b { font-size: 11.5px; line-height: 1.25; }

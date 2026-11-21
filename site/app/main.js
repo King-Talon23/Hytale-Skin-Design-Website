@@ -31,7 +31,9 @@ function ask(title, body, buttons) {
   const d = $('dlg'); $('dlgtitle').textContent = title; $('dlgbody').replaceChildren(...[].concat(body));
   $('dlgbtns').replaceChildren(...buttons.map(b => el('button', { class: 'btn ' + (b.primary ? 'primary' : b.danger ? 'danger' : 'ghost'), value: b.value, text: b.label })));
   const main = buttons.find(b => b.primary) || buttons.find(b => b.danger); d.onkeydown = e => { if (e.key === 'Enter' && main && e.target.matches?.('input:not([type=checkbox]):not([type=radio])')) { e.preventDefault(); d.close(main.value); } };   // Enter in a text box presses the main button, not Cancel
-  return new Promise(ok => { d.onclose = () => ok(d.returnValue || ''); d.returnValue = ''; d.showModal(); });
+  return new Promise(ok => { let done = false; const end = v => { if (done) return; done = true; ok(v); };   /* a button answers at once; closing (Esc) answers too */
+    for (const b of $('dlgbtns').children) b.addEventListener('click', e => { e.preventDefault(); d.close(b.value); end(b.value); });
+    d.onclose = () => end(d.returnValue || ''); d.returnValue = ''; d.showModal(); });
 }
 const confirmBox = (title, text, yes, danger) => ask(title, el('p', { text }), [{ label: 'Cancel', value: '' }, { label: yes, value: 'yes', primary: !danger, danger }]).then(v => v === 'yes');
 function download(name, data) { const a = el('a', { href: URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' })), download: name }); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
@@ -102,7 +104,7 @@ async function startApp() {
   META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); SHOWGAME = !!(await db.get('meta', 'showInGame').catch(() => false));
   $('connect').hidden = true; $('app').hidden = false;
   if (!st) { st = fig.stage($('view'), OrbitControls);
-    if (location.hostname.endsWith('localhost')) { window.__st = st; window.__dbg = { combineWith: (...a) => combineWith(...a), cat: () => CAT }; }   // local tests only
+    if (location.hostname.endsWith('localhost')) { window.__st = st; window.__dbg = { combineWith: (...a) => combineWith(...a), combinePick: () => combinePick(), cat: () => CAT }; }   // local tests only
     st.onMissing = () => say('Some of the game objects this move uses are not in your saved copy of the game files yet. Connect your Assets.zip again in Help to see them.', true); st.onFacing(f => { const t = $('facing') || $('view').parentElement.appendChild(el('div', { id: 'facing', class: 'facing' })); t.textContent = 'Facing you: ' + f; }); bindPaint($('view'), e => ED && !ED.shapeOpen && ED.painter.tool !== 'select' ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true);
     $('view').addEventListener('pointermove', e => { if (!ED) return; partHover(e); const p = ED.shapeOpen || ED.painter.tool === 'select' ? st.cursor(null) : st.cursor(e.clientX, e.clientY, ED.canvas, brushSize(), ED.mirror);
       ED.hover = p; ED.hoverM = p?.m || null; drawOvl(); });
@@ -1451,15 +1453,23 @@ async function combineWith(f, e) {
   ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); shapeChanged();
   say(`Added ${itemName(e)}: ${added.length} part${added.length === 1 ? '' : 's'}${ED.canvas.height !== canvasH0 || ED.canvas.width !== canvasW0 ? ' (the texture grew to make room)' : ''}. Undo takes it off again.`);
 }
-async function combinePick() {   // pick the item to add: any slot, game items and your own pieces
+async function combinePick() {   // pick the item to add, by its picture: any slot, game items and your own pieces
   const slots = game.FIELDS.filter(f => CAT.items[f]?.length), slot = el('select', {}, slots.map(f => el('option', { value: f, text: LABEL[f] })));
-  const item = el('select', {}), fill = () => { const list = oneEach(CAT.items[slot.value]).filter(e => !isTmp(e) && !(!e.custom && paidLocked(e)) && !(ED && e.Id === 'Custom_' + ED.asset.id));
-    item.replaceChildren(...list.map(e => el('option', { value: e.Id, text: itemName(e) + (e.custom ? ' (yours)' : '') }))); };
-  slot.value = slots.includes('faceAccessory') && ED?.asset.field !== 'faceAccessory' ? 'faceAccessory' : slots[0]; slot.onchange = fill; fill();
-  const v = await ask('Combine with another item', [el('p', { class: 'dim', text: 'Its parts and paint are added to this piece, worn together in this slot.' }), el('label', { text: 'Slot' }), slot, el('label', { text: 'Item' }), item],
-    [{ label: 'Cancel', value: '' }, { label: 'Add it', value: 'yes', primary: true }]);
-  if (v !== 'yes' || !item.value) return; const e = CAT.items[slot.value].find(x => x.Id === item.value); if (!e) return;
-  document.body.classList.add('busy'); try { await combineWith(slot.value, e); } finally { document.body.classList.remove('busy'); }
+  const find = el('input', { type: 'text', placeholder: 'Search', maxLength: 40, autocomplete: 'off' }), grid = el('div', { class: 'cards combinegrid' }), name = el('p', { class: 'dim', text: 'Pick an item' });
+  let chosen = null;
+  const fill = () => { const q = find.value.trim().toLowerCase(), f = slot.value;
+    const list = oneEach(CAT.items[f]).filter(e => !isTmp(e) && !(!e.custom && paidLocked(e)) && !(ED && e.Id === 'Custom_' + ED.asset.id) && (!q || itemName(e).toLowerCase().includes(q)));
+    grid.replaceChildren(...list.map(e => { const a = e.custom && ASSETS.find(x => 'Custom_' + x.id === e.Id);
+      const card = el('button', { type: 'button', class: 'skin' + (chosen && chosen.e === e ? ' on' : ''), title: itemName(e), onclick: () => { chosen = { f, e }; name.textContent = 'Adding: ' + itemName(e); for (const c of grid.children) c.classList.toggle('on', c === card); } },
+        el('div', { class: 'pic' }, a ? assetThumb(a) : itemThumb(f, e, null, null, true)), el('b', { text: itemName(e) + (e.custom ? ' (yours)' : '') }));
+      return card; }));
+    if (!list.length) grid.append(el('p', { class: 'blank', text: 'Nothing matches.' })); };
+  slot.value = slots.includes('faceAccessory') && ED?.asset.field !== 'faceAccessory' ? 'faceAccessory' : slots[0]; slot.onchange = () => { chosen = null; name.textContent = 'Pick an item'; fill(); }; find.oninput = fill; fill();
+  $('dlg').classList.add('wide');
+  const v = await ask('Add another item', [el('p', { class: 'dim', text: 'Its parts and paint join this piece, worn together in this slot.' }), el('div', { class: 'row' }, slot, find), grid, name],
+    [{ label: 'Cancel', value: '' }, { label: 'Add it', value: 'yes', primary: true }]).finally(() => $('dlg').classList.remove('wide'));
+  if (v !== 'yes') return; if (!chosen) return say('Pick an item first.', true);
+  document.body.classList.add('busy'); try { await combineWith(chosen.f, chosen.e); } finally { document.body.classList.remove('busy'); }
 }
 function addBox(kind = 'dup', at = null) {   // 'dup' a copy, 'mirror' a copy on the other side, 'add' a new 4-block box; each gets its own room on the texture
   const boxes = boxesOf(ED.model), b = boxes[ED.box || 0]; if (!b) return; if (boxes.length >= assets.MAX_BOXES) return say(`A shape can have up to ${assets.MAX_BOXES} boxes.`, true);
