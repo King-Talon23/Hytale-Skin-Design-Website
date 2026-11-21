@@ -87,7 +87,13 @@ export async function folderState() {
   const on = dir && (await h.queryPermission({ mode: 'readwrite' })) === 'granted';
   return { state: on ? 'on' : 'ask', name: h.name, mod: on ? await modSeen() : null };   // mod: the companion mod's marker, when it has run
 }
-export async function chooseFolder() { return useFolder(await self.showDirectoryPicker({ id: 'skins', mode: 'readwrite', startIn: 'documents' })); }
+// the skins folder is always Documents/Hytale Skins, where the Skin Editor Sync mod looks: picking Documents makes (or finds) it there,
+// picking the Hytale Skins folder itself is fine, and any other folder is turned down so the mod never misses the skins
+export const FOLDER_NAME = 'Hytale Skins';
+export async function chooseFolder() { const h = await self.showDirectoryPicker({ id: 'skins', mode: 'readwrite', startIn: 'documents' });
+  if (h.name === FOLDER_NAME) return useFolder(h);
+  if (/^(Documents|Documenten|Dokumente|Documentos|Documenti|My Documents)$/i.test(h.name)) return useFolder(await h.getDirectoryHandle(FOLDER_NAME, { create: true }));
+  throw new Error(`Pick your Documents folder (the site makes "${FOLDER_NAME}" in it), or the "${FOLDER_NAME}" folder itself. The mod only looks there.`); }
 export async function useFolder(h) { await db.put('meta', 'folder', h); dir = h; written.clear(); known.clear(); lastWearing = null; return attach(); }
 export async function resumeFolder(ask) {
   if (!folderSupported) return null; const h = await db.get('meta', 'folder'); if (!h) return null;

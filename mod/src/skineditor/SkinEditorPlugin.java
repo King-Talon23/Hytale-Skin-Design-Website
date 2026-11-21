@@ -62,7 +62,7 @@ public final class SkinEditorPlugin extends JavaPlugin {
         "undertop", "overtop", "shoes", "headAccessory", "faceAccessory", "earAccessory", "skinFeature", "gloves", "cape" };
     static final Set<String> SLOTS = Set.of(FIELDS);
     static final String LIVE = "SkinEditor_Live";
-    static final String VERSION = "1.0.1";
+    static final String VERSION = "1.0.2";
 
     record Asset(String id, String field, String model, String texture) {}
     /** what the website says you are wearing */
@@ -101,7 +101,13 @@ public final class SkinEditorPlugin extends JavaPlugin {
         userData = saves == null ? null : saves.getParent();                              // UserData (Saves/<world>/mods)
         Path home = Path.of(System.getProperty("user.home"));
         skinsDir = home.resolve("Documents").resolve("Hytale Skins");
-        for (Path p : List.of(skinsDir, home.resolve("OneDrive").resolve("Documents").resolve("Hytale Skins"))) if (Files.isDirectory(p)) { skinsDir = p; break; }
+        Path oneDrive = home.resolve("OneDrive").resolve("Documents");
+        boolean found = false;
+        for (Path p : List.of(skinsDir, oneDrive.resolve("Hytale Skins"))) if (Files.isDirectory(p)) { skinsDir = p; found = true; break; }
+        if (!found) {   // make the folder the website saves to, so it is always the same place (Documents, or OneDrive's Documents when Windows keeps it there)
+            if (Files.isDirectory(oneDrive) && !Files.isDirectory(home.resolve("Documents"))) skinsDir = oneDrive.resolve("Hytale Skins");
+            try { Files.createDirectories(skinsDir); } catch (Exception e) { getLogger().atWarning().log("[SkinEditor] could not make " + skinsDir + ": " + e); }
+        }
     }
 
     // ------------------------------------------------------------------ once a second

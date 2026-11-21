@@ -437,7 +437,7 @@ function folderRow() {
   const btn = (t, fn, c = 'ghost') => el('button', { class: 'btn ' + c, text: t, onclick: guard(fn) });
   const [title, text] = FOLDER.state === 'on' ? ['Saving to folder: ' + FOLDER.name, 'Every skin and custom asset is a small file in this folder and updates as you edit.']
     : FOLDER.state === 'ask' ? ['Folder paused: ' + FOLDER.name, 'Your browser needs your OK again before it can write to the folder. Until then, changes are kept in the browser.']
-    : ['Save skins to a folder', 'Pick a folder on your computer, for example a "Hytale Skins" folder in Documents. Each skin becomes a small file there and updates as you edit.'];
+    : ['Save skins to a folder', 'Pick your Documents folder and the site makes a "Hytale Skins" folder in it, the one the mod reads. Each skin becomes a small file there.'];
   return el('div', { class: 'folder ' + FOLDER.state }, el('div', {}, el('b', { text: title })), modLink('ghost'),
     FOLDER.state === 'none' ? btn('Choose folder', async () => after(await store.chooseFolder()), 'primary')
       : [FOLDER.state === 'ask' ? btn('Reconnect', async () => after(await store.resumeFolder(true)), 'primary') : btn('Change', async () => after(await store.chooseFolder())),
@@ -448,7 +448,7 @@ function gameSteps() {   // the path to wearing your skins in Hytale, in order
   const row = (n, done, title, text, action) => el('li', { class: done ? 'done' : '' }, el('span', { class: 'num', text: done ? '✓' : n }), el('div', {}, el('b', { text: title }), el('small', { text })), done ? null : action);
   return el('details', { class: 'gamesteps', open: !all }, el('summary', { text: all ? 'Wearing your skins in Hytale: all set' : 'Wear your skins in Hytale: 3 steps' }), el('ol', {},
     row(1, !!FOLDER.mod, 'Get the Skin Editor Sync mod', FOLDER.mod ? `Installed: it last ran on ${FOLDER.mod.seen}.` : 'Install it once from CurseForge. It dresses you in game.', modLink('ghost')),
-    row(2, linked, 'Choose a skins folder', 'Pick a "Hytale Skins" folder in Documents. The mod reads it.', linked ? null : el('button', { class: 'btn primary', text: FOLDER.state === 'ask' ? 'Reconnect folder' : 'Choose folder', onclick: guard(async () => { FOLDER.state === 'ask' ? await store.resumeFolder(true) : await store.chooseFolder(); FOLDER = await store.folderState(); await reloadAssets(); await refreshWard(); pushWearing(); }) })),
+    row(2, linked, 'Choose a skins folder', 'Pick your Documents folder; the site makes "Hytale Skins" in it for the mod.', linked ? null : el('button', { class: 'btn primary', text: FOLDER.state === 'ask' ? 'Reconnect folder' : 'Choose folder', onclick: guard(async () => { FOLDER.state === 'ask' ? await store.resumeFolder(true) : await store.chooseFolder(); FOLDER = await store.folderState(); await reloadAssets(); await refreshWard(); pushWearing(); }) })),
     row(3, linked && SHOWGAME, 'Switch on "In game"', linked ? 'The switch under the preview. What you wear here, you wear in your worlds.' : 'The switch appears under the preview once a folder is chosen.', el('button', { class: 'btn ghost', text: 'Turn on', disabled: !linked, onclick: () => { if (!SHOWGAME) $('ingame').onclick(); } }))));
 }
 function panelWardrobe() {
