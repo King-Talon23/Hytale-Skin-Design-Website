@@ -515,13 +515,13 @@ const CHAIR = [{ block: game.SET_PIECES.chair, at: [0, 0, 0], turn: 0 }];   // s
 const BED = [{ block: game.SET_PIECES.bed, at: [-32, 0, -61], turn: 0, stretch: 1.12 }];   // lengthwise along z, pillow end at -z; 12% longer so the sleeper (z -71..58) fits between headboard (-75) and footboard (60)   // lying moves drop the pelvis about 42, head towards -z
 const BENCH = [{ block: game.SET_PIECES.bench, at: [-32, 0, 84], turn: 180 }];   // something to work at, centred in front of the hands (it is two blocks wide: x -64..64)
 const LADDERS = cols => [{ ladder: [cols, 7], at: [0, 0, -8] }];   // climbing faces +z: the rungs just in front of the hands, planks behind them
-const WATER = y => [{ plane: [3600, 3600], at: [0, y, 0], tex: W.water, repeat: [56, 56], color: 0x7fb2e6, opacity: 0.45, flow: true }];   // a lake to the hills, drifting with the land while swimming
+const WATER = (y, under) => [{ plane: [3600, 3600], at: [0, y, 0], tex: W.water, repeat: [56, 56], color: 0x7fb2e6, opacity: 0.45, flow: true }, ...(under ? [{ box: [3600, y, 3600], at: [0, y / 2, 0], color: 0x2f74b8, opacity: 0.32, volume: true }] : [])];   // a lake to the hills, drifting with the land while swimming
 function sceneryFor(g, n) {
   if (g === 'Flavor' && /^Sit2?$/.test(n)) return [CHAIR, 32];   // the village chair's seat top
   if (g === 'Flavor' && /^Sleep/.test(n)) return [BED, 50];   // on the mattress, under the blanket's top
   if (g === 'Climb') return [LADDERS(/_(Left|Right)$/.test(n) ? 3 : 1), 0];   // one ladder up and down, a few side by side to climb across
   if (g === 'Default' && n === 'Interact') return [BENCH, 0];
-  if (g === 'Swim') return [WATER(/Dive|Sink/.test(n) ? 150 : 92), 0];
+  if (g === 'Swim') return [WATER(/Dive|Sink/.test(n) ? 150 : 92, /Dive|Sink/.test(n)), 0];
   // pulling up: the move starts about two blocks below and ends on top, so the figure stands that much higher on a stone block it climbs onto
   if (g === 'Mantle' && /^Mantle_Up/.test(n)) return [[{ box: [160, 126, 128], at: [0, 63, 26], tex: W.stone, repeat: [2.5, 2] }], 126];
   if (g === 'Mantle') return [[{ box: [160, 84, 64], at: [0, 42, 50], tex: W.stone, repeat: [2.5, 1.2] }], 0];   // hands resting on a chest-high ledge in front

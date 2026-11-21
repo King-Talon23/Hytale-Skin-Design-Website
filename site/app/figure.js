@@ -402,7 +402,7 @@ export function stage(canvas, Controls) {
       if (it.tex) { try { const T = await texture(it.tex); map = T.mat.map.clone(); map.wrapS = map.wrapT = THREE.RepeatWrapping; map.repeat.set(...(it.repeat || [1, 1])); map.needsUpdate = true; } catch (e) { console.warn(it.tex, e.message); } }
       const mat = new THREE.MeshLambertMaterial({ map, color: it.color ?? 0xffffff, transparent: it.opacity != null, opacity: it.opacity ?? 1, depthWrite: it.opacity == null, side: THREE.DoubleSide });
       const geo = it.plane ? new THREE.PlaneGeometry(...it.plane) : new THREE.BoxGeometry(...it.box), m = new THREE.Mesh(geo, mat);
-      if (it.plane) m.rotation.x = -Math.PI / 2; m.position.set(...it.at); if (it.flow) m.userData.flow = it.plane[0] / (it.repeat || [1])[0]; return m; }));
+      if (it.plane) m.rotation.x = -Math.PI / 2; if (it.volume) { m.userData.volume = true; m.renderOrder = 2; } m.position.set(...it.at); if (it.flow) m.userData.flow = it.plane[0] / (it.repeat || [1])[0]; return m; }));
     const drop = m => m.traverse(o => { if (o.isMesh && !o.userData.shared) { o.geometry.dispose(); o.material.map?.dispose(); o.material.dispose(); } });   // game blocks are shared, kept
     const lost = made.some(m => !m); made.splice(0, made.length, ...made.filter(Boolean)); if (lost) api.onMissing?.();   // older copies of the game files lack the furniture
     if (my !== scenery.n) return made.forEach(drop);
@@ -410,7 +410,7 @@ export function stage(canvas, Controls) {
     for (const m of made) setPiece.add(m); scrollers = made.filter(m => m.userData.scroll); flowing = made.filter(m => m.userData.flow); perchY = perch; seatAt(); groundRects(); }
   // the ground each set piece stands on, in blocks, so no plant grows through a chair, a bed or a ladder wall
   function groundRects() { const box = new THREE.Box3(), rs = []; setPiece.updateMatrixWorld(true);
-    for (const m of setPiece.children) { if (m.userData.flow) continue; box.setFromObject(m); if (box.isEmpty() || box.min.y > 40) continue; rs.push([box.min.x / BLOCK, box.min.z / BLOCK, box.max.x / BLOCK, box.max.z / BLOCK]); }
+    for (const m of setPiece.children) { if (m.userData.flow || m.userData.volume) continue; box.setFromObject(m); if (box.isEmpty() || box.min.y > 40) continue; rs.push([box.min.x / BLOCK, box.min.z / BLOCK, box.max.x / BLOCK, box.max.z / BLOCK]); }
     if (world) { world.userData.avoid = rs; world.userData.relayout(); } else pendingRects = rs; }
   let pendingRects = [];
   // flying moves: the figure rises off the ground and bobs gently, easing up and down when the move changes
