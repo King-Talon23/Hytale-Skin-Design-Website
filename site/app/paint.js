@@ -83,7 +83,7 @@ export function createPainter(canvas, onChange, onPick) {
         const [r, g, b] = fromHsl(H0, S0, L0); d[i] = clamp(r); d[i + 1] = clamp(g); d[i + 2] = clamp(b); }
       ctx.putImageData(out, 0, 0);
       if (commit) { if (h || s || l) { undo.push(adjFrom); redo.length = 0; } else ctx.putImageData(adjFrom, 0, 0); adjFrom = null; }
-      onChange(!!commit); },
+      onChange(!!commit && !!(h || s || l)); },
     palette(n = 14) {   // the texture's own most used colours, to paint with
       const d = ctx.getImageData(0, 0, W, H).data, count = new Map();
       for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 200) { const k = hex(d[i], d[i + 1], d[i + 2]); count.set(k, (count.get(k) || 0) + 1); }

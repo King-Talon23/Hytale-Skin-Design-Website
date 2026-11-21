@@ -142,17 +142,19 @@ function drawGameSwitch() { const b = $('ingame'); if (!b) return; b.hidden = FO
   b.textContent = SHOWGAME ? 'In game: on' : 'In game: off'; b.title = SHOWGAME ? 'Your character in your own worlds wears this (Skin Editor Sync mod)' : 'Show this skin on your character in your own worlds (needs the Skin Editor Sync mod)'; }
 const persist = c => c.kind === 'game' ? store.saveGame(c.slot, c.name, c.skin) : store.saveCustom(c.name, c.skin, c.id);
 function autosave() { clearTimeout(autosave.t); autosave.t = setTimeout(flush, 700); }   // every change saves itself; a new skin becomes "My skin N" in My skins on its first change
-async function flush() { clearTimeout(autosave.t); if (!dirty || flush.busy) return; flush.busy = true; const was = cur, c = { ...cur };
+function restoreFrom(s, before, fs) { const o = { ...s }; for (const f of fs) { if (before[f] == null) delete o[f]; else o[f] = before[f]; } return o; }
+function keptSkin() { const s = cur.skin; if (!ED || !ED.before || !ED.asset) return s; const f = ED.asset.field; return restoreFrom(s, ED.before, [f, ...(HIDE[f] || [])]); }   // an item worn only for editing is not saved into the skin
+async function flush() { clearTimeout(autosave.t); if (!dirty || flush.busy) return; flush.busy = true; const was = cur, c = { ...cur, skin: keptSkin() };
   try {
     if (!c.id) { if (WARD.custom.length >= store.CUSTOM_MAX) { if (!flush.full) { flush.full = true; say(`My skins is full (${store.CUSTOM_MAX})`, true); } return; }
       const used = new Set(WARD.custom.map(r => r.name)); let k = WARD.custom.length + 1, n; while (used.has(n = 'My skin ' + k)) k++;
       const r = await store.saveCustom(n, c.skin); if (cur === was && !cur.id) Object.assign(cur, { id: r.id, kind: r.kind, slot: null, name: r.name, auto: true }); c.id = r.id; keepDraft();
       }
     else await persist(c);
-    WARD = await store.list(); if (cur.id === c.id && JSON.stringify(cur.skin) === JSON.stringify(c.skin)) dirty = false; plate();
+    WARD = await store.list(); if (cur.id === c.id && JSON.stringify(keptSkin()) === JSON.stringify(c.skin)) dirty = false; plate();
   } catch (e) { console.error(e); say(e.message || 'Could not save.', true); }
   finally { flush.busy = false; if (dirty && cur.id) autosave(); } }
-function keepDraft() { clearTimeout(keepDraft.t); keepDraft.t = setTimeout(() => db.put('meta', 'draft', { id: cur.id, kind: cur.kind, slot: cur.slot, name: cur.name, skin: cur.skin, auto: !!cur.auto }).catch(() => {}), 300); }
+function keepDraft() { clearTimeout(keepDraft.t); keepDraft.t = setTimeout(() => db.put('meta', 'draft', { id: cur.id, kind: cur.kind, slot: cur.slot, name: cur.name, skin: keptSkin(), auto: !!cur.auto }).catch(() => {}), 300); }
 let building = 0;
 async function rebuild() { const my = ++building, stg = $('view').parentElement, slow = setTimeout(() => stg.classList.add('loading'), 300);   // a slow build says so instead of an empty stage
   try { const root = await fig.build(cur.skin, R); if (my !== building) return fig.dispose(root); st.show(root); }
@@ -685,7 +687,7 @@ const newAsset = guard(async (f, val) => {
 });
 async function makeAsset(f, val) {
   if (ASSETS.length >= assets.MAX) throw new Error(`You have ${assets.MAX} custom assets, the most this site keeps. Delete one first.`);
-  const skin = val ? { ...cur.skin, [f]: val } : cur.skin, r = R.resolve(f, skin), it = R.find(f, skin[f]); if (!r || !it) throw new Error('Pick an item first.');
+  const skin = val ? { ...cur.skin, [f]: val } : { ...cur.skin }; for (const h of HIDE[f] || []) delete skin[h]; const r = R.resolve(f, skin), it = R.find(f, skin[f]); if (!r || !it) throw new Error('Pick an item first.');
   const paidBase = it.custom ? CAT.items[f].find(e => e.Id === it.baseId) : it;
   if (paidBase && paidLocked(paidBase)) throw new Error(`${itemName(paidBase)} is a ${TIERS[tierOf(paidBase)]} item. Paid items can only be edited by an account that owns them.`);
   const src = it.custom ? ASSETS.find(x => 'Custom_' + x.id === it.Id) : null;
@@ -719,7 +721,7 @@ async function openAsset(a) {
   const flatPx = e => { const r = c.getBoundingClientRect(); return { x: Math.min(c.width - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * c.width))), y: Math.min(c.height - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * c.height))) }; };
   bindPaint(c, flatPx, 1e9); bindSelect(c, flatPx);
   c.addEventListener('pointermove', e => { if (!ED) return; ED.hover = flatPx(e); ED.hoverM = null; drawOvl(); }); c.addEventListener('pointerleave', () => { if (!ED) return; ED.hover = null; drawOvl(); });
-  registerAssets(); ED.before = beforeEdit || cur.skin; beforeEdit = null; if (!(cur.skin[a.field] || '').startsWith('Custom_' + a.id)) setSkin({ ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' });
+  registerAssets(); ED.before = beforeEdit || cur.skin; beforeEdit = null; { const s = { ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' }, cov = (HIDE[a.field] || []).filter(f => s[f]); for (const f of cov) delete s[f]; if (cov.length || !(cur.skin[a.field] || '').startsWith('Custom_' + a.id)) setSkin(s); }   /* what covers the item comes off while editing */
   setMount(null); ED.iso = true; st.isolate(c); st.anim.set(null); st.paintMode(true); tab = 'creator'; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === 'creator'); render(); rebuild();
 }
 const BRUSH = (() => { try { const b = JSON.parse(store_.get('se_brush') || '{}'), o = {}; if (/^#[0-9a-f]{6}$/i.test(b.color)) o.color = b.color; if (b.size >= 1 && b.size <= 8) o.size = Math.round(b.size); if (b.opacity > 0 && b.opacity <= 1) o.opacity = b.opacity; if (['area', 'side', 'every'].includes(b.fillMode)) o.fillMode = b.fillMode; if (['brush', 'erase', 'part', 'fill', 'pick', 'replace', 'line', 'box', 'boxfill', 'light', 'dark', 'noise'].includes(b.tool)) o.tool = b.tool; return o; } catch { return {}; } })();
@@ -729,7 +731,7 @@ function queueAssetSave() { markSaved(false); clearTimeout(queueAssetSave.t); qu
 // leaving or hiding the page saves a waiting edit at once; if one is still waiting on reload or close, the browser asks first, so no edit is lost
 const flushNow = () => { if (queueAssetSave.pending) { queueAssetSave.pending = false; flushAsset().catch(() => {}); } };
 addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushNow(); });
-addEventListener('pagehide', () => { flushNow(); if (ED && beforeEdit) { cur.skin = beforeEdit; db.put('meta', 'draft', { id: cur.id, kind: cur.kind, slot: cur.slot, name: cur.name, skin: cur.skin, auto: !!cur.auto }).catch(() => {}); } });
+addEventListener('pagehide', () => { flushNow(); if (ED && (ED.before || beforeEdit)) { cur.skin = ED.before ? keptSkin() : beforeEdit; db.put('meta', 'draft', { id: cur.id, kind: cur.kind, slot: cur.slot, name: cur.name, skin: cur.skin, auto: !!cur.auto }).catch(() => {}); } });
 addEventListener('beforeunload', e => { if (queueAssetSave.pending || (ED && ED.saved === false)) { flushNow(); e.preventDefault(); e.returnValue = ''; } });
 // the saved picture is only as big as what is drawn and used (a texture that grew for parts since removed shrinks back), in powers of two
 function trimmedCanvas(e) { const c = e.canvas, W = c.width, H = c.height; let mx = 0, my = 0;
@@ -739,10 +741,11 @@ function trimmedCanvas(e) { const c = e.canvas, W = c.width, H = c.height; let m
   const t = document.createElement('canvas'); t.width = w; t.height = h; t.getContext('2d').drawImage(c, 0, 0); return t; }
 async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; const e = ED, out = trimmedCanvas(e), data = await new Promise(ok => out.toBlob(ok, 'image/png'));
   try { e.asset = await assets.save({ ...e.asset, data, w: out.width, h: out.height, shape: e.model && e.shapeN ? JSON.stringify(e.model) : e.asset.shape }); ASSETS = await assets.list(); syncFolder(); } finally { if (ED === e) markSaved(true); } }
+let CLIP = null;   // copied texture area, kept across items
 let beforeEdit = null;   // the outfit before an item went on for editing: Done puts it back, Equip keeps the item on
 const STEPS = new Map();   // undo history per custom item, kept for this visit so reopening an item can still undo
 async function closeAsset(quiet, keep = false) {
-  if (!ED) return; const before = ED.before, fld = ED.asset.field, edited = ED.asset.id; keepBrush(); if (ED.float) placeFloat(); STEPS.set(ED.asset.id, { hist: ED.hist, fut: ED.fut, paint: ED.painter.keepSteps(), mode: ED.mode }); tour(99); if ($('viewhint')) $('viewhint').hidden = true; st.cursor(null); await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; if ($('viewhint')) $('viewhint').hidden = true; registerAssets(); if (!keep && before && cur.skin[fld] !== before[fld]) { const s = { ...cur.skin }; if (before[fld] == null) delete s[fld]; else s[fld] = before[fld]; cur.skin = s; setSkin(s); } st.highlight(null); st.isolate(null); st.paintMode(false); st.gizmo(null); setTimeout(() => { viewInset(); st.unclose(); }, 60); for (const k of [...pics.keys()]) if (k.includes(edited)) pics.delete(k);
+  if (!ED) return; const before = ED.before, fld = ED.asset.field, edited = ED.asset.id; keepBrush(); if (ED.float) placeFloat(); STEPS.set(ED.asset.id, { hist: ED.hist, fut: ED.fut, paint: ED.painter.keepSteps(), mode: ED.mode }); tour(99); if ($('viewhint')) $('viewhint').hidden = true; st.cursor(null); await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; if ($('viewhint')) $('viewhint').hidden = true; registerAssets(); if (before) { const fs = [...(keep ? [] : [fld]), ...(HIDE[fld] || [])], s = restoreFrom(cur.skin, before, fs); if (JSON.stringify(s) !== JSON.stringify(cur.skin)) setSkin(s); else if (keep) { dirty = true; autosave(); keepDraft(); } } st.highlight(null); st.isolate(null); st.paintMode(false); st.gizmo(null); setTimeout(() => { viewInset(); st.unclose(); }, 60); for (const k of [...pics.keys()]) if (k.includes(edited)) pics.delete(k);
   if (!quiet) { playAnim('Default', 'Idle', 0.5); rebuild(); render(); }
 }
 // painting: the same strokes whether the pointer is on the flat texture or on the 3D model
@@ -1041,7 +1044,8 @@ function undoEntry(e, redo) {
   const now = JSON.stringify(ED.model), keep = boxesOf(ED.model)[ED.box || 0]?.node.name; ED.model = JSON.parse(e.other); { const bs = boxesOf(ED.model), i = bs.findIndex(x => x.node.name === keep); ED.box = i >= 0 ? i : Math.min(ED.box || 0, bs.length - 1); } ED.reshaped = true; return { k: 's', other: now };
 }
 function wsUndo(redo) {
-  if (!ED) return; if (ED.float && !redo) { ED.float = null; render(); return; }   /* the first undo only drops a paste that isn't placed yet */
+  if (!ED) return; if (ED.adjOpen) { if (!redo && ED.adjCancel) ED.adjCancel(); return; }   /* inside Adjust colours, undo cancels the adjustment */
+  if (ED.float && !redo) { ED.float = null; render(); return; }   /* the first undo only drops a paste that isn't placed yet */
   ED.float = null; const from = redo ? ED.fut : ED.hist, to = redo ? ED.hist : ED.fut, e = from.pop(); if (!e) return;
   ED.reshaped = false; to.push(undoEntry(e, redo)); if (ED.reshaped) shapeChanged();
   ED.palette = ED.painter.palette(); render();
@@ -1050,7 +1054,7 @@ function shapeEdit(fn) {   // with Symmetry on, the box's twin on the other side
   const before = JSON.stringify(ED.model), b0 = curBox(), tw = symTwin(); fn();
   if (tw && b0 && b0.node !== tw && boxesOf(ED.model).some(x => x.node === b0.node) && boxesOf(ED.model).some(x => x.node === tw)) mirrorNode(b0.node, tw);
   finishShape(before); }
-async function setMode(m) { if (ED.float) placeFloat(); say(''); if (m === 'shape') { await editModel(); if (boxesOf(ED.model).filter(b => /^Box_/.test(b.node.name) && bakeOffset(b.node)).length) shapeChanged(); splitShared(); ED.box ||= 0; if (!ED.stool || ED.stool === 'select') ED.stool = 'move'; st.cursor(null); ED.hover = ED.hoverM = null; } ED.mode = m; ED.shapeOpen = m === 'shape'; render(); placeGizmo(); }
+async function setMode(m) { if (ED.float) placeFloat(); if (m === 'shape') ED.sel = null; say(''); if (m === 'shape') { await editModel(); if (boxesOf(ED.model).filter(b => /^Box_/.test(b.node.name) && bakeOffset(b.node)).length) shapeChanged(); splitShared(); ED.box ||= 0; if (!ED.stool || ED.stool === 'select') ED.stool = 'move'; st.cursor(null); ED.hover = ED.hoverM = null; } ED.mode = m; ED.shapeOpen = m === 'shape'; render(); placeGizmo(); }
 function pickTool(id) { if (ED.mode === 'shape') { if (ED.stool !== id) say(''); ED.stool = id; } else { if (id !== 'select' && ED.float) placeFloat(); ED.painter.tool = id; } render(); placeGizmo(); }
 function curBox() { return ED.model ? boxesOf(ED.model)[ED.box || 0] : null; }
 function placeGizmo() {
@@ -1091,7 +1095,7 @@ function paintSide() {
     const num = el('input', { type: 'number', min, max, step: 1, value: adj[key], class: 'adjnum', oninput: e => { if (e.target.value === '' || e.target.value === '-') return; set(+e.target.value); rng.value = adj[key]; }, onchange: e => { set(+e.target.value); rng.value = e.target.value = adj[key]; } }),
       rng = el('input', { type: 'range', min, max, step: 1, value: adj[key], oninput: e => { set(+e.target.value); num.value = adj[key]; } });
     return el('label', { class: 'wsslider adj' }, el('span', { text: label }), rng, num); };
-  const endAdjust = keep => { if (!keep) adj.h = adj.s = adj.l = 0; P.adjust(adj.h, adj.s / 100, adj.l / 100, true); ED.adjVals = null; ED.palette = P.palette(); render(); if (keep) checkReplica(); };
+  const endAdjust = keep => { if (!keep) adj.h = adj.s = adj.l = 0; P.adjust(adj.h, adj.s / 100, adj.l / 100, true); ED.adjVals = null; ED.palette = P.palette(); render(); if (keep) checkReplica(); }; ED.adjCancel = () => { ED.adjOpen = false; endAdjust(false); };
   const toggle = (text, on, fn) => el('button', { class: 'chip' + (on ? ' on' : ''), text, 'aria-pressed': String(!!on), onclick: fn });
   const chip = (text, fn, key, off) => el('button', { class: 'chip', text, title: key || '', disabled: !!off, onclick: () => { fn(); render(); } });
   if (ED.adjOpen) return [el('div', { class: 'wshead', text: 'Adjust colours' }),
@@ -1109,9 +1113,9 @@ function paintSide() {
       el('p', { class: 'dim small seghelp', text: { area: 'Fills the patch you click and the touching pixels of a similar colour.', side: 'Fills the whole side of the part you click, in one flat colour.', every: 'Changes that colour everywhere on the item, even where the patches are apart.' }[P.fillMode || 'area'] }),
       P.fillMode !== 'side' ? slider('Similar colours', 0, 100, 4, () => P.tolerance, v => { P.tolerance = v; }, v => v ? v + '%' : 'exact only') : null] : null,
     el('div', { class: 'options' }, toggle('Symmetry', ED.mirror, () => { ED.mirror = !ED.mirror; render(); })),
-    P.tool === 'select' || ED.sel || ED.float || ED.clip ? [el('div', { class: 'wshead', text: 'Selection' }), el('div', { class: 'options' },
+    P.tool === 'select' || ED.sel || ED.float || CLIP ? [el('div', { class: 'wshead', text: 'Selection' }), el('div', { class: 'options' },
       ...(ED.float ? [chip('Place', placeFloat, 'Enter'), chip('Flip ↔', () => flipFloat(true)), chip('Flip ↕', () => flipFloat(false)), chip('Cancel', () => { ED.float = null; render(); }, 'Esc')]
-        : [chip('Copy', () => copySel(false), 'Ctrl+C', !ED.sel), chip('Cut', () => copySel(true), 'Ctrl+X', !ED.sel), chip('Paste', pasteClip, 'Ctrl+V', !ED.clip), chip('Clear', clearSel, 'Del', !ED.sel)]))] : null,
+        : [chip('Copy', () => copySel(false), 'Ctrl+C', !ED.sel), chip('Cut', () => copySel(true), 'Ctrl+X', !ED.sel), chip('Paste', pasteClip, 'Ctrl+V', !CLIP), chip('Clear', clearSel, 'Del', !ED.sel)]))] : null,
     ED.adjOpen ? [el('div', { class: 'wshead', text: 'Adjust colours of the whole item' }), adjRow('h', 'Hue', -180, 180), adjRow('s', 'Saturation', -100, 100), adjRow('l', 'Brightness', -100, 100),
       el('div', { class: 'row' }, el('button', { class: 'btn primary', text: 'Keep', onclick: () => { ED.adjOpen = false; endAdjust(true); } }), el('button', { class: 'btn ghost', text: 'Cancel', onclick: () => { ED.adjOpen = false; endAdjust(false); } }))]
       : el('button', { class: 'btn ghost wide', text: 'Adjust colours…', onclick: () => { ED.adjOpen = true; render(); } })];
@@ -1236,7 +1240,7 @@ function tidyResized(beforeJson) {
     const ns = sizeOf(sh), os = sizeOf(o); if (!ns.some((v, k) => v > os[k])) continue;   // only a box that grows can spill over other paint
     if (JSON.stringify(sh.textureLayout) !== JSON.stringify(o.textureLayout)) continue;
     let lay = allocLayout(sh); while (!lay && (ED.canvas.width < ED.canvas.height ? growWider() || growTexture() : growTexture() || growWider())) lay = allocLayout(sh);
-    if (!lay) { sh.settings = { ...sh.settings, size: { ...o.settings.size } }; say('Texture full', true); continue; }   /* no room even at the largest texture: the part keeps its old size, never paint off the texture */
+    if (!lay) { sh.settings = { ...sh.settings, size: { ...o.settings.size } }; say('Too big for the texture', true); continue; }   /* no room even at the largest texture: the part keeps its old size, never paint off the texture */
     const src = o.textureLayout; sh.textureLayout = lay;
     paints.push((d, W, H) => { for (const [f, fu, fv] of faceDims(sh)) { const to = lay[f], from = src[f]; if (!to || !from) continue;
       const [ua, va] = FACE_UV[f], ou = Math.max(1, os[ua]), ov = Math.max(1, os[va]);
@@ -1298,7 +1302,7 @@ function renderWorkspace() {
   const P = ED.painter, a = ED.asset, c = ED.canvas, mode = ED.mode || 'paint'; ED.shapeOpen = mode === 'shape';
   const tools = mode === 'paint' ? PAINT_TOOLS : SHAPE_TOOLS, active = mode === 'paint' ? P.tool : ED.stool || 'select';
   $('wstop').replaceChildren(...[
-    el('input', { type: 'text', class: 'wsname', value: a.name, maxLength: 40, title: 'Name', onchange: e => { const v = cleanName(e.target.value); if (v && gameNamed(v)) { e.target.value = ED.asset.name; return say(`"${v}" is the name of something in the game. Pick your own name.`, true); } ED.asset = { ...ED.asset, name: v || a.name }; queueAssetSave(); } }),
+    el('input', { type: 'text', class: 'wsname', value: a.name, maxLength: 40, title: 'Name', onkeydown: e => { if (e.key === 'Enter') e.target.blur(); else if (e.key === 'Escape') { e.target.value = ED.asset.name; e.target.blur(); } }, onchange: e => { const v = cleanName(e.target.value); if (v && gameNamed(v)) { e.target.value = ED.asset.name; return say('A game item has that name', true); } ED.asset = { ...ED.asset, name: v || a.name }; e.target.value = ED.asset.name; queueAssetSave(); } }),
     el('span', { id: 'wssaved', class: 'wssaved', text: ED.saved === false ? 'Saving…' : 'Saved' }),
     el('span', { class: 'grow' }), a.flag ? el('button', { class: 'tag none', text: 'Site only: looks like ' + a.flag, title: FLAG_WHY(a.flag), onclick: () => say(FLAG_WHY(a.flag), true) }) : null,
     el('button', { class: 'btn icon', text: '↶', title: 'Undo (Ctrl+Z)', disabled: !ED.hist.length, onclick: () => wsUndo(false) }),
@@ -1339,6 +1343,7 @@ addEventListener('keydown', e => {
   const k = e.key.toLowerCase(), ctrl = e.ctrlKey || e.metaKey; let done = true;
   if (ctrl && k === 'z') wsUndo(e.shiftKey); else if (ctrl && k === 'y') wsUndo(true);
   else if (ctrl && k === 'd' && ED.mode === 'shape') dupBox();
+  else if (k === 'f2' && ED.mode === 'shape' && curBox()) { const b = document.querySelector('.partrow.on > button'); if (b) renameBox(b, curBox().node); }
   else if (ED.mode === 'shape' && !ctrl && k === 'a') startPlacing();   /* M is Select area everywhere; Mirror is Shift+M */
   else if (ED.mode === 'shape' && !ctrl && k === 'm' && e.shiftKey) addBox('mirror');
   else if (k === 'escape' && ED.placing) { ED.placing = false; say(''); viewHint(); }
@@ -1388,14 +1393,14 @@ function bindSelect(c, toPixel) {   // the Select tool: drag out an area, or dra
   const up = () => { if (drag) { drag = null; render(); } }; c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
 }
 function copySel(cut) {
-  if (!ED.sel) return say('Pick the Select tool (M) and drag over the texture first.', true);
-  const { x, y, w, h } = ED.sel; ED.clip = ED.canvas.getContext('2d', { willReadFrequently: true }).getImageData(x, y, w, h);
+  if (!ED.sel) return say('Select an area first', true);
+  const { x, y, w, h } = ED.sel; CLIP = ED.canvas.getContext('2d', { willReadFrequently: true }).getImageData(x, y, w, h);
   if (cut) ED.painter.write((d, W) => { for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) d[(j * W + i) * 4 + 3] = 0; });
   render();
 }
 function pasteClip() {
-  if (!ED.clip) return say('Copy an area first (Ctrl+C).', true); if (ED.float) placeFloat();
-  const at = ED.sel || ED.hover || { x: 0, y: 0 }; ED.float = { img: new ImageData(new Uint8ClampedArray(ED.clip.data), ED.clip.width, ED.clip.height), x: at.x, y: at.y };
+  if (!CLIP) return say('Nothing copied', true); if (ED.float) placeFloat();
+  const W = ED.canvas.width, H = ED.canvas.height, a0 = ED.sel || ED.hover || { x: 0, y: 0 }, at = { x: Math.max(0, Math.min(a0.x, W - CLIP.width)), y: Math.max(0, Math.min(a0.y, H - CLIP.height)) }; ED.float = { img: new ImageData(new Uint8ClampedArray(CLIP.data), CLIP.width, CLIP.height), x: at.x, y: at.y };
   ED.painter.tool = 'select'; render();
 }
 function placeFloat() {   // stamps the pasted piece where it sits (see-through texels stay as they were; Inside only still holds)
@@ -1517,10 +1522,10 @@ async function combinePick() {   // types down the left (hovering one shows its 
   const fill = (f, force) => { if (f === shown && !force) return; shown = f; const q = find.value.trim().toLowerCase();
     const list = oneEach(CAT.items[f]).filter(e => !isTmp(e) && !(!e.custom && paidLocked(e)) && !(ED && e.Id === 'Custom_' + ED.asset.id) && (!q || itemName(e).toLowerCase().includes(q)));
     grid.replaceChildren(...list.map(e => { const a = e.custom && ASSETS.find(x => 'Custom_' + x.id === e.Id);
-      const card = el('button', { type: 'button', class: 'skin' + (chosen && chosen.e === e ? ' on' : ''), title: itemName(e), onclick: () => { cur_ = f; types(); chosen = { f, e }; const add = [...$('dlgbtns').children].find(b => b.value === 'yes'); if (add) add.disabled = false; for (const c of grid.children) c.classList.toggle('on', c === card); } },
+      const card = el('button', { type: 'button', class: 'skin' + (chosen && chosen.e === e ? ' on' : ''), title: itemName(e), onclick: () => { cur_ = f; types(); chosen = { f, e }; const add = [...$('dlgbtns').children].find(b => b.value === 'yes'); if (add) add.disabled = false; for (const c of grid.children) c.classList.toggle('on', c === card); }, ondblclick: () => { const add = [...$('dlgbtns').children].find(b => b.value === 'yes'); if (add && chosen) add.click(); }, onkeydown: ev => { if (ev.key === 'Enter' && chosen && chosen.e === e) { ev.preventDefault(); const add = [...$('dlgbtns').children].find(b => b.value === 'yes'); if (add) add.click(); } } },
         el('div', { class: 'pic' }, a ? assetThumb(a) : itemThumb(f, e, null, null, true)), el('b', { text: itemName(e) + (e.custom ? ' (yours)' : '') }));
       return card; }));
-    if (!list.length) grid.append(el('p', { class: 'blank', text: 'Nothing matches.' })); grid.scrollTop = 0; };
+    if (!list.length) grid.append(el('p', { class: 'blank', text: 'No results' })); grid.scrollTop = 0; };
   const typeList = el('div', { class: 'combinetypes', onpointerleave: () => { clearTimeout(hov); fill(cur_); } });
   const types = () => typeList.replaceChildren(...slots.map(f => el('button', { type: 'button', class: f === cur_ ? 'on' : '', text: LABEL[f],
     onpointerenter: () => { clearTimeout(hov); hov = setTimeout(() => fill(f), 60); }, onclick: () => { clearTimeout(hov); cur_ = f; types(); fill(f); } })));
@@ -1533,7 +1538,7 @@ async function combinePick() {   // types down the left (hovering one shows its 
   document.body.classList.add('busy'); try { await combineWith(chosen.f, chosen.e); } finally { document.body.classList.remove('busy'); }
 }
 function addBox(kind = 'dup', at = null) {   // 'dup' a copy, 'mirror' a copy on the other side, 'add' a new 4-block box; each gets its own room on the texture
-  const boxes = boxesOf(ED.model), b = boxes[ED.box || 0]; if (!b) return; if (boxes.length >= assets.MAX_BOXES) return say(`A shape can have up to ${assets.MAX_BOXES} boxes.`, true);
+  const boxes = boxesOf(ED.model), b = boxes[ED.box || 0]; if (!b) return; if (boxes.length >= assets.MAX_BOXES) return say(`Limit is ${assets.MAX_BOXES} parts`, true);
   const n = b.node, sh = n.shape;
   const into = kind === 'mirror' ? twinParentOf(b.parent) : null;   // a box on the left arm gets its copy on the right arm
   if (kind === 'mirror' && !into && Math.abs((n.position?.x ?? 0) + (sh.offset?.x ?? 0)) < 0.25) return say('Part is on the centre line', true);
