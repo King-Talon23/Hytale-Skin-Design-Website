@@ -336,9 +336,11 @@ let bdShown = null;
 async function showBackdrop(key) {
   if (!st || key === bdShown) return; bdShown = key;
   if (key === 'dark') return st.setBackdrop(null);
+  const stg = $('view').parentElement, slow = setTimeout(() => stg.classList.add('loading'), 250);   // a place that takes a moment to build says so
   try { const spec = await backdropSpec(key); if (bdShown === key) await st.setBackdrop(spec.sky, spec.sc, spec.tint); }
   catch (e) { console.warn('backdrop', e); bdShown = 'dark'; st.setBackdrop(null); store_.set('se_backdrop', 'dark'); drawStageBtns();
-    say('This background needs a few more of your game files. Connect your Assets.zip again in Help and it will show.', true); } }
+    say('This background needs a few more of your game files. Connect your Assets.zip again in Help and it will show.', true); }
+  finally { clearTimeout(slow); stg.classList.remove('loading'); } }
 function drawStageBtns() {
   const box = $('stagebtns'), stg = $('view').parentElement; if (!box) return;
   if (!box._ro) { box._ro = new ResizeObserver(() => { const vb = $('viewbtns'); if (vb) vb.style.paddingLeft = box.offsetWidth ? box.offsetWidth + 10 + 'px' : ''; }); box._ro.observe(box); }   // the Creator's view buttons keep clear of the background button
