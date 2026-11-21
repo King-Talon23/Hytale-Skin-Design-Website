@@ -160,7 +160,7 @@ const HEADF = new Set(['face', 'eyes', 'eyebrows', 'mouth', 'ears', 'haircut', '
 const BASE = ['bodyCharacteristic', 'face', 'eyes', 'eyebrows', 'mouth', 'ears', 'underwear'];
 // pictures of game items are also kept in this browser (per game version), so the next visit shows them at once instead of drawing each again;
 // a custom piece in the picture is named with the time it was last changed, so a repaint makes a new picture
-const THUMB_V = 1, keepKey = key => { if (!META) return null; let gone = false;
+const THUMB_V = 2, keepKey = key => { if (!META) return null; let gone = false;
   const k = key.replace(/Custom_([A-Za-z0-9_-]+)/g, (m, id) => { const a = ASSETS.find(x => x.id === id); if (!a || !a.updated) gone = true; return m + '@' + (a && a.updated); });
   return gone ? null : THUMB_V + '|' + META.size + '|' + META.modified + '|' + k; };
 function picture(key, make) { if (pics.has(key)) return Promise.resolve(pics.get(key)); const gen = jobGen, kk = keepKey(key);
@@ -198,7 +198,7 @@ function itemThumb(f, it, color, variant, bare) {   // the current character, we
 // an animation's picture: the current skin caught part-way through the move
 function animThumb(g, n) { const s = R.fit(cur.skin);
   return lazyImg('a|' + g + '|' + n + '|' + JSON.stringify(s), async () => { const [root, a] = await Promise.all([fig.build(s, R), fig.loadAnim(g, n)]);
-    const an = new fig.Animator(); an.setFigure(root); an.set(a, 1, true); an.t = an.duration * 0.45; an.apply(); return fig.snapshot(root, 'full'); }, 'anim|' + g + '|' + n); }
+    const an = new fig.Animator(); an.setFigure(root); an.set(a, 1, true); an.t = an.duration * 0.45; an.apply(); return fig.snapshot(root, g === 'Expressions' ? 'head' : 'full'); }, 'anim|' + g + '|' + n); }   // faces are pictured close, so they can be told apart
 const portrait = skin => { const s = R.fit(skin); return lazyImg('p|' + JSON.stringify(s), async () => fig.snapshot(await fig.build(s, R), 'full')); };
 
 // ---------------------------------------------------------------- panels
