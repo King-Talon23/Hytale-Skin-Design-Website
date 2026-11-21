@@ -1583,7 +1583,7 @@ const animPicker = () => el('select', { class: 'wsanim', title: 'Preview a move 
   el('option', { value: '', text: 'Still', selected: !ED.anim }), animChoices().map(k => el('option', { value: k, text: nice(k.split('/')[1]), selected: ED.anim === k })));
 
 function panelCreator() {
-  if (!ED) { const worn = game.FIELDS.filter(f => R.resolve(f, cur.skin));
+  if (!ED) { const worn = game.FIELDS.filter(f => cur.skin[f] && R.find(f, cur.skin[f]));   /* a haircut under a hood still counts */
     const paidIn = f => { const it = R.find(f, cur.skin[f]), b = it && it.custom ? CAT.items[f].find(e => e.Id === it.baseId) : it; return b && paidLocked(b); };
     const tile = f => { const it = R.find(f, cur.skin[f]), p = parse(cur.skin[f]), paid = paidIn(f);
       return el('div', { class: 'skin starttile' + (paid ? ' paid' : '') }, el('div', { class: 'pic' }, itemThumb(f, it, p.color, p.variant)), el('b', { text: itemName(it) }), el('small', { text: LABEL[f] }),
