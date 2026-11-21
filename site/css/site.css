@@ -151,6 +151,7 @@ button.tag { cursor: help; border: 0; font: inherit; }
 .tag.game { background: var(--gold); color: #2a1d00; } .tag.custom { background: var(--custom); color: #04233d; } .tag.none { background: #33475f; color: #c5d6e2; }
 .status { position: absolute; left: 50%; top: 44px; transform: translateX(-50%); z-index: 30; max-width: min(560px, 90%); font-size: 13.5px; color: #cfe6d8; background: #13233aee; border: 1px solid var(--line); border-radius: 5px; padding: 7px 12px; box-shadow: 0 6px 20px #0008; pointer-events: none; }
 .status:empty { display: none; }
+#app:not(.ws) .status { top: auto; bottom: calc(var(--bar, 0px) + 10px); }   /* messages sit above the bottom buttons, off the character's face */
 .status.bad { color: #ffb3a8; border-color: #c4574a; }
 .bar { position: absolute; left: 0; right: 0; bottom: 4px; display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
 .bar .grow { flex: 1; } .bar .sep { width: 1px; height: 26px; background: var(--line2); }
