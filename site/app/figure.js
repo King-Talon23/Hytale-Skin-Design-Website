@@ -312,7 +312,7 @@ export function stage(canvas, Controls) {
   function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false);
     const [b, r] = insets(); cam.aspect = (w + r) / (h + b); cam.fov = 2 * Math.atan(Math.tan(16 * Math.PI / 180) * (h + b) / h) * 180 / Math.PI;
     if (b || r) cam.setViewOffset(w + r, h + b, r, b, w, h); else cam.clearViewOffset(); cam.updateProjectionMatrix(); }
-  new ResizeObserver(fit).observe(canvas); fit();
+  new ResizeObserver(() => { fit(); refit(); }).observe(canvas); fit();   // a resized window refits the character (unless the player set the view)
   (function loop(now) { requestAnimationFrame(loop); const dt = Math.min(0.1, (now - last) / 1000 || 0); anim.update(dt); mountAnim.playing = anim.playing; mountAnim.update(dt); travel(dt); float(dt, now); for (const h of helpers) h.update(); dropHeld(); facing(); last = now; renderer.render(scene, cam); })(last);
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   // the texel of `image` under a screen point, for painting straight on the model
@@ -452,7 +452,7 @@ export function stage(canvas, Controls) {
   const fitLen = () => { const [b, r, w, h] = insets(), t = Math.tan(16 * Math.PI / 180), tall = 2 * Math.max(62, figTop - 62) + 26;   // far enough that the whole character (helmet and all) fits in the free part of the view
     return Math.min(470, Math.max(tall * h / (2 * t * (h - b)), 48 * h / (t * (w - r)))); };
   const refit = () => { if (!autoFit || lifted || mountRoot) return; const off = cam.position.clone().sub(ctl.target); off.setLength(fitLen()); cam.position.copy(ctl.target).add(off); ctl.update(); };
-  ctl.addEventListener('start', () => { autoFit = false; });   // once the player zooms or turns the view themselves, it stays theirs
+  let grabbed = null; ctl.addEventListener('start', () => { grabbed = cam.position.clone(); }); ctl.addEventListener('end', () => { if (grabbed && cam.position.distanceTo(grabbed) > 2) autoFit = false; grabbed = null; });   // once the player really zooms or turns the view, it stays theirs (a click is not a turn)
   const api = { inset: (px, right = 0) => { px = Math.max(0, Math.round(px || 0)); right = Math.max(0, Math.round(right || 0)); if (px !== inset || right !== insetR) { inset = px; insetR = right; fit(); refit(); } }, plantClear: r => { plantClear = r || 0; }, isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, props, lift, scenery, onFacing: cb => { faceCb = cb; faced = ''; }, wall: v => { wallOn = v || null; }, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
     gizmoBusy: () => tc.dragging || tc.axis !== null,
     // where a click lands on a box: the point and the face's outward direction, in the box's own part (node) space
@@ -465,7 +465,7 @@ export function stage(canvas, Controls) {
       const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(cam.getWorldDirection(new THREE.Vector3()), hit.point), start = hit.point.clone(), q = g.getWorldQuaternion(new THREE.Quaternion()).invert(), s = g.getWorldScale(new THREE.Vector3()), p0 = mesh.position.clone(); ctl.enabled = false;
       return { move(x, y) { aim(x, y); const p = ray.ray.intersectPlane(plane, new THREE.Vector3()); if (!p) return null; const d = p.sub(start).applyQuaternion(q).divide(s); mesh.position.copy(p0).add(d); return d; },
         end() { ctl.enabled = true; mesh.position.copy(p0); } }; },
-    zoomBy(k) { const off = cam.position.clone().sub(ctl.target), len = Math.max(ctl.minDistance, Math.min(ctl.maxDistance, off.length() * k)); cam.position.copy(ctl.target).add(off.setLength(len)); ctl.update(); },
+    zoomBy(k) { autoFit = false; const off = cam.position.clone().sub(ctl.target), len = Math.max(ctl.minDistance, Math.min(ctl.maxDistance, off.length() * k)); cam.position.copy(ctl.target).add(off.setLength(len)); ctl.update(); },
     frameOn(img) {   // turn the view on the parts painted with this texture, close enough to fill the view
       if (!figure || !img) return; const box = new THREE.Box3(); figure.updateMatrixWorld(true);
       figure.traverse(o => { if (o.isMesh && (o.userData.realMat || o.material)?.map?.image === img) box.expandByObject(o); }); if (box.isEmpty()) return;
