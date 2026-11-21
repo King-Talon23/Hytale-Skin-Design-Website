@@ -187,8 +187,8 @@ const canvasOf = path => once('c:' + path, async () => { const i = await game.bi
 function tinted(c, hex) {   // a greyscale texture coloured the way the game tints it (multiply), keeping its see-through parts
   if (!hex) return c; const o = document.createElement('canvas'); o.width = c.width; o.height = c.height; const x = o.getContext('2d'); x.drawImage(c, 0, 0);
   x.globalCompositeOperation = 'multiply'; x.fillStyle = hex; x.fillRect(0, 0, o.width, o.height); x.globalCompositeOperation = 'destination-in'; x.drawImage(c, 0, 0); return o; }
-function blockMat(c, cut) { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapLinearFilter;
-  return new THREE.MeshLambertMaterial({ map: t, color: new THREE.Color(SHADE, SHADE, SHADE), alphaTest: cut ? 0.5 : 0, side: cut ? THREE.DoubleSide : THREE.FrontSide }); }
+function blockMat(c, cut, k = 1) { /* k: a face's own shade (block sides darker than tops, so slopes read even in snow) */ const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapLinearFilter;
+  return new THREE.MeshLambertMaterial({ map: t, color: new THREE.Color(SHADE * k, SHADE * k, SHADE * k), alphaTest: cut ? 0.5 : 0, side: cut ? THREE.DoubleSide : THREE.FrontSide }); }
 function mergeMeshes(group) {   // every box and quad of a model, moved into place and joined into one geometry
   group.updateMatrixWorld(true); const pos = [], uv = [], nor = [], idx = []; const v = new THREE.Vector3(), nm = new THREE.Matrix3();
   group.traverse(m => { if (!m.isMesh) return; const g = m.geometry, P = g.attributes.position, U = g.attributes.uv, N = g.attributes.normal, base = pos.length / 3; nm.getNormalMatrix(m.matrixWorld);
@@ -199,9 +199,9 @@ function mergeMeshes(group) {   // every box and quad of a model, moved into pla
 // one block type as [{ geo, mat }] (a cube with several tops gives one entry per top, the world picks among them)
 const blockParts = (name, tint) => once('blk:' + name + '|' + tint, async () => {
   const b = BLOCKS[name]; if (!b) throw new Error('unknown block ' + name);
-  if (b.cube) { const side0 = await canvasOf(b.cube.side), bottom = blockMat(await canvasOf(b.cube.bottom));
+  if (b.cube) { const side0 = await canvasOf(b.cube.side), bottom = blockMat(await canvasOf(b.cube.bottom), false, 0.6);
     let side = side0; if (b.cube.sideMask) { side = document.createElement('canvas'); side.width = side0.width; side.height = side0.height; const x = side.getContext('2d'); x.drawImage(side0, 0, 0); x.drawImage(tinted(await canvasOf(b.cube.sideMask), tint), 0, 0, side.width, side.height); }
-    const sideM = blockMat(side), tops = Array.isArray(b.cube.top) ? b.cube.top : [b.cube.top], geo = new THREE.BoxGeometry(BLOCK, BLOCK, BLOCK).translate(0, BLOCK / 2, 0);
+    const sideM = blockMat(side, false, 0.78), tops = Array.isArray(b.cube.top) ? b.cube.top : [b.cube.top], geo = new THREE.BoxGeometry(BLOCK, BLOCK, BLOCK).translate(0, BLOCK / 2, 0);
     return Promise.all(tops.map(async t => ({ geo, mat: [sideM, sideM, blockMat(b.tintUp ? tinted(await canvasOf(t), tint) : await canvasOf(t)), bottom, sideM, sideM] }))); }
   const m = await game.json(game.common(b.model)), c = tinted(await canvasOf(b.tex[0]), b.tint), mat = blockMat(c, true), T = { w: c.width, h: c.height, mat }, g = new THREE.Group();
   for (const n of m.nodes) g.add(node(n, T, null, new Map())); g.scale.setScalar(BLOCK / 32);
@@ -473,7 +473,7 @@ export function stage(canvas, Controls) {
         end() { ctl.enabled = true; mesh.position.copy(p0); } }; },
     zoomBy(k) { autoFit = false; const off = cam.position.clone().sub(ctl.target), len = Math.max(ctl.minDistance, Math.min(ctl.maxDistance, off.length() * k)); cam.position.copy(ctl.target).add(off.setLength(len)); ctl.update(); },
     frameOn(img) {   // turn the view on the parts painted with this texture, close enough to fill the view
-      if (!figure || !img) return; const box = new THREE.Box3(); figure.updateMatrixWorld(true);
+      if (!figure || !img) return; endGlide(); autoFit = false; const box = new THREE.Box3(); figure.updateMatrixWorld(true);   // a close-up is the player's view now: no refit or glide pulls it back
       figure.traverse(o => { if (o.isMesh && (o.userData.realMat || o.material)?.map?.image === img) box.expandByObject(o); }); if (box.isEmpty()) return;
       const c = box.getCenter(new THREE.Vector3()), r = Math.max(14, box.getSize(new THREE.Vector3()).length() / 2), dir = cam.position.clone().sub(ctl.target).normalize();
       ctl.target.copy(c); const half = Math.min(cam.fov * Math.PI / 360, Math.atan(Math.tan(cam.fov * Math.PI / 360) * cam.aspect));   // the narrower of the two view angles
