@@ -1029,7 +1029,8 @@ function undoEntry(e, redo) {
   const now = JSON.stringify(ED.model), keep = boxesOf(ED.model)[ED.box || 0]?.node.name; ED.model = JSON.parse(e.other); { const bs = boxesOf(ED.model), i = bs.findIndex(x => x.node.name === keep); ED.box = i >= 0 ? i : Math.min(ED.box || 0, bs.length - 1); } ED.reshaped = true; return { k: 's', other: now };
 }
 function wsUndo(redo) {
-  if (!ED) return; ED.float = null; const from = redo ? ED.fut : ED.hist, to = redo ? ED.hist : ED.fut, e = from.pop(); if (!e) return;
+  if (!ED) return; if (ED.float && !redo) { ED.float = null; render(); return; }   /* the first undo only drops a paste that isn't placed yet */
+  ED.float = null; const from = redo ? ED.fut : ED.hist, to = redo ? ED.hist : ED.fut, e = from.pop(); if (!e) return;
   ED.reshaped = false; to.push(undoEntry(e, redo)); if (ED.reshaped) shapeChanged();
   ED.palette = ED.painter.palette(); render();
 }
