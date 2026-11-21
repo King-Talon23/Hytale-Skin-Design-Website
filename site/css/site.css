@@ -422,3 +422,6 @@ dialog.wide { width: min(760px, 94vw); }
 @container stage (max-width: 640px) { #app.ws #wstools { gap: 6px; padding: 5px; } #wstools .wsgroup2 { gap: 2px; } #wstools .wsgroup2 + .wsgroup2 { padding-left: 6px; }
   #wstools .wstool { width: 38px; height: 38px; } #wstools .wstool b { display: none; } }
 @container stage (max-width: 430px) { #wstools .wstool { width: 32px; height: 34px; font-size: 15px; } }
+/* More paint tools: a row floating above the toolbar */
+#app.ws #wstools { overflow: visible; } #wstools .wsgroup2 { position: relative; }
+#wstools .wsextra { position: absolute; bottom: calc(100% + 12px); left: -8px; display: flex; gap: 4px; padding: 6px 8px; background: #102036f2; border: 1px solid var(--line2); border-radius: 10px; }
