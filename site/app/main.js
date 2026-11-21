@@ -705,6 +705,7 @@ async function openAsset(a) {
   if (a.shape) ED.model = JSON.parse(a.shape);
   try { ED.rects = fig.usedRects(ED.model || await game.json(game.common(a.model))); } catch (e) { console.warn('no drawn area for', a.model, e); }
   ED.painter = makePainter(c, a); Object.assign(ED.painter, BRUSH);
+  ED.painter.faceRect = (x, y) => ED.rects.filter(q => x >= q.x && x < q.x + q.w && y >= q.y && y < q.y + q.h).sort((p_, q) => p_.w * p_.h - q.w * q.h)[0] || null;   // the texture face a fill starts on
   { const k = STEPS.get(a.id); if (k && ED.painter.takeSteps(k.paint)) { ED.hist = k.hist; ED.fut = k.fut; } if (k && k.mode === 'shape') ED.reopenShape = true; }
   ED.painter.faceAt = (x, y) => ED && ED.rects.find(r => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h);   // Fill > Whole side: which side was clicked
   if (ED.rects.length) { const m = new Uint8Array(c.width * c.height); for (const r of ED.rects) for (let y = Math.max(0, Math.floor(r.y)); y < Math.min(c.height, Math.ceil(r.y + r.h)); y++) for (let x = Math.max(0, Math.floor(r.x)); x < Math.min(c.width, Math.ceil(r.x + r.w)); x++) m[y * c.width + x] = 1; ED.painter.mask = m; }
@@ -736,6 +737,7 @@ async function closeAsset(quiet, keep = false) {
 const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 function sharersOf(node) { const mine = ED.rects.filter(r => r.node === node); return [...new Set(ED.rects.filter(r => r.node !== node && mine.some(m => overlaps(m, r))).map(r => r.node))]; }
 async function colourPart(node) {
+  await editModel(); splitShared();   /* every part (cuffs and other attached pieces too) gets its own paint first, so the colour never leaks to a twin */
   const others = sharersOf(node);
   if (others.length) { await editModel(); const k = boxesOf(ED.model).findIndex(b => b.node.name === node);
     if (k >= 0) { ED.box = k; if (!ownArea(true)) return say('Texture full', true); } }
@@ -1536,8 +1538,8 @@ function addBox(kind = 'dup', at = null) {   // 'dup' a copy, 'mirror' a copy on
 }
 // parts painted from one shared spot each get their own spot (paint copied, so nothing looks different): the texture then matches the parts list
 function splitShared() { if (ED.splitDone || ED.asset.split) return; ED.splitDone = true; ED.asset = { ...ED.asset, split: true }; const keep = ED.box || 0, seen = new Set(); let n = 0;
-  boxesOf(ED.model).forEach((b, k) => { const r = fig.usedRects({ nodes: [{ ...b.node, children: [] }] })[0]; if (!r) return; const key = r.x + ',' + r.y;
-    if (seen.has(key)) { ED.box = k; if (ownArea(true)) n++; } else seen.add(key); });
+  boxesOf(ED.model).forEach((b, k) => { const keys = fig.usedRects({ nodes: [{ ...b.node, children: [] }] }).map(r => r.x + ',' + r.y); if (!keys.length) return;   /* any face on a spot another part already uses */
+    if (keys.some(q => seen.has(q))) { ED.box = k; if (ownArea(true)) { n++; fig.usedRects({ nodes: [{ ...boxesOf(ED.model)[k].node, children: [] }] }).forEach(r => seen.add(r.x + ',' + r.y)); return; } } keys.forEach(q => seen.add(q)); });
   ED.box = keep; if (n) render(); }
 function ownArea(quiet) {   // move the selected box's paint to free room of its own, so it no longer shares texels with other boxes
   const b = curBox(); if (!b) return false; const sh = b.node.shape, old = structuredClone(sh.textureLayout || {}), lay = allocLayout(sh) || (growTexture() ? allocLayout(sh) : null);

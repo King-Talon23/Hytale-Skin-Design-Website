@@ -33,8 +33,8 @@ export function createPainter(canvas, onChange, onPick) {
   function flood(x, y) {   // fills the connected area of one exact colour
     const d = img.data, at = (X, Y) => (Y * W + X) * 4, from = colourAt(d, at(x, y)), [r, g, b] = rgb(P.color); if (is(d, at(x, y), [r, g, b, 255])) return;
     const tol = P.tolerance * 3, near = i => from[3] ? d[i + 3] && Math.abs(d[i] - from[0]) + Math.abs(d[i + 1] - from[1]) + Math.abs(d[i + 2] - from[2]) <= tol : !d[i + 3];
-    const seen = new Uint8Array(W * H), stack = [[x, y]];
-    while (stack.length) { const [X, Y] = stack.pop(); if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const k = Y * W + X, i = k * 4; if (seen[k] || !near(i)) continue; seen[k] = 1;
+    const seen = new Uint8Array(W * H), stack = [[x, y]], box = P.faceRect ? P.faceRect(x, y) : null;   /* an area stays on the face it starts on, never runs into the face beside it on the texture */
+    while (stack.length) { const [X, Y] = stack.pop(); if (X < 0 || Y < 0 || X >= W || Y >= H) continue; if (box && (X < box.x || Y < box.y || X >= box.x + box.w || Y >= box.y + box.h)) continue; const k = Y * W + X, i = k * 4; if (seen[k] || !near(i)) continue; seen[k] = 1;
       if (P.inside && P.mask && !P.mask[k]) continue;
       d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 255; stack.push([X + 1, Y], [X - 1, Y], [X, Y + 1], [X, Y - 1]); }
   }
