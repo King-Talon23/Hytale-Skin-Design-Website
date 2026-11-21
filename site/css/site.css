@@ -412,3 +412,4 @@ dialog.wide { width: min(760px, 94vw); }
 /* no text blurbs: the worn-item line, the facing label and the Creator tool tips stay hidden (user 2026-11-21) */
 .detail, .facing, #app.ws .facing, .viewhint, #app.ws .viewhint { display: none !important; }
 .paintbox.resizing canvas { cursor: nwse-resize !important; }
+.outliner .partrow .partdel { display: grid; place-items: center; padding: 0; text-align: center; font-size: 13px; line-height: 1; }

@@ -1181,8 +1181,8 @@ async function finishAsset(equip = false) {
   const upd = cur.id && cur.name ? ` "${cur.name}" now wears it too.` : '';
   if (store_.get('se_finished')) return say(`Saved. You are wearing ${a.name}.${upd}`);
   store_.set('se_finished', '1');
-  const btns = [{ label: 'Back to my items', value: 'back', primary: true }, { label: 'Keep editing', value: 'edit' }, { label: 'Make a copy', value: 'copy' },
-    ...(linked && !SHOWGAME ? [{ label: 'Show in game', value: 'game' }] : !linked ? [{ label: 'Set up in game', value: 'setup' }] : [])];
+  const btns = [{ label: 'Back to my items', value: 'back', primary: true }, { label: 'Keep editing', value: 'edit' },
+    ...(linked && !SHOWGAME ? [{ label: 'Show in game', value: 'game' }] : [])];
   await flush(); const unsaved = !cur.id || dirty;
   const big = el('img', { alt: '', draggable: false }); fig.build(R.fit(cur.skin), R).then(root => { big.src = fig.snapshot(root, 'full', false, 256); }).catch(() => {});   // drawn now, not behind the thumbnail queue
   const v = await ask('You are wearing it', [el('div', { class: 'finishpic' }, big), el('p', { text }),
