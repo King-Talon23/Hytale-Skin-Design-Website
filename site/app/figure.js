@@ -276,7 +276,7 @@ export function stage(canvas, Controls) {
   const scene = new THREE.Scene(); lights(scene);
   const cam = new THREE.PerspectiveCamera(32, 1, 1, 16000); cam.position.set(-75, 95, 255);
   const ctl = new Controls(cam, canvas); ctl.target.set(0, 62, 0); ctl.enablePan = false; ctl.zoomToCursor = false;   // zoom stays on the figure's centre, lined up with the buttons under it
-  ctl.minDistance = 40; ctl.maxDistance = 480; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
+  ctl.minDistance = 40; ctl.maxDistance = 900; ctl.rotateSpeed = 0.55; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
   const disc = new THREE.Mesh(new THREE.CircleGeometry(58, 48), new THREE.MeshBasicMaterial({ color: 0x0b1626, transparent: true, opacity: 0.55, fog: false })); disc.rotation.x = -Math.PI / 2; disc.position.y = -0.2; scene.add(disc);
   const CELL = 32, grid = new THREE.GridHelper(CELL * 40, 40, 0x4a76ad, 0x33557f); grid.material.transparent = true; grid.material.opacity = 0; grid.material.depthWrite = false; scene.add(grid);
   let sky = null, world = null, scrollers = [], flowing = [], mist = null; const FOG = [950, 1750];   // mist: the short fade that hides the land going back to the crossing   // the in-game background (setBackdrop below); set pieces that slide while climbing
@@ -451,8 +451,8 @@ export function stage(canvas, Controls) {
     mountRoot = root || null; seat = root ? at : null; if (root) { scene.add(root); mountAnim.setFigure(root); } else { mountAnim.anim = null; mountAnim.figure = null; }
     seatAt();
     if (root) { const top = at[1] + 135, [b, , , h] = insets(), len = Math.min(700, (top + 40) * h / (2 * Math.tan(16 * Math.PI / 180) * (h - b)));   // rider and animal both in view: the rider's head is the seat plus a body
-      ctl.maxDistance = Math.max(480, len); const off = cam.position.clone().sub(ctl.target).setLength(len), sp = new THREE.Spherical().setFromVector3(off); sp.theta = 0.9; sp.phi = Math.min(sp.phi, 1.3); off.setFromSpherical(sp); ctl.target.set(0, top / 2 + 4, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
-    else if (was) { ctl.maxDistance = 480; const off = cam.position.clone().sub(ctl.target).setLength(fitLen()); ctl.target.set(0, 62, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
+      ctl.maxDistance = Math.max(900, len); const off = cam.position.clone().sub(ctl.target).setLength(len), sp = new THREE.Spherical().setFromVector3(off); sp.theta = 0.9; sp.phi = Math.min(sp.phi, 1.3); off.setFromSpherical(sp); ctl.target.set(0, top / 2 + 4, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
+    else if (was) { ctl.maxDistance = 900; const off = cam.position.clone().sub(ctl.target).setLength(fitLen()); ctl.target.set(0, 62, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
   }
   const fitLen = () => { const [b, r, w, h] = insets(), t = Math.tan(16 * Math.PI / 180), tall = 2 * Math.max(62, figTop - 62) + 26;   // far enough that the whole character (helmet and all) fits in the free part of the view
     return Math.min(470, Math.max(tall * h / (2 * t * (h - b)), 48 * h / (t * (w - r)))); };
@@ -478,7 +478,7 @@ export function stage(canvas, Controls) {
       const c = box.getCenter(new THREE.Vector3()), r = Math.max(14, box.getSize(new THREE.Vector3()).length() / 2), dir = cam.position.clone().sub(ctl.target).normalize();
       ctl.target.copy(c); const half = Math.min(cam.fov * Math.PI / 360, Math.atan(Math.tan(cam.fov * Math.PI / 360) * cam.aspect));   // the narrower of the two view angles
       cam.position.copy(c).add(dir.multiplyScalar(Math.min(ctl.maxDistance, Math.max(ctl.minDistance, r / Math.sin(half) * 1.1)))); ctl.update(); },
-    orbit(dx, dy) { const off = cam.position.clone().sub(ctl.target), s = new THREE.Spherical().setFromVector3(off); const k = 2 * Math.PI / Math.max(1, canvas.clientHeight); s.theta -= dx * k; s.phi = Math.max(0.05, Math.min(Math.PI - 0.05, s.phi - dy * k)); off.setFromSpherical(s); cam.position.copy(ctl.target).add(off); ctl.update(); },
+    orbit(dx, dy) { const off = cam.position.clone().sub(ctl.target), s = new THREE.Spherical().setFromVector3(off); const k = 0.55 * 2 * Math.PI / Math.max(1, canvas.clientHeight); s.theta -= dx * k; s.phi = Math.max(0.05, Math.min(Math.PI - 0.05, s.phi - dy * k)); off.setFromSpherical(s); cam.position.copy(ctl.target).add(off); ctl.update(); },
     findMesh(keep) { let hit = null; figure?.traverse(o => { if (!hit && o.isMesh && keep(o)) hit = o; }); return hit; },
     setView(name) { const v = VIEWS[name] || VIEWS.persp; cam.position.set(...v); ctl.target.set(0, 62, 0); ctl.update(); },
     highlight(f) { hl = f; drawHL(); },
