@@ -252,6 +252,8 @@ async function buildWorld(sc, tint) {
       for (const [x0, y, z0, q] of st.list) { const x = sym(x0 + ox), z = sym(z0 + oz); if (x * x + z * z > R * R) continue;
         let k = 1; if (st.plant) { const d = Math.hypot(x, z);   // a plant shrinks away near the character, the camera's lens and any set piece
           k = Math.min(1, Math.max(0, (d - clear) / 0.7), c ? Math.max(0, (Math.hypot(x * BLOCK - c.x, z * BLOCK - c.z) / BLOCK - 2.2) / 1.2) : 1);
+          if (c && k > 0) { const cx = c.x / BLOCK, cz = c.z / BLOCK, L = cx * cx + cz * cz, t = L ? Math.max(0, Math.min(1, (x * cx + z * cz) / L)) : 0;   // and along the line from the lens to the character, so no clump fills the foreground
+            k = Math.min(k, Math.max(0, (Math.hypot(x - t * cx, z - t * cz) - 0.9) / 0.8)); }
           for (const r of rects) if (x > r[0] - 0.6 && x < r[2] + 0.6 && z > r[1] - 0.6 && z < r[3] + 0.6) k = 0;
           if (k < 0.02) continue; }
         st.im.setMatrixAt(n++, M.compose(V.set(x * BLOCK, y * BLOCK, z * BLOCK), st.plant ? Q.setFromAxisAngle(Y, q) : q || Q.identity(), st.plant ? SC.setScalar(k) : ONE)); }
