@@ -1423,7 +1423,7 @@ function panelCreator() {
     const paidIn = f => { const it = R.find(f, cur.skin[f]), b = it && it.custom ? CAT.items[f].find(e => e.Id === it.baseId) : it; return b && paidLocked(b); };
     const tile = f => { const it = R.find(f, cur.skin[f]), p = parse(cur.skin[f]), paid = paidIn(f);
       return el('div', { class: 'skin starttile' + (paid ? ' paid' : '') }, el('div', { class: 'pic' }, itemThumb(f, it, p.color, p.variant)), el('b', { text: itemName(it) }), el('small', { text: LABEL[f] }),
-        paid ? el('small', { class: 'dim', text: 'Paid item' }) : it.custom ? el('div', { class: 'acts' }, el('button', { class: 'mini primary', text: 'Open', title: 'Keep editing your version', onclick: guard(() => { const a = ASSETS.find(x => 'Custom_' + x.id === it.Id); if (!a) throw new Error('That custom item is gone.'); return openAsset(a); }) }),
+        paid ? el('small', { class: 'dim', text: 'Paid item: can’t be copied', title: 'Paid items (from editions like Supporter or Cursebreaker) can only be edited by an account that owns them. That check needs Sign in with Hytale, which is waiting on Hytale’s approval.' }) : it.custom ? el('div', { class: 'acts' }, el('button', { class: 'mini primary', text: 'Open', title: 'Keep editing your version', onclick: guard(() => { const a = ASSETS.find(x => 'Custom_' + x.id === it.Id); if (!a) throw new Error('That custom item is gone.'); return openAsset(a); }) }),
           el('button', { class: 'mini', text: 'Copy', title: 'Make a second version to edit', onclick: () => newAsset(f) }))
         : el('button', { class: 'mini primary', text: 'Edit a copy', onclick: () => newAsset(f) })); };
     return [head('Asset Creator'), el('div', { class: 'pbody' },
