@@ -963,7 +963,7 @@ function limits(c) {
     const spots = new Map(); for (const r of ED.rects) { const k = r.x + ',' + r.y; (spots.get(k) || spots.set(k, []).get(k)).push(r); }   // faces sharing one spot (left and right glasses painted alike) get one label
     for (const rs of spots.values()) { const r = rs[0]; if (!(r.w * z > 34 && r.h * z > 14)) continue; const uniq = a => [...new Set(a)];
       const parts = uniq(rs.map(q => partName(q.node))), faces = uniq(rs.map(q => q.face)).join('/');
-      const opts = parts.length > 1 ? [parts.join(' + ') + ' (shared paint)', parts.join(' + '), parts[0] + ' +' + (parts.length - 1) + ' (shared)', 'Shared paint'] : [many ? parts[0] + ' · ' + faces : faces, faces];   /* parts painted alike: name them once and say so, no repeated sides */
+      const opts = parts.length > 1 ? [parts.join(' + ') + ' (shared paint)', parts.join(' + '), parts[0] + ' +' + (parts.length - 1) + ' (shared)', 'Shared paint'] : (ED.rects.filter(q => q.node === r.node).length === 1 ? [parts[0], faces] : [many ? parts[0] + ' · ' + faces : faces, faces]);   /* parts painted alike: name them once and say so, no repeated sides */
       const t = opts.find(v => x.measureText(v).width <= r.w * z - 6); if (t) x.fillText(t, r.x * z + 3, r.y * z + 11); } }
   return o;
 }
@@ -1016,7 +1016,7 @@ function shapeEdit(fn) {   // with Symmetry on, the box's twin on the other side
   const before = JSON.stringify(ED.model), b0 = curBox(), tw = symTwin(); fn();
   if (tw && b0 && b0.node !== tw && boxesOf(ED.model).some(x => x.node === b0.node) && boxesOf(ED.model).some(x => x.node === tw)) mirrorNode(b0.node, tw);
   finishShape(before); }
-async function setMode(m) { if (ED.float) placeFloat(); say(''); if (m === 'shape') { await editModel(); if (boxesOf(ED.model).filter(b => /^Box_/.test(b.node.name) && bakeOffset(b.node)).length) shapeChanged(); ED.box ||= 0; if (!ED.stool || ED.stool === 'select') ED.stool = 'move'; st.cursor(null); ED.hover = ED.hoverM = null; } ED.mode = m; ED.shapeOpen = m === 'shape'; render(); placeGizmo(); }
+async function setMode(m) { if (ED.float) placeFloat(); say(''); if (m === 'shape') { await editModel(); if (boxesOf(ED.model).filter(b => /^Box_/.test(b.node.name) && bakeOffset(b.node)).length) shapeChanged(); splitShared(); ED.box ||= 0; if (!ED.stool || ED.stool === 'select') ED.stool = 'move'; st.cursor(null); ED.hover = ED.hoverM = null; } ED.mode = m; ED.shapeOpen = m === 'shape'; render(); placeGizmo(); }
 function pickTool(id) { if (ED.mode === 'shape') { if (ED.stool !== id) say(''); ED.stool = id; } else { if (id !== 'select' && ED.float) placeFloat(); ED.painter.tool = id; } render(); placeGizmo(); }
 function curBox() { return ED.model ? boxesOf(ED.model)[ED.box || 0] : null; }
 function placeGizmo() {
@@ -1241,6 +1241,9 @@ const dupBox = () => addBox('dup');
 function delBox(k = ED.box || 0) { const boxes = boxesOf(ED.model), i = k, b = boxes[i]; if (!b) return;   /* a part goes with the parts attached to it (an added hat's pieces) */
   const inside = boxesOf({ nodes: [b.node] }).length; if (boxes.length - inside < 1) return say('A piece needs at least one part.', true);
   shapeEdit(() => { const list = b.parent ? b.parent.children : ED.model.nodes; list.splice(list.indexOf(b.node), 1); ED.box = Math.max(0, Math.min(i, boxesOf(ED.model).length - 1)); });
+  const keep = fig.usedRects(ED.model);   /* the paint no part uses any more goes too, so no old blocks stay on the texture */
+  ED.painter.write((d, W, H) => { const used = new Uint8Array(W * H); for (const r of keep) for (let y = Math.max(0, Math.floor(r.y)); y < Math.min(H, Math.ceil(r.y + r.h)); y++) used.fill(1, y * W + Math.max(0, Math.floor(r.x)), y * W + Math.min(W, Math.ceil(r.x + r.w)));
+    for (let k = 0; k < W * H; k++) if (!used[k]) d[k * 4 + 3] = 0; }); ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); render();
   say(inside > 1 ? `Deleted ${inside} parts. Undo brings them back.` : 'Deleted. Undo brings it back.'); }
 const resetShape = guard(async () => { say('Back to the original shape. Ctrl+Z undoes it.');
   const orig = structuredClone(await game.json(game.common(ED.asset.model))); shapeEdit(() => { ED.model = orig; ED.box = 0; }); });
@@ -1495,6 +1498,11 @@ function addBox(kind = 'dup', at = null) {   // 'dup' a copy, 'mirror' a copy on
   if (paint) { ED.painter.write(paint); ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); render(); if (kind === 'add') say(at ? 'New box added where you clicked, outlined in gold. Drag it with the Move tool (G) to adjust.' : 'New box added on the front, outlined in gold. Drag it with the Move tool (G).'); }
   else say('The texture has no free room left, so the new box shares paint with the box it came from.', true);
 }
+// parts painted from one shared spot each get their own spot (paint copied, so nothing looks different): the texture then matches the parts list
+function splitShared() { if (ED.splitDone) return; ED.splitDone = true; const keep = ED.box || 0, seen = new Set(); let n = 0;
+  boxesOf(ED.model).forEach((b, k) => { const r = fig.usedRects({ nodes: [{ ...b.node, children: [] }] })[0]; if (!r) return; const key = r.x + ',' + r.y;
+    if (seen.has(key)) { ED.box = k; if (ownArea(true)) n++; } else seen.add(key); });
+  ED.box = keep; if (n) { render(); say(`${n} part${n > 1 ? 's' : ''} that shared paint with another now ${n > 1 ? 'have' : 'has'} its own spot on the texture.`); } }
 function ownArea(quiet) {   // move the selected box's paint to free room of its own, so it no longer shares texels with other boxes
   const b = curBox(); if (!b) return false; const sh = b.node.shape, old = structuredClone(sh.textureLayout || {}), lay = allocLayout(sh) || (growTexture() ? allocLayout(sh) : null);
   if (!lay) { if (!quiet) say('The texture is as big as it can be and has no free room left for this box.', true); return false; }
