@@ -1154,7 +1154,9 @@ function renameBox(btn, node) {
 // the texture view: the wheel zooms, right- or middle-drag pans; in Shape mode a click picks the box that owns that area
 function fitTexture() { if (!ED) return; const w = $('wsleft').clientWidth - 26; ED.zoom = Math.max(1, Math.min(24, Math.floor(w / ED.canvas.width))); }
 function bindTexView(box) {
-  box.addEventListener('wheel', e => { if (!ED) return; e.preventDefault(); const z = Math.max(1, Math.min(24, ED.zoom + (e.deltaY < 0 ? 1 : -1))); if (z !== ED.zoom) { ED.zoom = z; render(); } }, { passive: false });
+  box.addEventListener('wheel', e => { if (!ED) return; e.preventDefault(); const z = Math.max(1, Math.min(24, ED.zoom + (e.deltaY < 0 ? 1 : -1))); if (z === ED.zoom) return;
+    const cv = () => box.querySelector('canvas'), r0 = cv()?.getBoundingClientRect(), tx = r0 ? (e.clientX - r0.left) / r0.width : 0, ty = r0 ? (e.clientY - r0.top) / r0.height : 0;
+    ED.zoom = z; render(); const r1 = cv()?.getBoundingClientRect(); if (r0 && r1) { box.scrollLeft += r1.left + tx * r1.width - e.clientX; box.scrollTop += r1.top + ty * r1.height - e.clientY; } }, { passive: false });   /* the texel under the cursor stays under it */
   box.addEventListener('contextmenu', e => e.preventDefault());
   box.addEventListener('pointerdown', e => {
     if (!ED) return;
