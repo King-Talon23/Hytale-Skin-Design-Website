@@ -300,7 +300,7 @@ function panelPicker() {
           if (!b.classList.contains('sure')) { b.classList.add('sure'); b.textContent = 'Sure?'; b.title = 'Click again to delete "' + a.name + '"'; clearTimeout(b._t);
             b._t = setTimeout(() => { b.classList.remove('sure'); b.textContent = '🗑'; b.title = 'Delete this custom piece'; }, 3000); return; }
           clearTimeout(b._t); deleteAsset(a); } }) : null;
-      return el('button', { class: 'lcard ' + (e ? tierClass(e) : 'none') + (e === it ? ' on' : ''), title: e ? itemName(e) : 'None', onclick: () => change(e, color, variant),
+      return el('button', { class: 'lcard ' + (e ? tierClass(e) : 'none') + ((e?.Id ?? null) === (it?.Id ?? null) ? ' on' : ''), title: e ? itemName(e) : 'None', onclick: () => change(e, color, variant),
         onpointerenter: ev => { hv.onpointerenter(ev); if (peek.part === part) showDetail(e, e !== it); }, onpointermove: ev => { if (peek.part === part) return; hv.onpointermove(ev); if (peek.part === part) showDetail(e, e !== it); }, onpointerleave: ev => { hv.onpointerleave(ev); showDetail(it); } },
         e ? itemThumb(f, e, color, variant) : el('span', { class: 'nothing', text: '✕' }), star, bin, e && isNew(f, e) ? el('span', { class: 'new', text: 'NEW' }) : null, el('b', { text: e ? itemName(e) : 'None' })); };
     cardsBox.replaceChildren(...(REQUIRED.has(f) || lockFilter !== 'all' ? [] : [card(null)]), ...items.map(card));
