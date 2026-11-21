@@ -216,7 +216,7 @@ async function buildWorld(sc, tint) {
   // place's hills and trees as a fixed ring of distant scenery standing on it, from RIN blocks out into the haze. Nothing that slides is
   // solid and nothing solid moves, so nothing can ever reach the character or the camera, and no move ever needs a correction.
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const P = 128, RIN = 17, R = 60, TAU = Math.PI * 2, sym = v => { const w = ((v % P) + P) % P; return w >= P / 2 ? w - P : w; };
+  const P = 128, RIN = 17, R = 60, FIX = 13, TAU = Math.PI * 2, sym = v => { const w = ((v % P) + P) % P; return w >= P / 2 ? w - P : w; };
   const raw = (x, z) => { const n = Math.sin(TAU * 2 * x / P + 1.3) * Math.cos(TAU * 3 * z / P - 0.7) + 0.7 * Math.sin(TAU * (x + z) / P + 2.1) + 0.4 * Math.cos(TAU * 4 * (x - z) / P);
     return Math.max(0, (n + 0.5) * sc.hills * 0.55); };
   const h = (x, z) => { const d = Math.hypot(x, z); if (d < RIN) return 0; const a = Math.atan2(z, x), far = Math.max(0, (d - RIN - 9) / (R - RIN - 9));   // rolling hills from the ring's inner edge, growing into a ring of mountains on the horizon
@@ -237,7 +237,10 @@ async function buildWorld(sc, tint) {
     for (const b0 of tb) { if (!BLOCKS[b0.name]) continue; const x = cx + b0.x, z = cz + b0.z, y = base + b0.y + lift;
       put(b0.name + '|0', x, y, z, b0.rotation ? turnOf(b0.rotation) : null, false, false); if (b0.y + lift === 0) taken.add(x + ',' + z); } }
   // the ring's hills: columns standing on the plain (the plain's own ground is under them), plants on their tops
-  for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) { const top = h(x, z); if (!top) continue; const low = Math.min(top, h(x + 1, z), h(x - 1, z), h(x, z + 1), h(x, z - 1));
+  for (let x = -R; x <= R; x++) for (let z = -R; z <= R; z++) { const top = h(x, z), dc = Math.hypot(x, z);
+    if (dc >= FIX - 0.5 && dc <= R + 1) put(sc.ground + '|' + Math.floor(rnd() * nTops), x, -0.996, z, null, false, false);   // from FIX blocks out the land is fixed, ground and all (a hair above the sliding ground it covers)
+    if (!top) { if (dc >= FIX && dc <= R && !taken.has(x + ',' + z) && rnd() < sc.density) { const r = rnd(), name = pick(r < 0.45 ? 1 : r < 0.8 ? 2 : 0); if (name) put(name + '|0', x + (rnd() - 0.5) * 0.5, 0, z + (rnd() - 0.5) * 0.5, rnd() * TAU, true, false); } continue; }
+    const low = Math.min(top, h(x + 1, z), h(x - 1, z), h(x, z + 1), h(x, z - 1));
     for (let y = Math.max(1, low); y <= top; y++) put(y === top ? sc.ground + '|' + Math.floor(rnd() * nTops) : sc.under + '|0', x, y - 1, z, null, false, false);
     if (!taken.has(x + ',' + z) && rnd() < sc.density) { const name = pick(0); if (name) put(name + '|0', x + (rnd() - 0.5) * 0.5, top, z + (rnd() - 0.5) * 0.5, rnd() * TAU, true, false); } }
   // the plain: one ground block per cell and its plants, repeating every P blocks, sliding with the move
@@ -250,11 +253,10 @@ async function buildWorld(sc, tint) {
   const avoid = () => root.userData.avoid || [];   // set pieces' ground rectangles [x0, z0, x1, z1] in blocks: no plant inside them
   const layout = (plantsOnly) => { const ox = ax / BLOCK, oz = az / BLOCK, c = root.userData.cam, clear = root.userData.clear || 1, rects = avoid();
     for (const st of sets) { if (plantsOnly && !st.plant) continue; if (!st.slide && st.laid && plantsOnly) continue; let n = 0;
-      for (const [x0, y, z0, q] of st.list) { const x = st.slide ? sym(x0 + ox) : x0, z = st.slide ? sym(z0 + oz) : z0; if (x * x + z * z > R * R) continue;
-        let k = 1; if (st.plant && st.slide) { if (h(Math.round(x), Math.round(z)) > 2) continue;   // deep inside a hill it can't be seen; at a hill's foot it stays (the blocks cover it), so nothing pops there
-          const d = Math.hypot(x, z);   // a plant shrinks away near the character, the camera's lens and any set piece
+      for (const [x0, y, z0, q] of st.list) { const x = st.slide ? sym(x0 + ox) : x0, z = st.slide ? sym(z0 + oz) : z0; if (x * x + z * z > (st.slide ? (FIX + 1.5) * (FIX + 1.5) : R * R)) continue;   // what slides stays inside the fixed land
+        let k = 1; if (st.plant && st.slide) {           const d = Math.hypot(x, z);   // a plant shrinks away near the character, the camera's lens and any set piece
           const e = v => v <= 0 ? 0 : v >= 1 ? 1 : v * v * (3 - 2 * v);   // long, eased fades, so a plant sliding past never visibly pops in or out
-          k = Math.min(e((d - clear) / 1.8), c ? e((Math.hypot(x * BLOCK - c.x, z * BLOCK - c.z) / BLOCK - 1.2) / 2.2) : 1);
+          k = Math.min(e((d - clear) / 1.8), e((FIX - 1 - d) / 3.5), c ? e((Math.hypot(x * BLOCK - c.x, z * BLOCK - c.z) / BLOCK - 1.2) / 2.2) : 1);
           for (const r of rects) if (x > r[0] - 0.6 && x < r[2] + 0.6 && z > r[1] - 0.6 && z < r[3] + 0.6) k = 0;
           if (k < 0.02) continue; }
         st.im.setMatrixAt(n++, M.compose(V.set(x * BLOCK, y * BLOCK, z * BLOCK), st.plant ? Q.setFromAxisAngle(Y, q) : q || Q.identity(), st.plant ? SC.setScalar(k) : ONE)); }
