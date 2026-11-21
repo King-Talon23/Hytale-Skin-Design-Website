@@ -536,7 +536,8 @@ function sceneryFor(g, n) {
   return [null, 0]; }
 // moves done facing something (a ladder, a workbench) are watched from behind, as in the game
 const facesAway = (g, n) => g === 'Climb' || g === 'Mantle' || (g === 'Default' && n === 'Interact');
-async function setProps(g, n) { const want = heldBy(g, n);
+let propsKey = '';   // the props in the hands now: a move that uses the same ones keeps them (the glider never blinks out between glide moves)
+async function setProps(g, n) { const want = heldBy(g, n), key = JSON.stringify(want); if (key === propsKey) return; propsKey = key;
   const built = await Promise.all(want.map(async ([k, bone, shift]) => { try { const [model, tex] = game.PROPS[k]; return { root: model ? await fig.buildCreature({ model, tex }) : await fig.buildBlock(tex), bone, shift }; } catch (e) { console.warn(k, e.message); return null; } }));
   st.props(built.filter(Boolean)); if (built.some(b => !b)) say('Your saved copy of the game files is from before held items were added. Refresh it once in the Locker to see them (your skins are kept).', true); }
 // st.lift: tall moves aim the view higher, moves near the floor aim lower so they clear the buttons under the view
