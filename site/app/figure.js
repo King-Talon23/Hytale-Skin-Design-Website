@@ -426,9 +426,10 @@ export function stage(canvas, Controls) {
   function props(list) { unhang(); for (const h of held) dispose(h.root); held = list || []; if (figure) hang(); }
   // a tall move (gliding, arms and glider high overhead): aim higher and back off so it all fits; lift(0) puts the view back
   let lifted = null;
-  function lift(y) { const off = cam.position.clone().sub(ctl.target);
-    if (y) { if (!lifted) lifted = { len: off.length() }; off.setLength(Math.max(off.length(), 360)); ctl.target.set(0, y, 0); }
-    else if (lifted) { off.setLength(lifted.len); ctl.target.set(0, 62, 0); lifted = null; } else return;
+  function lift(y, phi = 0) { const off = cam.position.clone().sub(ctl.target);   // phi: look down from at least this high (polar angle), to see into a bed
+    if (y) { if (!lifted) lifted = { len: off.length(), phi: new THREE.Spherical().setFromVector3(off).phi }; off.setLength(Math.max(off.length(), 360)); ctl.target.set(0, y, 0);
+      if (phi) { const sp = new THREE.Spherical().setFromVector3(off); sp.phi = Math.min(sp.phi, phi); off.setFromSpherical(sp); } }
+    else if (lifted) { const sp = new THREE.Spherical().setFromVector3(off); sp.radius = lifted.len; sp.phi = Math.max(sp.phi, lifted.phi); off.setFromSpherical(sp); ctl.target.set(0, 62, 0); lifted = null; } else return;
     cam.position.copy(ctl.target).add(off); ctl.update(); }
   function mount(root, at) {
     const was = !!mountRoot; if (mountRoot) { scene.remove(mountRoot); dispose(mountRoot); }
