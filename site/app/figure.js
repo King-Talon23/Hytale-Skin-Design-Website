@@ -296,7 +296,7 @@ export function stage(canvas, Controls) {
     wallG.position.set(wx % CELL, WALL_Y + wy % CELL, WALL_Z); for (const p of scrollers) { const b = p.userData.scroll; if (!wallOn) { p.position.copy(b); continue; } p.position.x = b.x + (p.position.x - b.x - wallOn[0] * dt) % BLOCK; p.position.y = b.y + (p.position.y - b.y - wallOn[1] * dt) % BLOCK; }
     wallG.material.opacity += ((wallOn && !scrollers.length ? 0.5 : 0) - wallG.material.opacity) * (1 - Math.exp(-dt * 6)); wallG.visible = wallG.material.opacity > 0.01; }
   let hl = null, helpers = [];   // outlines around picked boxes (see drawHL)
-  const anim = new Animator(), mountAnim = new Animator(); let figure = null, held = [], perchY = 0, faceCb = null, faced = '', last = performance.now(), mountRoot = null, seat = null, hoverTo = 0, hoverAt = 0;
+  const anim = new Animator(), mountAnim = new Animator(); let figure = null, held = [], perchY = 0, faceCb = null, faced = '', last = performance.now(), mountRoot = null, seat = null, hoverTo = 0, hoverAt = 0, pitchTo = 0, pitchAt = 0;
   let inset = 0, insetR = 0, figTop = 130, autoFit = true;   // the buttons over the bottom and right of the view: the picture is centred on what is left, at the same scale
   const insets = () => { const w = canvas.clientWidth || 1, h = canvas.clientHeight || 1; return [inset > 0 && inset < h * 0.45 ? inset : 0, insetR > 0 && insetR < w * 0.35 ? insetR : 0, w, h]; };
   function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false);
@@ -383,7 +383,8 @@ export function stage(canvas, Controls) {
   }
   const VIEWS = { front: [0, 62, 270], back: [0, 62, -270], side: [-270, 62, 0], top: [0, 330, 1], persp: [-75, 95, 255] };
   // a ridden animal under the figure: the figure sits at the animal's seat (in model units) and the view backs off to fit both
-  const seatAt = () => { if (!figure) return; const k = anim.blend < 1 ? anim.blend * anim.blend * (3 - 2 * anim.blend) : 1; figure.position.set(0, (seat ? seat[1] : 0) + hoverAt + perchY * k, seat ? seat[2] : 0); };   // a seat's lift eases in with the pose, so nobody stands on the chair first
+  const seatAt = () => { if (!figure) return; const k = anim.blend < 1 ? anim.blend * anim.blend * (3 - 2 * anim.blend) : 1; figure.position.set(0, (seat ? seat[1] : 0) + hoverAt + perchY * k, seat ? seat[2] : 0);
+  figure.rotation.x = pitchAt; if (pitchAt) { const c = 70; figure.position.y += c - c * Math.cos(pitchAt); figure.position.z -= c * Math.sin(pitchAt); } };   // a swimmer lies forward, turning about the chest   // a seat's lift eases in with the pose, so nobody stands on the chair first
   // scenery a move needs: boxes and planes in the scene (a chair, a bed, the water's surface); perch lifts the figure onto it
   const setPiece = new THREE.Group(); scene.add(setPiece);
   async function scenery(list, perch = 0) { const my = (scenery.n = (scenery.n || 0) + 1);
@@ -409,6 +410,7 @@ export function stage(canvas, Controls) {
   let pendingRects = [];
   // flying moves: the figure rises off the ground and bobs gently, easing up and down when the move changes
   function float(dt, now) { if (figure && perchY) seatAt(); for (const h of held) { if (anim.blend > 0.8 || now - (h.at || 0) > 600) h.shown = true; h.root.visible = !!h.shown; }   // a held thing shows once the hands have reached it, not swinging up from the feet
+    if (figure && (pitchTo || pitchAt)) { pitchAt += (pitchTo - pitchAt) * (1 - Math.exp(-dt * 5)); if (Math.abs(pitchTo - pitchAt) < 0.002) pitchAt = pitchTo; seatAt(); }
     if (!figure || (!hoverTo && !hoverAt)) return; hoverAt += (hoverTo - hoverAt) * (1 - Math.exp(-dt * 4)); if (Math.abs(hoverTo - hoverAt) < 0.05) hoverAt = hoverTo;
     seatAt(); if (hoverAt > 1 && hoverTo) figure.position.y += Math.sin(now / 1000 * 2.2) * 2.5 * Math.min(1, hoverAt / hoverTo); }
   // things held in the hands (a glider, a sword ...): each hangs on a bone of the figure and moves with it; re-hung when the figure is rebuilt
@@ -456,7 +458,7 @@ export function stage(canvas, Controls) {
   const refit = () => glideCam(refitNow);
   const refitNow = () => { if (!autoFit || lifted || mountRoot) return; const off = cam.position.clone().sub(ctl.target); off.setLength(fitLen()); cam.position.copy(ctl.target).add(off); ctl.update(); };
   let grabbed = null; ctl.addEventListener('start', () => { tw = null; grabbed = cam.position.clone(); }); ctl.addEventListener('end', () => { if (grabbed && cam.position.distanceTo(grabbed) > 2) autoFit = false; grabbed = null; });   // once the player really zooms or turns the view, it stays theirs (a click is not a turn)
-  const api = { inset: (px, right = 0) => { px = Math.max(0, Math.round(px || 0)); right = Math.max(0, Math.round(right || 0)); if (px !== inset || right !== insetR) { inset = px; insetR = right; fit(); refit(); } }, plantClear: r => { plantClear = r || 0; }, isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, props, lift, scenery, onFacing: cb => { faceCb = cb; faced = ''; }, wall: v => { wallOn = v || null; }, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
+  const api = { inset: (px, right = 0) => { px = Math.max(0, Math.round(px || 0)); right = Math.max(0, Math.round(right || 0)); if (px !== inset || right !== insetR) { inset = px; insetR = right; fit(); refit(); } }, plantClear: r => { plantClear = r || 0; }, isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, props, lift, scenery, onFacing: cb => { faceCb = cb; faced = ''; }, wall: v => { wallOn = v || null; }, hover: h => { hoverTo = Math.max(0, h || 0); }, pitch: deg => { pitchTo = (deg || 0) * Math.PI / 180; }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
     gizmoBusy: (cx, cy) => { if (cx != null && tc.object && !tc.dragging) { const r = canvas.getBoundingClientRect(); tc.pointerHover({ x: ((cx - r.left) / r.width) * 2 - 1, y: -((cy - r.top) / r.height) * 2 + 1, button: 0 }); } return tc.dragging || tc.axis !== null; },   // a press right on the gizmo (ring, arrow, handle) is the gizmo's, even with no hover before it
     // where a click lands on a box: the point and the face's outward direction, in the box's own part (node) space
     pickHit(cx, cy, keep) { if (!figure) return null; aim(cx, cy); for (const h of ray.intersectObject(figure, true)) if (h.object.visible && keep(h.object)) {
