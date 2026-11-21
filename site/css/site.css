@@ -379,3 +379,5 @@ input.hex { width: 84px; font: 600 12px ui-monospace, Consolas, monospace; backg
 
 /* Creator in a narrower desktop window: slimmer side columns so the model view keeps room */
 @media (max-width: 1250px) and (min-width: 981px) { #app.ws:not(.ws-wide) { grid-template-columns: 54px minmax(176px, 200px) minmax(0, 1fr) minmax(212px, 236px); gap: 6px; padding: 10px 12px; } }
+/* a tool's tip is shown in full the first time (fresh); after that it is one quiet line, so it doesn't cover the model */
+.viewhint:not(.fresh) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .82; }
