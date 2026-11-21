@@ -409,3 +409,6 @@ dialog.wide { width: min(760px, 94vw); }
 .partrow { display: flex; align-items: stretch; gap: 2px; } .partrow > button:first-child { flex: 1; min-width: 0; text-align: left; }
 .partrow .partdel { width: 26px; flex: none; padding: 0; color: var(--dim); background: none; border: 1px solid transparent; border-radius: 3px; opacity: 0; }
 .partrow:hover .partdel, .partrow.on .partdel { opacity: 1; } .partrow .partdel:hover { color: #ff8a8a; border-color: #ff8a8a66; }
+/* no text blurbs: the worn-item line, the facing label and the Creator tool tips stay hidden (user 2026-11-21) */
+.detail, .facing, #app.ws .facing, .viewhint, #app.ws .viewhint { display: none !important; }
+.paintbox.resizing canvas { cursor: nwse-resize !important; }

@@ -104,7 +104,7 @@ async function startApp() {
   META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); SHOWGAME = !!(await db.get('meta', 'showInGame').catch(() => false));
   $('connect').hidden = true; $('app').hidden = false;
   if (!st) { st = fig.stage($('view'), OrbitControls);
-    if (location.hostname.endsWith('localhost')) { window.__st = st; window.__dbg = { combineWith: (...a) => combineWith(...a), combinePick: () => combinePick(), cat: () => CAT }; }   // local tests only
+    if (location.hostname.endsWith('localhost')) { window.__st = st; window.__dbg = { combineWith: (...a) => combineWith(...a), combinePick: () => combinePick(), cat: () => CAT, ed: () => ED }; }   // local tests only
     st.onMissing = () => say('Some of the game objects this move uses are not in your saved copy of the game files yet. Connect your Assets.zip again in Help to see them.', true); st.onFacing(f => { const t = $('facing') || $('view').parentElement.appendChild(el('div', { id: 'facing', class: 'facing' })); t.textContent = 'Facing you: ' + f; }); bindPaint($('view'), e => ED && !ED.shapeOpen && ED.painter.tool !== 'select' ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true);
     $('view').addEventListener('pointermove', e => { if (!ED) return; partHover(e); const p = ED.shapeOpen || ED.painter.tool === 'select' ? st.cursor(null) : st.cursor(e.clientX, e.clientY, ED.canvas, brushSize(), ED.mirror);
       ED.hover = p; ED.hoverM = p?.m || null; drawOvl(); });
@@ -1110,7 +1110,16 @@ function bindTexView(box) {
     if (e.button !== 0 || ED.mode !== 'shape') return;
     const c = ED.canvas, r = c.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * c.width, y = (e.clientY - r.top) / r.height * c.height;
     const hit = ED.rects.filter(q => x >= q.x && x < q.x + q.w && y >= q.y && y < q.y + q.h).sort((a, b) => a.w * a.h - b.w * b.h)[0]; if (!hit) return;
-    const k = boxesOf(ED.model).findIndex(b => b.node.name === hit.node); if (k >= 0) { ED.box = k; render(); placeGizmo(); }
+    const k = boxesOf(ED.model).findIndex(b => b.node.name === hit.node); if (k < 0) return; ED.box = k;
+    if (ED.stool !== 'resize') { render(); placeGizmo(); return; }
+    // Resize on the texture: drag across a part's area to make that side wider or narrower, up and down to make it taller or shorter
+    const b = boxesOf(ED.model)[k], sh = b.node.shape, lay = sh.textureLayout || {}, px = r.width / c.width;
+    const key = Object.keys(lay).filter(f => FACE_UV[f]).find(f => { const o = lay[f].offset || {}; return Math.abs((o.x ?? 0) - hit.x) <= hit.w && Math.abs((o.y ?? 0) - hit.y) <= hit.h; }) || (sh.type === 'quad' ? 'front' : null);
+    if (!key) { render(); placeGizmo(); return; } const [ua, va] = FACE_UV[sh.type === 'quad' ? 'front' : key].map(i => ['x', 'y', 'z'][i]);
+    const s0 = { ...sh.settings.size }, before = JSON.stringify(ED.model), x0 = e.clientX, y0 = e.clientY; let changed = false; e.preventDefault(); box.setPointerCapture(e.pointerId);
+    box.onpointermove = ev => { const du = Math.round((ev.clientX - x0) / px), dv = Math.round((ev.clientY - y0) / px), nu = Math.max(1, Math.min(64, (s0[ua] ?? 0) + du)), nv = Math.max(1, Math.min(64, (s0[va] ?? 0) + dv));
+      if (nu === sh.settings.size[ua] && nv === sh.settings.size[va]) return; sh.settings = { ...sh.settings, size: { ...sh.settings.size, [ua]: nu, [va]: nv } }; changed = true; shapeChanged(); };
+    box.onpointerup = () => { box.onpointermove = box.onpointerup = null; if (changed) finishShape(before); else { render(); placeGizmo(); } };
   });
 }
 
@@ -1274,6 +1283,7 @@ function renderWorkspace() {
   c.style.width = c.width * ED.zoom + 'px';
   if (!ED.box_) { ED.box_ = el('div', { class: 'paintbox' }); bindTexView(ED.box_); }
   ED.box_.replaceChildren(el('div', { class: 'paintwrap' }, c, limits(c), sizeOvl()));
+  ED.box_.classList.toggle('resizing', mode === 'shape' && ED.stool === 'resize');   // drag a part's area on the texture to resize it
   $('wsleft').replaceChildren(...[el('div', { class: 'wshead row' }, el('span', { text: 'Texture', class: 'grow' }),
       el('button', { class: 'chip' + (ED.wide ? ' on' : ''), text: ED.wide ? 'Smaller' : 'Bigger', title: 'Make the texture panel wider', onclick: () => { ED.wide = !ED.wide; $('app').classList.toggle('ws-wide', ED.wide); requestAnimationFrame(() => { fitTexture(); render(); }); } })),
     ED.box_,
@@ -1412,7 +1422,7 @@ function standOut(hex) {   // the brush colour, unless it would hide the new box
   if (!mains.length || far(hex) > 160) return hex; return ['#f4c452', '#3db7c9', '#7cc444', '#ffffff', '#7a4fd6'].reduce((a, b) => far(b) > far(a) ? b : a);
 }
 function nextBoxName() { const used = new Set(boxesOf(ED.model).map(b => boxLabel(b.node))); let k = 1; while (used.has('Box ' + k)) k++; return 'Box ' + k; }
-function startPlacing() { ED.placing = true; say(''); viewHint(); }   // the hint under the view says what to do
+function startPlacing() { ED.placing = true; say('Click on the item where the new box should go. Esc cancels.'); viewHint(); }   // the hint under the view says what to do
 function dragBox(e, mesh) {   // the Move tool: drag the box itself
   const d = st.boxDrag(mesh, e.clientX, e.clientY); if (!d) return; e.stopImmediatePropagation(); let last = null; const v = $('view'); try { v.setPointerCapture(e.pointerId); } catch { /* fine */ }
   const move = ev => { last = d.move(ev.clientX, ev.clientY) || last; };
