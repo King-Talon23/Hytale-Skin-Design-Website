@@ -483,7 +483,9 @@ const renameSkin = guard(async rec => {
   if (cur.id === rec.id) { cur.name = r.name; cur.auto = false; keepDraft(); }
   await refreshWard(); if (PUBMAP[r.id] && canPublish() && !hasCustom(r.skin)) publish(r, true); say(`Renamed to "${r.name}"`); });
 const duplicate = guard(async rec => { await store.saveCustom(cleanName(rec.name + ' copy'), rec.skin); await refreshWard(); });
-const removeSkin = guard(async rec => { if (!await confirmBox('Delete skin', `Delete "${rec.name}"? This cannot be undone.`, 'Delete', true)) return; if (PUBMAP[rec.id] && canPublish()) await unpublish(rec, true); await store.remove(rec.id); await refreshWard(); });
+const removeSkin = guard(async rec => { if (PUBMAP[rec.id] && canPublish()) await unpublish(rec, true); await store.remove(rec.id); await refreshWard();   /* deleted at once, with Undo, instead of asking first */
+  sayUndo(`Deleted "${rec.name}"`, guard(async () => { await store.saveCustom(rec.name, rec.skin, rec.id); await refreshWard(); })); });
+function sayUndo(text, undo) { const s = $('status'); say(text); s.append(' ', el('button', { class: 'linkbtn', text: 'Undo', onclick: () => { say(''); undo(); } })); clearTimeout(say.t); say.t = setTimeout(() => s.textContent = '', 8000); }
 function checklist(rec) {
   const rows = GROUPS.flatMap(([g, fs]) => fs.filter(f => rec.skin[f]).map(f => { const p = parse(rec.skin[f]), item = R.find(f, rec.skin[f]);
     return el('tr', {}, el('td', { text: g + ' ▸ ' + LABEL[f] }), el('td', { text: item ? itemName(item) : nice(p.id) }), el('td', { text: [p.color && nice(p.color), p.variant && nice(p.variant)].filter(Boolean).join(', ') })); }));

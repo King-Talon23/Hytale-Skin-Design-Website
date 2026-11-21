@@ -440,3 +440,5 @@ dialog.wide { width: min(760px, 94vw); }
 .skin .cardacts { position: absolute; top: 28px; right: 4px; z-index: 5; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: #0d1826; border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 8px 18px #000a; min-width: 110px; }
 .skin .cardacts[hidden] { display: none; }
 .skin .cardacts .mini { width: 100%; text-align: left; }
+.status .linkbtn { background: none; border: 0; padding: 0 0 0 6px; min-height: 0; color: var(--gold); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; pointer-events: auto; }
+.status:has(.linkbtn) { pointer-events: auto; }
