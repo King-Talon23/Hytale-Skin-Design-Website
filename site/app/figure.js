@@ -504,7 +504,7 @@ export function stage(canvas, Controls) {
   const shadow = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
     g.addColorStop(0, 'rgba(0,0,0,0.42)'); g.addColorStop(0.6, 'rgba(0,0,0,0.22)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   // bd: { top, fog } colours from the zone's weather at noon, sc: its entry in SCENES, tint: the biome's grass colour
-  api.world = () => world; api.camera = cam; api.orbit = (az, el, dist) => { const t = ctl.target; cam.position.set(t.x + Math.sin(az) * Math.cos(el) * dist, t.y + Math.sin(el) * dist, t.z + Math.cos(az) * Math.cos(el) * dist); ctl.update(); };   // for tests
+  api.world = () => world; api.camera = cam; api.orbitTo = (az, el, dist) => { const t = ctl.target; cam.position.set(t.x + Math.sin(az) * Math.cos(el) * dist, t.y + Math.sin(el) * dist, t.z + Math.cos(az) * Math.cos(el) * dist); ctl.update(); };   // for tests
   api.setBackdrop = async (bd, sc, tint) => { const my = (api.setBackdrop.n = (api.setBackdrop.n || 0) + 1);
     let built = null; if (bd) try { built = await buildWorld(sc, tint); } catch (e) { console.warn('scene', e); if (my === api.setBackdrop.n) throw new Error('scene files missing'); return; }   // the caller says what is missing
     if (my !== api.setBackdrop.n) { if (built) disposeTree(built); return; }
