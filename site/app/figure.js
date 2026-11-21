@@ -459,7 +459,7 @@ export function stage(canvas, Controls) {
     mountRoot = root || null; seat = root ? at : null; if (root) { scene.add(root); mountAnim.setFigure(root); } else { mountAnim.anim = null; mountAnim.figure = null; }
     seatAt();
     if (root) { const top = at[1] + 135, [b, , , h] = insets(), len = Math.min(700, (top + 40) * h / (2 * Math.tan(16 * Math.PI / 180) * (h - b)));   // rider and animal both in view: the rider's head is the seat plus a body
-      ctl.maxDistance = Math.max(900, len); const off = cam.position.clone().sub(ctl.target).setLength(len), sp = new THREE.Spherical().setFromVector3(off); sp.theta = 0.9; sp.phi = Math.min(sp.phi, 1.3); off.setFromSpherical(sp); ctl.target.set(0, top / 2 + 4, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
+      ctl.maxDistance = Math.max(900, len); const off = cam.position.clone().sub(ctl.target).setLength(len), sp = new THREE.Spherical().setFromVector3(off); sp.phi = Math.min(sp.phi, 1.3); off.setFromSpherical(sp);   /* the player's angle stays: only the distance fits the animal */ ctl.target.set(0, top / 2 + 4, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
     else if (was) { ctl.maxDistance = 900; const off = cam.position.clone().sub(ctl.target).setLength(fitLen()); ctl.target.set(0, 62, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
   }
   const fitLen = () => { const [b, r, w, h] = insets(), t = Math.tan(16 * Math.PI / 180), tall = 2 * Math.max(62, figTop - 62) + 26;   // far enough that the whole character (helmet and all) fits in the free part of the view
@@ -494,6 +494,10 @@ export function stage(canvas, Controls) {
     view(front) { return glideCam(() => api.viewNow(front)); },
     viewNow(front) { const off = new THREE.Vector3(front ? 0 : -75, 33, front ? 265 : 255);   // during a tall move (gliding, flying, climbing) keep its raised aim and distance
       if (lifted) off.setLength(Math.max(off.length(), 360)); else { ctl.target.set(0, 62, 0); off.setLength(fitLen()); autoFit = true; } cam.position.copy(ctl.target).add(off); ctl.update(); },
+    // back to full-body distance after a close-up, keeping the angle the player chose
+    unclose() { return glideCam(() => { if (lifted || mountRoot) return; const off = cam.position.clone().sub(ctl.target), L = fitLen(); ctl.target.set(0, 62, 0); off.setLength(Math.max(L, Math.min(off.length(), ctl.maxDistance))); autoFit = true; cam.position.copy(ctl.target).add(off); ctl.update(); }); },
+    // the camera to the figure's front side, mirrored from where it is (after watching a climb from behind)
+    toFront() { return glideCam(() => { const off = cam.position.clone().sub(ctl.target); if (off.z >= 0) return; off.x = -off.x; off.z = -off.z; cam.position.copy(ctl.target).add(off); ctl.update(); }); },
     behind() { endGlide(); return api.behindNow(); },
     behindNow() { if (cam.position.z - ctl.target.z < 0) return; const off = cam.position.clone().sub(ctl.target); off.x = -off.x; off.z = -off.z; cam.position.copy(ctl.target).add(off); ctl.update(); } };   // a climb is watched from behind, as in the game
   // ---- in-game backgrounds: a sky dome from the zone's sky and fog colours, and a floor of its ground blocks fading into that fog
