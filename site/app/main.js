@@ -846,7 +846,9 @@ const FLAG_WHY = n => `This looks too much like ${n}, a paid item, so it stays o
 function copyName(n) { const base = n.replace(/ \(mine\)$/, '').replace(/ copy( \d+)?$/, '') + ' copy', used = new Set(ASSETS.map(x => x.name)); let k = 1, out = base; while (used.has(out)) out = base + ' ' + ++k; return out; }
 async function copyAsset(a) { if (ASSETS.length >= assets.MAX) throw new Error(`You have ${assets.MAX} custom assets, the most this site keeps. Delete one first.`);
   const c = await assets.save({ ...a, id: assets.newId(), name: copyName(a.name), flag: undefined }); ASSETS = await assets.list(); registerAssets(); syncFolder(); render(); say(`Made "${c.name}". Its Edit button opens it.`); }
+const keepAny = () => store_.set('se_anyitem', JSON.stringify({ picks: anyItem.picks || {}, slot: anyItem.slot }));   // the picker's slot and item, remembered between visits
 function anyItem() {   // or start from any free item in the game, worn or not
+  if (!anyItem.loaded) { anyItem.loaded = true; try { const k = JSON.parse(store_.get('se_anyitem') || '{}'); anyItem.picks = k.picks || {}; anyItem.slot = k.slot; } catch { /* fresh */ } }
   const slots = game.FIELDS.filter(f => CAT.items[f].some(e => !e.custom && !paidLocked(e))), slot = el('select', { title: 'Slot' }, slots.map(f => el('option', { value: f, text: LABEL[f] })));
   const ok = e => !e.custom && !paidLocked(e) && !/^\s*\[?tmp\]?/i.test(itemName(e)) && !/(^|_)tmp(_|$)/i.test(e.Id);
   // the item list is our own drop-down (a plain one can't tell us what the pointer is over): the picture shows the item under the pointer or arrow keys, and goes back to the chosen one
@@ -870,7 +872,7 @@ function anyItem() {   // or start from any free item in the game, worn or not
     Object.assign(menu.style, { left: r.left + 'px', width: r.width + 'px', maxHeight: h + 'px', top: up ? '' : r.bottom + 2 + 'px', bottom: up ? innerHeight - r.top + 2 + 'px' : '' }); };
   const open = () => { if (!list.length || !menu.hidden) return; document.querySelectorAll('body > .anymenu').forEach(x => x.remove()); document.body.append(menu); place(); menu.hidden = false; item.setAttribute('aria-expanded', 'true'); mark(at);
     document.addEventListener('pointerdown', away, true); addEventListener('scroll', drift, true); addEventListener('resize', close); };
-  const choose = i => { at = i; if (!find_.value.trim() && list[i] && list[i][2]) (anyItem.picks ||= {})[slot.value] = list[i][2].Id; label(); close(); clearTimeout(hov); draw(at); };
+  const choose = i => { at = i; if (!find_.value.trim() && list[i] && list[i][2]) (anyItem.picks ||= {})[slot.value] = list[i][2].Id; keepAny(); label(); close(); clearTimeout(hov); draw(at); };
   item.onclick = () => menu.hidden ? open() : close();
   item.onkeydown = ev => { const k = ev.key, n = list.length; if (!n) return;
     if (k === 'ArrowDown' || k === 'ArrowUp') { ev.preventDefault(); if (menu.hidden) open(); const i = Math.max(0, Math.min(n - 1, act + (k === 'ArrowDown' ? 1 : -1))); mark(i); peek(i); }
@@ -886,8 +888,8 @@ function anyItem() {   // or start from any free item in the game, worn or not
     menu.replaceChildren(...list.map(([n], i) => el('div', { role: 'option', class: 'anyopt', text: n, data: { i } })));
     const worn = !q && parse(cur.skin[slot.value]).id; at = q ? (list.length ? 0 : -1) : list.findIndex(r => r[2] && r[2].Id === worn); const kept = (anyItem.picks ||= {})[slot.value];   // the item shown last time stays, so the picker doesn't jump around between visits
     if (!q && at < 0 && kept) at = list.findIndex(r => r[2] && r[2].Id === kept);
-    if (!q && at < 0 && list.length > 1) { at = 1 + Math.floor(Math.random() * (list.length - 1)); anyItem.picks[slot.value] = list[at][2].Id; } act = Math.max(0, at); label(); item.disabled = !list.length; close(); clearTimeout(hov); draw(at); };
-  slot.value = slots.includes(anyItem.slot) ? anyItem.slot : slots.includes('overtop') ? 'overtop' : slots[0]; fill(); slot.onchange = () => { anyItem.slot = slot.value; find_.value = ''; fill(); }; find_.oninput = fill;
+    if (!q && at < 0 && list.length > 1) { at = 1 + Math.floor(Math.random() * (list.length - 1)); anyItem.picks[slot.value] = list[at][2].Id; keepAny(); } act = Math.max(0, at); label(); item.disabled = !list.length; close(); clearTimeout(hov); draw(at); };
+  slot.value = slots.includes(anyItem.slot) ? anyItem.slot : slots.includes('overtop') ? 'overtop' : slots[0]; fill(); slot.onchange = () => { anyItem.slot = slot.value; keepAny(); find_.value = ''; fill(); }; find_.oninput = fill;
   find_.onkeydown = ev => { if (ev.key === 'ArrowDown' && list.length) { ev.preventDefault(); item.focus(); item.onkeydown(ev); } };
   return [el('h3', { text: 'Or start from any item' }), el('div', { class: 'row anyitem' }, pic, el('div', { class: 'anycol' }, el('div', { class: 'row' }, slot, find_), el('div', { class: 'anywrap' }, item, menu)), edit)];
 }
