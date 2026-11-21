@@ -432,3 +432,4 @@ dialog.wide { width: min(760px, 94vw); }
 .iconbtn { width: 26px; height: 24px; padding: 0; display: grid; place-items: center; background: none; border: 1px solid transparent; border-radius: 3px; color: #c5d6e2; font-size: 15px; line-height: 1; min-height: 0; }
 .iconbtn:hover { background: #1b2e48; border-color: var(--line); }
 .wshead.row { display: flex; align-items: center; gap: 2px; }
+.combinegrid { height: 46vh; max-height: none; align-content: start; } .combinetypes { height: 46vh; }
