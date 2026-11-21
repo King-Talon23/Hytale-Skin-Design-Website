@@ -369,3 +369,5 @@ input.hex { width: 84px; font: 600 12px ui-monospace, Consolas, monospace; backg
 @media (max-width: 980px) { #app:not(.ws) .stagebtns { top: auto; bottom: 160px; } }   /* phones: under the character, clear of the name tag */
 .nameplate:empty { display: none; }
 @media (min-width: 981px) { @container stage (max-width: 440px) { #app:not(.ws) .stagebtns .stbtn b { display: none; } #app:not(.ws) .stagebtns .stbtn { padding: 0 9px; } #app:not(.ws) .stage:not(.clean) .nameplate { max-width: calc(100% - 92px); } } }   /* narrow view: icons only, beside the name tag and clear of the head */
+/* the animation groups and the slot picker's header stay at the top while the list scrolls */
+.pbody > .cattiles, .pbody > .pickhead { position: sticky; top: -14px; z-index: 4; margin-top: -14px; padding-top: 14px; padding-bottom: 8px; background: #101c2c; box-shadow: 0 6px 8px -6px #0008; }
