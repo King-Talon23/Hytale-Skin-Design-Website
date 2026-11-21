@@ -447,16 +447,16 @@ function folderRow() {
 }
 function gameSteps() {   // the path to wearing your skins in Hytale, in order
   if (!store.folderSupported) return null; const linked = FOLDER.state === 'on', all = linked && SHOWGAME && !!FOLDER.mod;
-  const row = (n, done, title, text, action) => el('li', { class: done ? 'done' : '' }, el('span', { class: 'num', text: done ? '✓' : n }), el('div', {}, el('b', { text: title }), el('small', { text })), done ? null : action);
-  return el('details', { class: 'gamesteps', open: !all }, el('summary', { text: all ? 'Wearing your skins in Hytale: all set' : 'Wear your skins in Hytale: 3 steps' }), el('ol', {},
-    row(1, !!FOLDER.mod, 'Get the Skin Editor Sync mod', FOLDER.mod ? `Installed: it last ran on ${FOLDER.mod.seen}.` : 'Install it once from CurseForge. It dresses you in game.', modLink('ghost')),
-    row(2, linked, 'Choose a skins folder', 'Pick your Documents folder; the site makes "Hytale Skins" in it for the mod.', linked ? null : el('button', { class: 'btn primary', text: FOLDER.state === 'ask' ? 'Reconnect folder' : 'Choose folder', onclick: guard(async () => { FOLDER.state === 'ask' ? await store.resumeFolder(true) : await store.chooseFolder(); FOLDER = await store.folderState(); await reloadAssets(); await refreshWard(); pushWearing(); }) })),
-    row(3, linked && SHOWGAME, 'Switch on "In game"', linked ? 'The switch under the preview. What you wear here, you wear in your worlds.' : 'The switch appears under the preview once a folder is chosen.', el('button', { class: 'btn ghost', text: 'Turn on', disabled: !linked, onclick: () => { if (!SHOWGAME) $('ingame').onclick(); } }))));
+  const row = (n, done, title, text, action) => el('li', { class: done ? 'done' : '' }, el('span', { class: 'num', text: done ? '✓' : n }), el('b', { text: title }), done ? null : action);
+  return el('details', { class: 'gamesteps', open: !all }, el('summary', { text: all ? 'In game: ready' : 'Play in Hytale' }), el('ol', {},
+    row(1, !!FOLDER.mod, 'Skin Editor Sync mod', '', modLink('ghost')),
+    row(2, linked, 'Skins folder', '', linked ? null : el('button', { class: 'btn primary', text: FOLDER.state === 'ask' ? 'Reconnect folder' : 'Choose folder', onclick: guard(async () => { FOLDER.state === 'ask' ? await store.resumeFolder(true) : await store.chooseFolder(); FOLDER = await store.folderState(); await reloadAssets(); await refreshWard(); pushWearing(); }) })),
+    row(3, linked && SHOWGAME, 'In game', '', el('button', { class: 'btn ghost', text: 'Turn on', disabled: !linked, onclick: () => { if (!SHOWGAME) $('ingame').onclick(); } }))));
 }
 function panelWardrobe() {
   return [head('Locker'), el('div', { class: 'pbody' }, gameSteps(), folderRow(), accountRow(),
     el('div', { class: 'shelf game' }, el('h3', {}, el('span', { text: 'In-game slots' }), el('em', { text: `${WARD.game.filter(Boolean).length} / ${store.GAME_SLOTS}` })),
-      el('div', { class: 'row' }, locked('Load my presets', 'loading your in-game presets'), locked('Send all to game', 'sending skins to your in-game presets')), need('preset sync'),
+      el('div', { class: 'row' }, locked('Load my presets', 'loading your in-game presets'), locked('Send all to game', 'sending skins to your in-game presets')),
       el('div', { class: 'cards' }, WARD.game.map((r, i) => card(r, 'game', i)))),
     el('div', { class: 'shelf custom' }, el('h3', {}, el('span', { text: 'My skins' }), el('em', { text: `${WARD.custom.length} / ${store.CUSTOM_MAX}` })),
       WARD.custom.length ? el('div', { class: 'cards' }, WARD.custom.map(r => card(r, 'custom'))) : el('p', { class: 'blank', text: 'Nothing saved yet. Design a skin in the Wardrobe and press Save.' })))];
@@ -940,7 +940,7 @@ function anyItem() {   // or start from any free item in the game, worn or not
   slotBtn.onclick = () => { if (!slotMenu.hidden) return slotClose(); document.querySelectorAll('body > .anymenu').forEach(x => x.remove()); document.body.append(slotMenu); const r = slotBtn.getBoundingClientRect();
     Object.assign(slotMenu.style, { left: r.left + 'px', width: Math.max(r.width, 180) + 'px', top: r.bottom + 2 + 'px', maxHeight: Math.min(420, innerHeight - r.bottom - 12) + 'px', bottom: '' }); slotMenu.hidden = false; document.addEventListener('pointerdown', slotAway, true); };
   find_.onkeydown = ev => { if (ev.key === 'ArrowDown' && list.length) { ev.preventDefault(); item.focus(); item.onkeydown(ev); } };
-  return [el('h3', { text: 'Or start from any item' }), el('div', { class: 'row anyitem' }, pic, el('div', { class: 'anycol' }, el('div', { class: 'row' }, el('div', { class: 'anywrap' }, slotBtn), find_), el('div', { class: 'anywrap' }, item, menu)), edit)];
+  return [el('h3', { text: 'Any item' }), el('div', { class: 'row anyitem' }, pic, el('div', { class: 'anycol' }, el('div', { class: 'row' }, el('div', { class: 'anywrap' }, slotBtn), find_), el('div', { class: 'anywrap' }, item, menu)), edit)];
 }
 function assetCard(a) {
   const act = (label, fn, cls) => el('button', { class: 'mini ' + (cls || ''), text: label, onclick: e => { e.stopPropagation(); fn(); } });
@@ -1561,14 +1561,13 @@ function panelCreator() {
     const paidIn = f => { const it = R.find(f, cur.skin[f]), b = it && it.custom ? CAT.items[f].find(e => e.Id === it.baseId) : it; return b && paidLocked(b); };
     const tile = f => { const it = R.find(f, cur.skin[f]), p = parse(cur.skin[f]), paid = paidIn(f);
       return el('div', { class: 'skin starttile' + (paid ? ' paid' : '') }, el('div', { class: 'pic' }, itemThumb(f, it, p.color, p.variant)), el('b', { text: itemName(it) }), el('small', { text: LABEL[f] }),
-        paid ? el('small', { class: 'dim', text: 'Paid item: can’t be copied', title: 'Paid items (from editions like Supporter or Cursebreaker) can only be edited by an account that owns them. That check needs Sign in with Hytale, which is waiting on Hytale’s approval.' }) : it.custom ? el('div', { class: 'acts' }, el('button', { class: 'mini primary', text: 'Open', title: 'Keep editing your version', onclick: guard(() => { const a = ASSETS.find(x => 'Custom_' + x.id === it.Id); if (!a) throw new Error('That custom item is gone.'); return openAsset(a); }) }),
+        paid ? el('small', { class: 'dim', text: 'Paid' }) : it.custom ? el('div', { class: 'acts' }, el('button', { class: 'mini primary', text: 'Open', title: 'Keep editing your version', onclick: guard(() => { const a = ASSETS.find(x => 'Custom_' + x.id === it.Id); if (!a) throw new Error('That custom item is gone.'); return openAsset(a); }) }),
           el('button', { class: 'mini', text: 'Copy', title: 'Make a second version to edit', onclick: () => newAsset(f) }))
         : el('button', { class: 'mini primary', text: 'Edit a copy', onclick: () => newAsset(f) })); };
-    return [head('Asset Creator'), el('div', { class: 'pbody' },
-      modLink('primary') && !FOLDER.mod ? el('div', { class: 'folder modrow' }, el('div', {}, el('b', { text: 'Wear your items in Hytale' }), el('small', { class: 'dim', text: 'Your custom items show in your own worlds with our Skin Editor Sync mod.' })), modLink('primary')) : null,
-      el('h3', { text: 'Make your own version of something you wear' }), el('div', { class: 'cards' }, worn.map(tile)), anyItem(),
-      el('h3', { text: `My custom assets (${ASSETS.length} / ${assets.MAX})` }),
-      ASSETS.length ? el('div', { class: 'cards' }, ASSETS.map(assetCard)) : el('p', { class: 'blank', text: 'None yet. Pick an item above and press Edit a copy.' }))]; }
+    return [head('Creator'), el('div', { class: 'pbody' },
+      el('h3', { text: 'Your outfit' }), el('div', { class: 'cards' }, worn.map(tile)), anyItem(),
+      el('h3', { text: `My items ${ASSETS.length}/${assets.MAX}` }),
+      ASSETS.length ? el('div', { class: 'cards' }, ASSETS.map(assetCard)) : el('p', { class: 'blank', text: 'None yet' }))]; }
   return [];
 }
 
