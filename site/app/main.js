@@ -523,7 +523,7 @@ const BED = [{ block: game.SET_PIECES.bed, at: [-32, 0, -61], turn: 0, stretch: 
 const BENCH = [{ block: game.SET_PIECES.bench, at: [-32, 0, 84], turn: 180 }];   // something to work at, centred in front of the hands (it is two blocks wide: x -64..64)
 const LADDERS = cols => [{ ladder: [cols, 7], at: [0, 0, -8] }];   // climbing faces +z: the rungs just in front of the hands, planks behind them
 const DEEP = 192;   // how far above the lake bed a swimmer floats (3 blocks)
-const WATER = (y, under) => [{ plane: [3600, 3600], at: [0, y, 0], tex: W.water, repeat: [56, 56], color: 0x7fb2e6, opacity: 0.55, flow: true }, ...(under ? [{ box: [3600, y, 3600], at: [0, y / 2, 0], color: 0x1d5ca8, opacity: 0.62, volume: true }] : [])];   // a lake to the hills, drifting with the land while swimming
+const WATER = (y, under) => [{ plane: [6400, 6400], at: [0, y, 0], tex: W.water, repeat: [56, 56], color: 0x7fb2e6, opacity: 0.55, flow: true }, ...(under ? [{ box: [6400, y, 6400], at: [0, y / 2, 0], color: 0x1d5ca8, opacity: 0.62, volume: true }] : [])];   // a lake to the hills, drifting with the land while swimming
 function sceneryFor(g, n) {
   if (g === 'Flavor' && /^Sit2?$/.test(n)) return [CHAIR, 32];   // the village chair's seat top
   if (g === 'Flavor' && /^Sleep/.test(n)) return [BED, 50];   // on the mattress, under the blanket's top

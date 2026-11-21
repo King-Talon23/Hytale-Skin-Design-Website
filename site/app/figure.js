@@ -216,12 +216,14 @@ async function buildWorld(sc, tint) {
   // place's hills and trees as a fixed ring of distant scenery standing on it, from RIN blocks out into the haze. Nothing that slides is
   // solid and nothing solid moves, so nothing can ever reach the character or the camera, and no move ever needs a correction.
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const P = 128, RIN = 17, R = 60, FIX = 13, TAU = Math.PI * 2, sym = v => { const w = ((v % P) + P) % P; return w >= P / 2 ? w - P : w; };
+  const P = 128, RIN = 44, R = 80, FIX = 45, TAU = Math.PI * 2, sym = v => { const w = ((v % P) + P) % P; return w >= P / 2 ? w - P : w; };
   const raw = (x, z) => { const n = Math.sin(TAU * 2 * x / P + 1.3) * Math.cos(TAU * 3 * z / P - 0.7) + 0.7 * Math.sin(TAU * (x + z) / P + 2.1) + 0.4 * Math.cos(TAU * 4 * (x - z) / P);
     return Math.max(0, (n + 0.5) * sc.hills * 0.55); };
-  const h = (x, z) => { const d = Math.hypot(x, z); if (d < RIN) return 0; const a = Math.atan2(z, x), far = Math.max(0, (d - RIN - 9) / (R - RIN - 9));   // rolling hills from the ring's inner edge, growing into a ring of mountains on the horizon
+  // everything nearer than RIN slides with the move; from RIN out stands a ring of hills rising into mountains, far enough that standing still is what
+  // far land looks like while you move (no near border between moving and fixed ground). Every cell of the ring is at least a block high, so its foot hides the plain's edge.
+  const h = (x, z) => { const d = Math.hypot(x, z); if (d < RIN) return 0; const a = Math.atan2(z, x), t = Math.min(1, (d - RIN) / (R - RIN));
     const peaks = 0.55 + 0.25 * Math.sin(a * 3 + 1.1) + 0.2 * Math.cos(a * 7 - 0.4) + 0.12 * Math.sin(a * 13 + x * 0.21 - z * 0.17);
-    return Math.round(raw(x, z) * Math.min(1, (d - RIN) / 12) * 0.8 + Math.pow(far, 1.8) * (2 + 7.5 * peaks)); };   // low enough that the sky shows over them from eye height
+    return Math.max(1, Math.round(1 + raw(x, z) * 0.6 + Math.pow(t, 1.3) * (4 + 12 * peaks))); };
   const items = new Map(), put = (key, x, y, z, q, plant, slide) => { const k = key + (slide ? '|s' : '|f'); (items.get(k) || items.set(k, { plant, slide, name: key, list: [] }).get(k)).list.push([x, y, z, q]); };
   const nTops = (await blockParts(sc.ground, tint)).length;
   // plant sizes (third value): 1 low, 2 knee-high, none tall
@@ -256,7 +258,7 @@ async function buildWorld(sc, tint) {
       for (const [x0, y, z0, q] of st.list) { const x = st.slide ? sym(x0 + ox) : x0, z = st.slide ? sym(z0 + oz) : z0; if (x * x + z * z > (st.slide ? (FIX + 1.5) * (FIX + 1.5) : R * R)) continue;   // what slides stays inside the fixed land
         let k = 1; if (st.plant && st.slide) {           const d = Math.hypot(x, z);   // a plant shrinks away near the character, the camera's lens and any set piece
           const e = v => v <= 0 ? 0 : v >= 1 ? 1 : v * v * (3 - 2 * v);   // long, eased fades, so a plant sliding past never visibly pops in or out
-          k = Math.min(e((d - clear) / 1.8), e((FIX - 1 - d) / 3.5), c ? e((Math.hypot(x * BLOCK - c.x, z * BLOCK - c.z) / BLOCK - 1.2) / 2.2) : 1);
+          k = Math.min(e((d - clear) / 1.8), e((38 - d) / 8), c ? e((Math.hypot(x * BLOCK - c.x, z * BLOCK - c.z) / BLOCK - 1.2) / 2.2) : 1);
           for (const r of rects) if (x > r[0] - 0.6 && x < r[2] + 0.6 && z > r[1] - 0.6 && z < r[3] + 0.6) k = 0;
           if (k < 0.02) continue; }
         st.im.setMatrixAt(n++, M.compose(V.set(x * BLOCK, y * BLOCK, z * BLOCK), st.plant ? Q.setFromAxisAngle(Y, q) : q || Q.identity(), st.plant ? SC.setScalar(k) : ONE)); }
