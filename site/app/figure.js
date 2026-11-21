@@ -390,7 +390,7 @@ export function stage(canvas, Controls) {
   const setPiece = new THREE.Group(); scene.add(setPiece);
   async function scenery(list, perch = 0) { const my = (scenery.n = (scenery.n || 0) + 1);
     const made = await Promise.all((list || []).map(async it => { let map = null;
-      if (it.block) { const g = new THREE.Group(); try { g.add(await blockModel(it.block)); } catch (e) { console.warn(it.block, e.message); return null; } g.position.set(...it.at); g.rotation.y = (it.turn || 0) * Math.PI / 180; return g; }   // the game's own furniture
+      if (it.block) { const g = new THREE.Group(); try { g.add(await blockModel(it.block)); } catch (e) { console.warn(it.block, e.message); return null; } g.position.set(...it.at); g.rotation.y = (it.turn || 0) * Math.PI / 180; if (it.stretch) g.scale.z = it.stretch; return g; }   // the game's own furniture (stretch: a touch longer along its own z)
       if (it.ladder) { const [cols, rows] = it.ladder, g = new THREE.Group(); try { await blockModel(SET_PIECES.ladder); await blockModel(SET_PIECES.wall); } catch (e) { console.warn('ladder', e.message); return null; }   // a wall of the game's ladders on planks, one block more each way so it can slide
         for (let c = -3; c <= cols + 2; c++) for (let r = -1; r <= rows; r++) { const x = (c - (cols - 1) / 2) * BLOCK, w = await blockModel(SET_PIECES.wall); w.position.set(x, r * BLOCK, BLOCK); g.add(w);
           if (cols > 1 ? c >= -1 && c <= cols : c === 0) { const l = await blockModel(SET_PIECES.ladder); l.position.set(x, r * BLOCK, 0); l.rotation.y = Math.PI; g.add(l); } }   // the wall wider than the ladders
