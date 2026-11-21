@@ -388,7 +388,7 @@ export function stage(canvas, Controls) {
   }
   const VIEWS = { front: [0, 62, 270], back: [0, 62, -270], side: [-270, 62, 0], top: [0, 330, 1], persp: [-75, 95, 255] };
   // a ridden animal under the figure: the figure sits at the animal's seat (in model units) and the view backs off to fit both
-  const seatAt = () => { if (figure) figure.position.set(0, (seat ? seat[1] : 0) + hoverAt + perchY, seat ? seat[2] : 0); };
+  const seatAt = () => { if (!figure) return; const k = anim.blend < 1 ? anim.blend * anim.blend * (3 - 2 * anim.blend) : 1; figure.position.set(0, (seat ? seat[1] : 0) + hoverAt + perchY * k, seat ? seat[2] : 0); };   // a seat's lift eases in with the pose, so nobody stands on the chair first
   // scenery a move needs: boxes and planes in the scene (a chair, a bed, the water's surface); perch lifts the figure onto it
   const setPiece = new THREE.Group(); scene.add(setPiece);
   async function scenery(list, perch = 0) { const my = (scenery.n = (scenery.n || 0) + 1);
@@ -413,7 +413,8 @@ export function stage(canvas, Controls) {
     if (world) { world.userData.avoid = rs; world.userData.relayout(); } else pendingRects = rs; }
   let pendingRects = [];
   // flying moves: the figure rises off the ground and bobs gently, easing up and down when the move changes
-  function float(dt, now) { if (!figure || (!hoverTo && !hoverAt)) return; hoverAt += (hoverTo - hoverAt) * (1 - Math.exp(-dt * 4)); if (Math.abs(hoverTo - hoverAt) < 0.05) hoverAt = hoverTo;
+  function float(dt, now) { if (figure && perchY) seatAt(); for (const h of held) h.root.visible = anim.blend > 0.8;   // a held thing shows once the hands have reached it, not swinging up from the feet
+    if (!figure || (!hoverTo && !hoverAt)) return; hoverAt += (hoverTo - hoverAt) * (1 - Math.exp(-dt * 4)); if (Math.abs(hoverTo - hoverAt) < 0.05) hoverAt = hoverTo;
     seatAt(); if (hoverAt > 1 && hoverTo) figure.position.y += Math.sin(now / 1000 * 2.2) * 2.5 * Math.min(1, hoverAt / hoverTo); }
   // things held in the hands (a glider, a sword ...): each hangs on a bone of the figure and moves with it; re-hung when the figure is rebuilt
   // a held thing can sit a little away from where the move puts it (shift: [x, y, z] in model units in the scene, the figure faces +z, whatever the hand's turn)
