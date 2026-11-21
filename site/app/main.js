@@ -216,7 +216,8 @@ for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { if
 function viewInset() {   // the character is centred above the buttons at the bottom of the view, not behind them
   const stg = $('view')?.parentElement, bar = stg?.querySelector('.bar'); if (!st || !stg) return;
   const on = bar && bar.offsetParent && !stg.classList.contains('clean') && !$('app').classList.contains('ws');
-  st.inset(on ? stg.getBoundingClientRect().bottom - bar.getBoundingClientRect().top : 0); if (!viewInset.ro) { viewInset.ro = new ResizeObserver(() => viewInset()); viewInset.ro.observe(stg); } }
+  const em = stg.querySelector('.emotes'), sr = stg.getBoundingClientRect(), emOn = on && em && em.offsetParent && em.getBoundingClientRect().height > 0;
+  st.inset(on ? sr.bottom - bar.getBoundingClientRect().top : 0, emOn ? sr.right - em.getBoundingClientRect().left + 4 : 0); if (!viewInset.ro) { viewInset.ro = new ResizeObserver(() => viewInset()); viewInset.ro.observe(stg); } }
 function render() { if (pressing) { renderLater = true; return; } jobGen++; plate(); drawEmotes(); drawStageBtns(); drawGameSwitch(); outlineBox(); viewInset();
   if (!!ED !== $('app').classList.contains('ws')) scrollTo(0, 0);   // opening or closing the Creator workspace starts at the top of the page
   $('app').classList.toggle('ws', !!ED); if (ED) return renderWorkspace(); const p = $('panel'), was = p.className, top = p.querySelector('.pbody')?.scrollTop || 0; p.className = 'panel tab-' + tab;
