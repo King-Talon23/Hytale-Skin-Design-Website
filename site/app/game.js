@@ -44,13 +44,15 @@ export async function importFrom(src, info, onProgress = () => {}) {
   const need = SLOTS.map(s => `Cosmetics/CharacterCreator/${s[1]}.json`).concat('Cosmetics/CharacterCreator/GradientSets.json', 'Common/Characters/Player.blockymodel');
   const have = new Set(zip.names); const missing = need.filter(n => !have.has(n));
   if (missing.length) throw new Error('This zip is not the Hytale Assets.zip (the character creator files are not in it).');
-  await db.clear('files'); await db.del('meta', 'game'); await db.del('meta', 'anims');
+  // the new files are written over the old ones and only then are leftovers removed, so the editor never finds its files missing mid-read
   const names = zip.names; let doneCount = 0;
   for (let i = 0; i < names.length; i += 64) {   // 64 files at a time: quick, and never holds much in memory
     const part = names.slice(i, i + 64), bufs = await Promise.all(part.map(n => zip.read(n)));
     await db.putMany('files', part.map((n, k) => [n, bufs[k]]));
     doneCount += part.length; onProgress(doneCount / names.length);
   }
+  const keep = new Set(names); for (const k of await db.keys('files')) if (!keep.has(k)) await db.del('files', k);
+  await db.del('meta', 'anims');
   const meta = { ...info, files: names.length, at: Date.now(), v: FILES_V };
   await db.put('meta', 'game', meta); cache.clear(); return meta;
 }

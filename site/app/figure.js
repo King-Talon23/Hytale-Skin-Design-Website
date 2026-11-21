@@ -281,7 +281,7 @@ export function stage(canvas, Controls) {
   const ctl = new Controls(cam, canvas); ctl.target.set(0, 62, 0); ctl.enablePan = false; ctl.zoomToCursor = false;   // zoom stays on the figure's centre, lined up with the buttons under it
   ctl.minDistance = 40; ctl.maxDistance = 900; ctl.rotateSpeed = 0.55; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
   const disc = new THREE.Mesh(new THREE.CircleGeometry(58, 48), new THREE.MeshBasicMaterial({ color: 0x0b1626, transparent: true, opacity: 0.55, fog: false })); disc.rotation.x = -Math.PI / 2; disc.position.y = -0.2; scene.add(disc);
-  const CELL = 32, grid = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({ transparent: true, depthWrite: false,
+  const CELL = 32, grid = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({ transparent: true, depthWrite: false, extensions: { derivatives: true },
     // the Studio floor: grid lines on an endless plane, fading into the dark with distance so no edge is ever seen
     uniforms: { opacity: { value: 0 }, color: { value: new THREE.Color(0x5a8cc8) }, cell: { value: CELL } },
     vertexShader: 'varying vec3 vL; varying vec3 vW; void main() { vL = position; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
