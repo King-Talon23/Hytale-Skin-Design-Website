@@ -59,12 +59,23 @@ async function connectHandle(h, ask) {
   doConnect(async () => { const f = await h.getFile(); await game.connect(f, progress); await game.rememberZip(h); });
 }
 // on every visit: if the remembered Assets.zip changed (a game update) and the browser still allows reading it, refresh quietly
-async function checkGameUpdate() {
+async function checkGameUpdate(force) {
   const h = await game.zipHandle().catch(() => null); if (!h || !META) return;
   try { if ((await h.queryPermission({ mode: 'read' })) !== 'granted') return; const f = await h.getFile();
-    if (f.size === META.size && f.lastModified === META.modified && (META.v || 1) >= game.FILES_V) return;   // same file, and read with today's list of files
-    say((META.v || 1) < game.FILES_V && f.size === META.size ? 'Reading a few more of your game files…' : 'Hytale updated, reading the new game files…'); BD_MADE.clear(); bdShown = null; await game.connect(f, () => {}); fig.clearCache(); pics.clear(); META = await game.status(); CAT = await game.catalog(); R = rules(CAT); registerAssets(); setConn(META); rebuild(); render(); say('Game files updated.');
+    if (!force && f.size === META.size && f.lastModified === META.modified && (META.v || 1) >= game.FILES_V) return;   // same file, and read with today's list of files
+    say(force ? 'Reading your game files again…' : (META.v || 1) < game.FILES_V && f.size === META.size ? 'Reading a few more of your game files…' : 'Hytale updated, reading the new game files…'); BD_MADE.clear(); bdShown = null; await game.connect(f, () => {}); fig.clearCache(); pics.clear(); META = await game.status(); CAT = await game.catalog(); R = rules(CAT); registerAssets(); setConn(META); rebuild(); render(); say('Game files updated.');
   } catch (e) { console.warn('game update check', e); say('Hytale seems to have updated, but the new game files could not be read. Use Connect again in Help.', true); } }
+// the browser forgets the read permission between visits: the first click of a visit asks for it once (Chrome then offers "Allow on every
+// visit"), so a game update is picked up without the player connecting again
+async function askZipOnce() { askZipOnce.done = true; const h = await game.zipHandle().catch(() => null); if (!h || !META) return;
+  try { if ((await h.queryPermission({ mode: 'read' })) === 'prompt' && (await h.requestPermission({ mode: 'read' })) === 'granted') checkGameUpdate(); } catch { /* not allowed now */ } }
+addEventListener('pointerdown', () => { if (!askZipOnce.done) askZipOnce(); }, { capture: true });
+// Connect again: the remembered Assets.zip is read straight away (one click); only without one does the file picker come up
+async function reconnect() { const h = await game.zipHandle().catch(() => null);
+  if (!h) return showConnect();
+  try { if ((await h.queryPermission({ mode: 'read' })) !== 'granted' && (await h.requestPermission({ mode: 'read' })) !== 'granted') return showConnect(); await h.getFile(); }
+  catch { return showConnect(); }
+  checkGameUpdate(true); }
 function progress(p) { const b = $('progress'); b.hidden = false; b.firstElementChild.style.width = Math.round(p * 100) + '%'; b.lastElementChild.textContent = p < 1 ? `Reading your game files… ${Math.round(p * 100)}%` : 'Done'; }
 let connecting = false;
 async function doConnect(run) {
@@ -627,7 +638,7 @@ function panelHelp() {
     sec('How it works', el('ul', { class: 'howto' }, steps.map(([t, d]) => el('li', {}, el('b', { text: t + ' ' }), d))),
       'Drag to turn, scroll to zoom. Changes save themselves.'),
     sec('Game files', META ? `Connected: ${META.name}, ${META.files} character files, read on ${new Date(META.at).toLocaleDateString()}.` : 'Not connected yet.',
-      el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Connect again', onclick: showConnect }),
+      el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Connect again', onclick: reconnect }),
         el('button', { class: 'btn danger', text: 'Forget game files', onclick: guard(async () => { if (!await confirmBox('Forget game files', 'Removes the copy of your game files from this browser. Your saved skins stay.', 'Forget', true)) return; await game.forget(); R = null; pics.clear(); fig.clearCache(); showConnect(); }) }))),
     MOD_URL ? sec('Skin Editor Sync', 'Wear your skins in your own worlds: install the mod, pick a skins folder in the Locker, turn on In game.', el('div', { class: 'row' }, modLink('primary'))) : null,
     sec('Backup', '',
