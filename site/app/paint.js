@@ -11,7 +11,7 @@ function fromHsl(h, s, l) { const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 
 export const SHAPES = new Set(['line', 'box', 'boxfill']), ONCE = new Set(['pick', 'fill', 'replace']);   // drag-out shapes; tools that act once per click
 
 export function createPainter(canvas, onChange, onPick) {
-  const ctx = canvas.getContext('2d', { willReadFrequently: true }), W = canvas.width; let H = canvas.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true }); let W = canvas.width, H = canvas.height;
   const undo = [], redo = []; let img = null, base = null, start = null, touched = null, fresh = false, dirty = false, adjFrom = null;
   const copy = () => { const d = ctx.getImageData(0, 0, W, H); return new ImageData(new Uint8ClampedArray(d.data), W, H); };
   function px(x, y) {   // one texel, once per stroke (so lighten, darken and see-through paint do not stack while the pointer rests)
@@ -67,8 +67,8 @@ export function createPainter(canvas, onChange, onPick) {
     keepSteps() { return { undo: undo.slice(), redo: redo.slice(), W, H }; },   // the undo steps, kept while the item is closed
     takeSteps(k) { if (!k || k.W !== W || k.H !== H) return false; undo.splice(0, undo.length, ...k.undo); redo.splice(0, redo.length, ...k.redo); return true; },
     // the texture gets taller: the picture and every undo step keep their pixels where they were, the new rows are empty
-    grow(h2) { const old = copy(); canvas.height = h2; H = h2; ctx.putImageData(old, 0, 0);
-      const pad = im => { const n = new ImageData(W, h2); n.data.set(im.data); return n; }; for (const a of [undo, redo]) a.forEach((im, i) => { a[i] = pad(im); }); if (adjFrom) adjFrom = pad(adjFrom); },
+    grow(h2, w2 = W) { const old = copy(); canvas.width = w2; canvas.height = h2; W = w2; H = h2; ctx.putImageData(old, 0, 0);   // taller and/or wider, keeping every pixel where it was
+      const pad = im => { const n = new ImageData(w2, h2); for (let y = 0; y < im.height; y++) n.data.set(im.data.subarray(y * im.width * 4, (y + 1) * im.width * 4), y * w2 * 4); return n; }; for (const a of [undo, redo]) a.forEach((im, i) => { a[i] = pad(im); }); if (adjFrom) adjFrom = pad(adjFrom); },
     // a shape dragged out on the 3D model: the texels under points along the drag, joined where they sit next to each other
     trace(points, reach) { if (!img) return; fresh = false; img.data.set(base.data); touched.clear(); let prev = null;
       for (const p of points) { if (!p) { prev = null; continue; } if (prev && Math.abs(prev.x - p.x) + Math.abs(prev.y - p.y) <= reach) line(prev, p); else dot(p.x, p.y); prev = p; }

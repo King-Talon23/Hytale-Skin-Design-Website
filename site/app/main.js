@@ -102,7 +102,7 @@ async function startApp() {
   META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); SHOWGAME = !!(await db.get('meta', 'showInGame').catch(() => false));
   $('connect').hidden = true; $('app').hidden = false;
   if (!st) { st = fig.stage($('view'), OrbitControls);
-    if (location.hostname.endsWith('localhost')) window.__st = st;   // local tests only
+    if (location.hostname.endsWith('localhost')) { window.__st = st; window.__dbg = { combineWith: (...a) => combineWith(...a), cat: () => CAT }; }   // local tests only
     st.onMissing = () => say('Some of the game objects this move uses are not in your saved copy of the game files yet. Connect your Assets.zip again in Help to see them.', true); st.onFacing(f => { const t = $('facing') || $('view').parentElement.appendChild(el('div', { id: 'facing', class: 'facing' })); t.textContent = 'Facing you: ' + f; }); bindPaint($('view'), e => ED && !ED.shapeOpen && ED.painter.tool !== 'select' ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true);
     $('view').addEventListener('pointermove', e => { if (!ED) return; partHover(e); const p = ED.shapeOpen || ED.painter.tool === 'select' ? st.cursor(null) : st.cursor(e.clientX, e.clientY, ED.canvas, brushSize(), ED.mirror);
       ED.hover = p; ED.hoverM = p?.m || null; drawOvl(); });
@@ -691,6 +691,7 @@ async function makeAsset(f, val) {
 }
 const makePainter = (c, a) => createPainter(c, final => { fig.refreshCustom(a.id); if (final) { queueAssetSave(); recordPaint(); if (ED && !ED.replaying) render(); } }, () => render());
 // a texture with no free room grows downwards (twice as tall, up to 256): the old paint stays where it was, the new rows are empty
+function growWider() { const c = ED.canvas; if (c.width * 2 > 256) return false; ED.painter.grow(c.height, c.width * 2); ED.asset = { ...ED.asset, w: c.width }; ED.n = ++edN; return true; }
 function growTexture() {
   const c = ED.canvas; if (c.height * 2 > 256) return false;
   ED.painter.grow(c.height * 2); ED.asset = { ...ED.asset, h: c.height }; ED.n = ++edN; return true;
@@ -1217,7 +1218,7 @@ function shapeSide() {
     el('div', { class: 'outliner' }, boxes.map((x, k) => { const name = boxLabel(x.node), same = boxes.filter(y => boxLabel(y.node) === name), nth = same.length > 1 ? ' ' + (same.findIndex(y => y.node === x.node) + 1) : '';
       return el('button', { class: k === i ? 'on' : '', text: name + nth, title: 'Double-click to rename', onclick: () => { ED.box = k; render(); placeGizmo(); }, ondblclick: e => renameBox(e.currentTarget, x.node),
         onmouseenter: () => st.highlight(o => o.material?.map?.image === ED.canvas && o.userData.nodeName === x.node.name), onmouseleave: () => outlineBox() }); })),
-    el('div', { class: 'options' }, ...[['Add box', startPlacing, 'A: click on the item where a new box should go'], ['Duplicate', () => addBox('dup'), 'Ctrl+D'], ['Mirror copy', () => addBox('mirror'), 'M: a copy on the other side, paint flipped'],
+    el('div', { class: 'options' }, ...[['Add box', startPlacing, 'A: click on the item where a new box should go'], ['Combine…', guard(combinePick), 'Add another item (any slot) to this piece'], ['Duplicate', () => addBox('dup'), 'Ctrl+D'], ['Mirror copy', () => addBox('mirror'), 'M: a copy on the other side, paint flipped'],
       ['Own paint', () => ownArea(), 'Give this box its own room on the texture, so painting it no longer paints other parts'], ['Delete', delBox, 'Del']].map(([t, fn, k]) => el('button', { class: 'chip', text: t, title: k, onclick: fn }))),
     el('div', { class: 'options' }, el('button', { class: 'chip' + (ED.sym ? ' on' : ''), text: `Symmetry: ${ED.sym ? 'on' : 'off'}`, title: 'Changes to a box also change its twin on the other side',
       onclick: () => { ED.sym = !ED.sym; render(); } }), ED.sym ? el('small', { class: 'dim', text: twinOf(b) ? 'Twin: ' + boxLabel(twinOf(b)) : 'No twin for this box' }) : null),
@@ -1403,6 +1404,54 @@ function dragBox(e, mesh) {   // the Move tool: drag the box itself
   const up = () => { v.removeEventListener('pointermove', move); v.removeEventListener('pointerup', up); d.end(); const b = curBox(); if (!last || !b || last.length() < 0.25) return;
     const sh = b.node.shape, r = v => Math.round(v * 2) / 2; shapeEdit(() => { sh.offset = { x: r((sh.offset?.x ?? 0) + last.x), y: r((sh.offset?.y ?? 0) + last.y), z: r((sh.offset?.z ?? 0) + last.z) }; }); };
   v.addEventListener('pointermove', move); v.addEventListener('pointerup', up);
+}
+// ---- Combine: another item's parts and paint join the one being edited (worn together as one piece in this slot)
+async function combineSource(f, e) {   // that item's model and its painted texture
+  if (e.custom) { const a = ASSETS.find(x => 'Custom_' + x.id === e.Id); if (!a) throw new Error('That custom item is gone.');
+    const bmp = await createImageBitmap(a.data), c = el('canvas', { width: bmp.width, height: bmp.height }); c.getContext('2d').drawImage(bmp, 0, 0);
+    return { model: a.shape ? JSON.parse(a.shape) : structuredClone(await game.json(game.common(a.model))), canvas: c }; }
+  if (paidLocked(e)) throw new Error(`${itemName(e)} is a ${TIERS[tierOf(e)]} item. Paid items can only be used by an account that owns them.`);
+  const r = R.resolve(f, { ...cur.skin, [f]: R.partStr(e) }); if (!r) throw new Error('That item could not be read.');
+  const c = await fig.bakedCanvas(r.tex, r.tint).catch(() => { throw new Error(`${itemName(e)} is not in your game files.`); });
+  return { model: structuredClone(await game.json(game.common(r.model))), canvas: c };
+}
+async function combineWith(f, e) {
+  const src = await combineSource(f, e); await editModel();
+  const names = new Set(), seen = list => { for (const n of list || []) { names.add(n.name); seen(n.children); } }; seen(ED.model.nodes);
+  const fresh = n => { let k = n, i = 2; while (names.has(k)) k = n + '_' + i++; names.add(k); return k; };
+  const renameAll = n => { n.name = fresh(n.name); for (const c of n.children || []) renameAll(c); };
+  const holder = n => !n.shape || n.shape.type === 'none' || n.shape.visible === false;   // a bone the parts hang on, not a part
+  const added = [];   // [box node, its layout in the other item's texture]
+  const merge = (into, list) => { for (const n of list || []) { const same = into.find(x => x.name === n.name);
+    if (same && holder(same) && holder(n)) { merge(same.children ||= [], n.children); continue; }
+    renameAll(n); into.push(n); const walk = m => { if (m.shape && (m.shape.type === 'box' || m.shape.type === 'quad') && m.shape.visible !== false) added.push([m, m.shape.textureLayout || {}]); for (const c of m.children || []) walk(c); }; walk(n); } };
+  const count = boxesOf(ED.model).length, before = JSON.stringify(ED.model), canvasW0 = ED.canvas.width, canvasH0 = ED.canvas.height;
+  const incoming = []; { const walk = m => { if (m.shape && (m.shape.type === 'box' || m.shape.type === 'quad') && m.shape.visible !== false) incoming.push(m); for (const c of m.children || []) walk(c); }; src.model.nodes.forEach(walk); }
+  if (count + incoming.length > assets.MAX_BOXES) throw new Error(`Together that would be ${count + incoming.length} boxes; a piece can have up to ${assets.MAX_BOXES}.`);
+  merge(ED.model.nodes, src.model.nodes);
+  // room on this item's texture for each new box (the texture grows when it must), then their paint is copied across in one step
+  let used = fig.usedRects(JSON.parse(before)); const lays = [];   // the free room counts this item's own parts and the new ones already placed (not their old spots)
+  for (const [n] of added) { ED.rects = used; let lay = allocLayout(n.shape);
+    while (!lay && (ED.canvas.width < ED.canvas.height ? growWider() || growTexture() : growTexture() || growWider())) { ED.rects = used; lay = allocLayout(n.shape); }
+    if (!lay) { ED.model = JSON.parse(before); ED.rects = fig.usedRects(ED.model); throw new Error('There is not enough room on this item\'s texture for those parts.'); }
+    lays.push(lay); n.shape.textureLayout = lay; used = used.concat(fig.usedRects({ nodes: [{ ...n, children: [] }] })); }
+  const S = src.canvas.getContext('2d').getImageData(0, 0, src.canvas.width, src.canvas.height), SW = S.width, SH = S.height, sd = S.data;
+  recordShape(before);
+  ED.painter.write((d, W, H) => { added.forEach(([n, from], i) => { const to = lays[i]; for (const [fc, fu, fv] of faceDims(n.shape)) { const a = to[fc], b = from[fc]; if (!a || !b) continue;
+    for (let v = 0; v < fv; v++) for (let u = 0; u < fu; u++) { const [dx, dy] = texelAt(a, u, v), [sx, sy] = texelAt(b, u, v); if (dx < 0 || dy < 0 || dx >= W || dy >= H || sx < 0 || sy < 0 || sx >= SW || sy >= SH) continue;
+      const j = (dy * W + dx) * 4, k = (sy * SW + sx) * 4; d[j] = sd[k]; d[j + 1] = sd[k + 1]; d[j + 2] = sd[k + 2]; d[j + 3] = sd[k + 3]; } } }); });
+  ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); shapeChanged();
+  say(`Added ${itemName(e)}: ${added.length} part${added.length === 1 ? '' : 's'}${ED.canvas.height !== canvasH0 || ED.canvas.width !== canvasW0 ? ' (the texture grew to make room)' : ''}. Undo takes it off again.`);
+}
+async function combinePick() {   // pick the item to add: any slot, game items and your own pieces
+  const slots = game.FIELDS.filter(f => CAT.items[f]?.length), slot = el('select', {}, slots.map(f => el('option', { value: f, text: LABEL[f] })));
+  const item = el('select', {}), fill = () => { const list = oneEach(CAT.items[slot.value]).filter(e => !isTmp(e) && !(!e.custom && paidLocked(e)) && !(ED && e.Id === 'Custom_' + ED.asset.id));
+    item.replaceChildren(...list.map(e => el('option', { value: e.Id, text: itemName(e) + (e.custom ? ' (yours)' : '') }))); };
+  slot.value = slots.includes('faceAccessory') && ED?.asset.field !== 'faceAccessory' ? 'faceAccessory' : slots[0]; slot.onchange = fill; fill();
+  const v = await ask('Combine with another item', [el('p', { class: 'dim', text: 'Its parts and paint are added to this piece, worn together in this slot.' }), el('label', { text: 'Slot' }), slot, el('label', { text: 'Item' }), item],
+    [{ label: 'Cancel', value: '' }, { label: 'Add it', value: 'yes', primary: true }]);
+  if (v !== 'yes' || !item.value) return; const e = CAT.items[slot.value].find(x => x.Id === item.value); if (!e) return;
+  document.body.classList.add('busy'); try { await combineWith(slot.value, e); } finally { document.body.classList.remove('busy'); }
 }
 function addBox(kind = 'dup', at = null) {   // 'dup' a copy, 'mirror' a copy on the other side, 'add' a new 4-block box; each gets its own room on the texture
   const boxes = boxesOf(ED.model), b = boxes[ED.box || 0]; if (!b) return; if (boxes.length >= assets.MAX_BOXES) return say(`A shape can have up to ${assets.MAX_BOXES} boxes.`, true);
