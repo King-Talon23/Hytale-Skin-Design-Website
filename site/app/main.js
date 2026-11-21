@@ -1478,20 +1478,23 @@ async function combineWith(f, e) {
   ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); shapeChanged();
   say(`Added ${itemName(e)}: ${added.length} part${added.length === 1 ? '' : 's'}${ED.canvas.height !== canvasH0 || ED.canvas.width !== canvasW0 ? ' (the texture grew to make room)' : ''}. Undo takes it off again.`);
 }
-async function combinePick() {   // pick the item to add, by its picture: any slot, game items and your own pieces
-  const slots = game.FIELDS.filter(f => CAT.items[f]?.length), slot = el('select', {}, slots.map(f => el('option', { value: f, text: LABEL[f] })));
+async function combinePick() {   // types down the left (hovering one shows its items at once), item pictures on the right
+  const slots = game.FIELDS.filter(f => CAT.items[f]?.length);
+  let cur_ = slots.includes('faceAccessory') && ED?.asset.field !== 'faceAccessory' ? 'faceAccessory' : slots[0], chosen = null, hov = 0;
   const find = el('input', { type: 'text', placeholder: 'Search', maxLength: 40, autocomplete: 'off' }), grid = el('div', { class: 'cards combinegrid' }), name = el('p', { class: 'dim', text: 'Pick an item' });
-  let chosen = null;
-  const fill = () => { const q = find.value.trim().toLowerCase(), f = slot.value;
+  const fill = f => { const q = find.value.trim().toLowerCase();
     const list = oneEach(CAT.items[f]).filter(e => !isTmp(e) && !(!e.custom && paidLocked(e)) && !(ED && e.Id === 'Custom_' + ED.asset.id) && (!q || itemName(e).toLowerCase().includes(q)));
     grid.replaceChildren(...list.map(e => { const a = e.custom && ASSETS.find(x => 'Custom_' + x.id === e.Id);
-      const card = el('button', { type: 'button', class: 'skin' + (chosen && chosen.e === e ? ' on' : ''), title: itemName(e), onclick: () => { chosen = { f, e }; name.textContent = 'Adding: ' + itemName(e); for (const c of grid.children) c.classList.toggle('on', c === card); } },
+      const card = el('button', { type: 'button', class: 'skin' + (chosen && chosen.e === e ? ' on' : ''), title: itemName(e), onclick: () => { cur_ = f; types(); chosen = { f, e }; name.textContent = 'Adding: ' + itemName(e); for (const c of grid.children) c.classList.toggle('on', c === card); } },
         el('div', { class: 'pic' }, a ? assetThumb(a) : itemThumb(f, e, null, null, true)), el('b', { text: itemName(e) + (e.custom ? ' (yours)' : '') }));
       return card; }));
-    if (!list.length) grid.append(el('p', { class: 'blank', text: 'Nothing matches.' })); };
-  slot.value = slots.includes('faceAccessory') && ED?.asset.field !== 'faceAccessory' ? 'faceAccessory' : slots[0]; slot.onchange = () => { chosen = null; name.textContent = 'Pick an item'; fill(); }; find.oninput = fill; fill();
+    if (!list.length) grid.append(el('p', { class: 'blank', text: 'Nothing matches.' })); grid.scrollTop = 0; };
+  const typeList = el('div', { class: 'combinetypes', onpointerleave: () => { clearTimeout(hov); fill(cur_); } });
+  const types = () => typeList.replaceChildren(...slots.map(f => el('button', { type: 'button', class: f === cur_ ? 'on' : '', text: LABEL[f],
+    onpointerenter: () => { clearTimeout(hov); hov = setTimeout(() => fill(f), 60); }, onclick: () => { clearTimeout(hov); cur_ = f; types(); fill(f); } })));
+  find.oninput = () => fill(cur_); types(); fill(cur_);
   $('dlg').classList.add('wide');
-  const v = await ask('Add another item', [el('p', { class: 'dim', text: 'Its parts and paint join this piece, worn together in this slot.' }), el('div', { class: 'row' }, slot, find), grid, name],
+  const v = await ask('Add another item', [el('p', { class: 'dim', text: 'Its parts and paint join this piece, worn together in this slot.' }), find, el('div', { class: 'combinebody' }, typeList, grid), name],
     [{ label: 'Cancel', value: '' }, { label: 'Add it', value: 'yes', primary: true }]).finally(() => $('dlg').classList.remove('wide'));
   if (v !== 'yes') return; if (!chosen) return say('Pick an item first.', true);
   document.body.classList.add('busy'); try { await combineWith(chosen.f, chosen.e); } finally { document.body.classList.remove('busy'); }

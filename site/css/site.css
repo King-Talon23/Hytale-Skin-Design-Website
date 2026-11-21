@@ -413,3 +413,8 @@ dialog.wide { width: min(760px, 94vw); }
 .detail, .facing, #app.ws .facing, .viewhint, #app.ws .viewhint { display: none !important; }
 .paintbox.resizing canvas { cursor: nwse-resize !important; }
 .outliner .partrow .partdel { display: grid; place-items: center; padding: 0; text-align: center; font-size: 13px; line-height: 1; }
+.combinebody { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; min-height: 0; }
+.combinetypes { display: flex; flex-direction: column; gap: 2px; max-height: 46vh; overflow: auto; }
+.combinetypes button { text-align: left; background: none; border: 1px solid transparent; border-radius: 3px; padding: 5px 8px; font-size: 13px; color: #c5d6e2; min-height: 0; }
+.combinetypes button:hover { background: #1b2e48; } .combinetypes button.on { border-color: var(--gold2); color: var(--gold); background: #22303f; }
+.combinetypes button { padding: 6px 9px !important; font-size: 13px !important; }
