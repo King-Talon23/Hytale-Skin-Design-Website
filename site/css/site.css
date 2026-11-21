@@ -444,3 +444,8 @@ dialog.wide { width: min(760px, 94vw); }
 .status:has(.linkbtn) { pointer-events: auto; }
 .elsewhere { position: fixed; inset: 0; z-index: 9999; background: rgba(8, 12, 20, .78); display: grid; place-items: center; }
 .elsewhere .elsebox { display: grid; gap: 14px; justify-items: center; padding: 22px 28px; background: var(--panel, #17202e); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; }
+/* parts list: shift/double clicks never select page text */
+.partrow, .partrow button, .wstools, .wstool, .chip, .seg { user-select: none; -webkit-user-select: none; }
+.btn:focus-visible, .wstool:focus-visible, .chip:focus-visible, .iconbtn:focus-visible, .partrow button:focus-visible, .skin:focus-visible { outline: 2px solid var(--accent, #f4c452); outline-offset: 1px; }
+.chip:hover:not(:disabled):not(.on) { background: rgba(255,255,255,.06); }
+.skin .worntick { position: absolute; top: 4px; left: 4px; width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: #2f6b3a; color: #dff5e2; font-size: 12px; font-weight: 700; pointer-events: none; }
