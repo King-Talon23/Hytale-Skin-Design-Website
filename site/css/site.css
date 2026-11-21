@@ -170,7 +170,7 @@ button.tag { cursor: help; border: 0; font: inherit; }
 .skin.game .pic { background: radial-gradient(#7a6230, #2e2716); }
 .skin .pic img { width: 100%; height: 100%; image-rendering: pixelated; }
 .skin .pic span { font-size: 26px; color: #ffffff55; }
-.skin b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skin b { font-size: 13px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; overflow-wrap: anywhere; }   /* a skin's name gets two lines before it is cut */
 .skin small { font-size: 11.5px; color: var(--dim); }
 .acts { display: flex; flex-wrap: wrap; gap: 3px; }
 .mini { background: #0d1826; border: 1px solid var(--line); border-radius: 2px; font-size: 11px; padding: 2px 5px; color: #c5d6e2; }
