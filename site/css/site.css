@@ -405,3 +405,7 @@ dialog.wide { width: min(760px, 94vw); }
 .combinegrid { max-height: 46vh; overflow: auto; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); padding: 2px; }
 .combinegrid .skin { text-align: left; } .combinegrid .skin.on { border-color: var(--gold); }
 .combinegrid .skin b { font-size: 11.5px; line-height: 1.25; }
+/* Creator parts list: a delete cross on each row */
+.partrow { display: flex; align-items: stretch; gap: 2px; } .partrow > button:first-child { flex: 1; min-width: 0; text-align: left; }
+.partrow .partdel { width: 26px; flex: none; padding: 0; color: var(--dim); background: none; border: 1px solid transparent; border-radius: 3px; opacity: 0; }
+.partrow:hover .partdel, .partrow.on .partdel { opacity: 1; } .partrow .partdel:hover { color: #ff8a8a; border-color: #ff8a8a66; }

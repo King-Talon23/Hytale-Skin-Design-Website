@@ -1224,11 +1224,12 @@ function shapeSide() {
   const act = (t, fn, tip) => el('button', { class: 'chip', text: t, title: tip, onclick: fn });
   return [el('div', { class: 'wshead', text: 'Parts' }),
     el('div', { class: 'outliner' }, boxes.map((x, k) => { const name = boxLabel(x.node), same = boxes.filter(y => boxLabel(y.node) === name), nth = same.length > 1 ? ' ' + (same.findIndex(y => y.node === x.node) + 1) : '';
-      return el('button', { class: k === i ? 'on' : '', text: name + nth, title: 'Click to pick it (or click it on the model). Double-click to rename.', onclick: () => { ED.box = k; render(); placeGizmo(); }, ondblclick: e => renameBox(e.currentTarget, x.node),
-        onmouseenter: () => st.highlight(o => o.material?.map?.image === ED.canvas && o.userData.nodeName === x.node.name), onmouseleave: () => outlineBox() }); })),
+      return el('div', { class: 'partrow' + (k === i ? ' on' : '') }, el('button', { class: k === i ? 'on' : '', text: name + nth, title: 'Click to pick it (or click it on the model). Double-click to rename.', onclick: () => { ED.box = k; render(); placeGizmo(); }, ondblclick: e => renameBox(e.currentTarget, x.node),
+        onmouseenter: () => st.highlight(o => o.material?.map?.image === ED.canvas && o.userData.nodeName === x.node.name), onmouseleave: () => outlineBox() }),
+        el('button', { class: 'partdel', text: '✕', title: 'Delete ' + name + nth, 'aria-label': 'Delete ' + name + nth, onclick: () => delBox(k) })); })),
     el('div', { class: 'options' }, act('+ New box', startPlacing, 'Then click on the item where it should go'), act('+ Add another item…', guard(combinePick), 'Put another item (a hat, glasses …) into this piece')),
     el('div', { class: 'wshead', text: boxLabel(b.node) }),
-    el('div', { class: 'options' }, act('Copy', () => addBox('dup'), 'A copy of this part beside it (Ctrl+D)'), act('Copy to other side', () => addBox('mirror'), 'A copy on the other side of the body, its paint flipped'), act('Delete', delBox, 'Delete this part (Del)')),
+    el('div', { class: 'options' }, act('Copy', () => addBox('dup'), 'A copy of this part beside it (Ctrl+D)'), act('Copy to other side', () => addBox('mirror'), 'A copy on the other side of the body, its paint flipped'), act('Delete', () => delBox(), 'Delete this part (Del)')),
     el('div', { class: 'options' }, el('button', { class: 'chip' + (ED.sym ? ' on' : ''), text: ED.sym ? '✓ Both sides change together' : 'Both sides change together', title: 'Changing this part also changes the matching part on the other side',
       onclick: () => { ED.sym = !ED.sym; render(); } }), ED.sym && !twinOf(b) ? el('small', { class: 'dim', text: 'This part has no match on the other side' }) : null),
     el('div', { class: 'wsgroup' }, el('b', { text: 'Place' }), named('Left / right', axisField('X', ...pos, 'x', -64, 64, 0.5)), named('Up / down', axisField('Y', ...pos, 'y', -64, 64, 0.5)), named('Back / front', axisField('Z', ...pos, 'z', -64, 64, 0.5))),
@@ -1237,9 +1238,10 @@ function shapeSide() {
     el('div', { class: 'options' }, act('Paint it on its own', () => ownArea(), 'Give this part its own spot on the texture, so painting it doesn\'t also paint other parts'), act('Start over', resetShape, 'Back to the item\'s original shape (undo brings yours back)'))];
 }
 const dupBox = () => addBox('dup');
-function delBox() { const boxes = boxesOf(ED.model), i = ED.box || 0, b = boxes[i]; if (boxes.length <= 1) return say('A shape needs at least one box.', true);
-  if ((b.node.children || []).length) return say('This box holds other boxes. Delete those first.', true);
-  shapeEdit(() => { const list = b.parent ? b.parent.children : ED.model.nodes; list.splice(list.indexOf(b.node), 1); ED.box = Math.max(0, i - 1); }); }
+function delBox(k = ED.box || 0) { const boxes = boxesOf(ED.model), i = k, b = boxes[i]; if (!b) return;   /* a part goes with the parts attached to it (an added hat's pieces) */
+  const inside = boxesOf({ nodes: [b.node] }).length; if (boxes.length - inside < 1) return say('A piece needs at least one part.', true);
+  shapeEdit(() => { const list = b.parent ? b.parent.children : ED.model.nodes; list.splice(list.indexOf(b.node), 1); ED.box = Math.max(0, Math.min(i, boxesOf(ED.model).length - 1)); });
+  say(inside > 1 ? `Deleted ${inside} parts. Undo brings them back.` : 'Deleted. Undo brings it back.'); }
 const resetShape = guard(async () => { say('Back to the original shape. Ctrl+Z undoes it.');
   const orig = structuredClone(await game.json(game.common(ED.asset.model))); shapeEdit(() => { ED.model = orig; ED.box = 0; }); });
 function renderWorkspace() {
