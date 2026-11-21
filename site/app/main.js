@@ -958,8 +958,11 @@ function limits(c) {
     for (const r of ED.rects) if (r.node === sel) { x.fillRect(r.x * z, r.y * z, r.w * z, r.h * z); x.strokeRect(r.x * z + 1, r.y * z + 1, r.w * z - 2, r.h * z - 2); } x.lineWidth = 1; }
   if (z >= 4) { x.fillStyle = 'rgba(244, 196, 82, 0.95)'; x.font = '700 10px Lexend, sans-serif';
     const many = new Set(ED.rects.map(r => r.node)).size > 1;   // several parts: say which part as well as which side
-    for (const r of ED.rects) if (r.w * z > 34 && r.h * z > 14) { const long = many ? partName(r.node) + ' · ' + r.face : r.face, t = x.measureText(long).width <= r.w * z - 6 ? long : r.face;
-      if (x.measureText(t).width <= r.w * z - 6) x.fillText(t, r.x * z + 3, r.y * z + 11); } }
+    const spots = new Map(); for (const r of ED.rects) { const k = r.x + ',' + r.y; (spots.get(k) || spots.set(k, []).get(k)).push(r); }   // faces sharing one spot (left and right glasses painted alike) get one label
+    for (const rs of spots.values()) { const r = rs[0]; if (!(r.w * z > 34 && r.h * z > 14)) continue; const uniq = a => [...new Set(a)];
+      const parts = uniq(rs.map(q => partName(q.node))), faces = uniq(rs.map(q => q.face)).join('/');
+      const opts = [many ? parts.join(' + ') + ' · ' + faces : faces, many && parts.length > 1 ? parts[0] + ' +' + (parts.length - 1) + ' · ' + faces : null, faces, parts.length > 1 ? parts[0] + ' +' + (parts.length - 1) : null].filter(Boolean);
+      const t = opts.find(v => x.measureText(v).width <= r.w * z - 6); if (t) x.fillText(t, r.x * z + 3, r.y * z + 11); } }
   return o;
 }
 // ---------------------------------------------------------------- shapes: an asset's own copy of its item's 3D model
