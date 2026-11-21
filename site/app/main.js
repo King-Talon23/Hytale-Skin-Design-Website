@@ -718,7 +718,12 @@ async function openAsset(a) {
 const BRUSH = (() => { try { const b = JSON.parse(store_.get('se_brush') || '{}'), o = {}; if (/^#[0-9a-f]{6}$/i.test(b.color)) o.color = b.color; if (b.size >= 1 && b.size <= 8) o.size = Math.round(b.size); if (b.opacity > 0 && b.opacity <= 1) o.opacity = b.opacity; if (['area', 'side', 'every'].includes(b.fillMode)) o.fillMode = b.fillMode; if (['brush', 'erase', 'part', 'fill', 'pick', 'replace', 'line', 'box', 'boxfill', 'light', 'dark', 'noise'].includes(b.tool)) o.tool = b.tool; return o; } catch { return {}; } })();
 const keepBrush = () => { if (!ED) return; const P = ED.painter; Object.assign(BRUSH, { color: P.color, size: P.size, opacity: P.opacity, fillMode: P.fillMode, tool: P.tool === 'select' ? 'brush' : P.tool }); store_.set('se_brush', JSON.stringify(BRUSH)); };
 const markSaved = ok => { if (!ED) return; ED.saved = ok; const s = $('wssaved'); if (s) { s.textContent = ok ? 'Saved' : 'Saving…'; s.classList.toggle('busy', !ok); } };
-function queueAssetSave() { markSaved(false); clearTimeout(queueAssetSave.t); queueAssetSave.t = setTimeout(() => flushAsset().catch(e => say(e.message, true)), 900); }
+function queueAssetSave() { markSaved(false); clearTimeout(queueAssetSave.t); queueAssetSave.pending = true; queueAssetSave.t = setTimeout(() => { queueAssetSave.pending = false; flushAsset().catch(e => say(e.message, true)); }, 400); }
+// leaving or hiding the page saves a waiting edit at once; if one is still waiting on reload or close, the browser asks first, so no edit is lost
+const flushNow = () => { if (queueAssetSave.pending) { queueAssetSave.pending = false; flushAsset().catch(() => {}); } };
+addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushNow(); });
+addEventListener('pagehide', flushNow);
+addEventListener('beforeunload', e => { if (queueAssetSave.pending || (ED && ED.saved === false)) { flushNow(); e.preventDefault(); e.returnValue = ''; } });
 async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; const e = ED, data = await new Promise(ok => e.canvas.toBlob(ok, 'image/png'));
   try { e.asset = await assets.save({ ...e.asset, data, shape: e.model && e.shapeN ? JSON.stringify(e.model) : e.asset.shape }); ASSETS = await assets.list(); syncFolder(); } finally { if (ED === e) markSaved(true); } }
 let beforeEdit = null;   // the outfit before an item went on for editing: Done puts it back, Equip keeps the item on
@@ -1254,7 +1259,7 @@ function shapeSide() {
     el('div', { class: 'wsgroup' }, el('b', { text: 'Place' }), named('Left / right', axisField('X', ...pos, 'x', -64, 64, 0.5)), named('Up / down', axisField('Y', ...pos, 'y', -64, 64, 0.5)), named('Back / front', axisField('Z', ...pos, 'z', -64, 64, 0.5)),
       el('div', { class: 'options' }, act('Bring forward', () => shapeEdit(() => { const [o_, k_] = pos; o_[k_] = { x: 0, y: 0, z: 0, ...o_[k_], z: Math.round(((o_[k_]?.z ?? 0) + 0.5) * 2) / 2 }; }), 'Half a step toward the front, so it shows in front of parts behind it'),
         act('Push back', () => shapeEdit(() => { const [o_, k_] = pos; o_[k_] = { x: 0, y: 0, z: 0, ...o_[k_], z: Math.round(((o_[k_]?.z ?? 0) - 0.5) * 2) / 2 }; }), 'Half a step back, so parts in front of it cover it'))),
-    el('div', { class: 'wsgroup' }, el('b', { text: 'Size' }), named('Width', axisField('W', sh.settings, 'size', 'x', 0, 64)), named('Height', axisField('H', sh.settings, 'size', 'y', 0, 64)), named('Depth', axisField('D', sh.settings, 'size', 'z', 0, 64))),
+    el('div', { class: 'wsgroup' }, el('b', { text: 'Size' }), named('Width', axisField('W', sh.settings, 'size', 'x', 1, 64)), named('Height', axisField('H', sh.settings, 'size', 'y', 1, 64)), named('Depth', axisField('D', sh.settings, 'size', 'z', 0, 64))),
     el('div', { class: 'wsgroup' }, el('b', { text: 'Turn' }), named('Tip forward', turnField('X', 0)), named('Spin', turnField('Y', 1)), named('Lean sideways', turnField('Z', 2))),
     el('div', { class: 'options' }, act('Paint it on its own', () => ownArea(), 'Give this part its own spot on the texture, so painting it doesn\'t also paint other parts'), act('Start over', resetShape, 'Back to the item\'s original shape (undo brings yours back)'))];
 }
