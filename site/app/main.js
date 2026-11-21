@@ -895,12 +895,12 @@ function anyItem() {   // or start from any free item in the game, worn or not
   menu.onclick = ev => { const o = ev.target.closest('[role=option]'); if (o) { choose(+o.dataset.i); item.focus(); } };
   const fill = () => { const q = find_.value.trim().toLowerCase(), from = q ? slots : [slot.value];   // a search looks in every slot
     const rank = r => { if (!q || !r[2]) return 0; const nm = itemName(r[2]).toLowerCase(), w = nm.split(/\s+/); return nm === q ? 0 : nm.startsWith(q) ? 1 : w[0] === q || w.includes(q) && w.indexOf(q) === 0 ? 1 : nm.split(/\s+/).some(x => x === q) ? 2 : 3; };
-    list = from.flatMap(f => oneEach(CAT.items[f]).filter(e => ok(e) && (!q || itemName(e).toLowerCase().includes(q))).map(e => [itemName(e) + (q ? ` (${LABEL[f]})` : ''), f, e])).sort((a, b) => rank(a) - rank(b) || a[0].localeCompare(b[0]));   // a search puts exact names first, then names that start with it
-    if (!q) list.unshift(['None', slot.value, null]);   // None: the picture shows the slot empty; wearing nothing there starts on a random item
+    list = from.flatMap(f => oneEach(CAT.items[f]).filter(e => ok(e) && !isTmp(e) && (!q || itemName(e).toLowerCase().includes(q))).map(e => [itemName(e) + (q ? ` (${LABEL[f]})` : ''), f, e])).sort((a, b) => rank(a) - rank(b) || a[0].localeCompare(b[0]));   // a search puts exact names first, then names that start with it
+      // None: the picture shows the slot empty; wearing nothing there starts on a random item
     menu.replaceChildren(...list.map(([n], i) => el('div', { role: 'option', class: 'anyopt', text: n, data: { i } })));
     const worn = !q && parse(cur.skin[slot.value]).id, kept = (anyItem.picks ||= {})[slot.value], at0 = id => list.findIndex(r => r[2] && r[2].Id === id); at = q ? (list.length ? 0 : -1) : kept ? at0(kept) : -1; if (!q && at < 0) at = at0(worn);   // the item shown last time stays, so the picker doesn't jump around between visits
     if (!q && at < 0 && (anyItem.rand ||= {})[slot.value]) at = at0(anyItem.rand[slot.value]);
-    if (!q && at < 0 && list.length > 1) { at = 1 + Math.floor(Math.random() * (list.length - 1)); anyItem.rand[slot.value] = list[at][2].Id; } act = Math.max(0, at); label(); item.disabled = !list.length; close(); clearTimeout(hov); draw(at); };
+    if (!q && at < 0 && list.length) { at = Math.floor(Math.random() * list.length); anyItem.rand[slot.value] = list[at][2].Id; } act = Math.max(0, at); label(); item.disabled = !list.length; close(); clearTimeout(hov); draw(at); };
   slot.value = slots.includes(anyItem.slot) ? anyItem.slot : slots.includes('overtop') ? 'overtop' : slots[0]; fill(); slot.onchange = () => { anyItem.slot = slot.value; keepAny(); find_.value = ''; fill(); }; find_.oninput = fill;
   find_.onkeydown = ev => { if (ev.key === 'ArrowDown' && list.length) { ev.preventDefault(); item.focus(); item.onkeydown(ev); } };
   return [el('h3', { text: 'Or start from any item' }), el('div', { class: 'row anyitem' }, pic, el('div', { class: 'anycol' }, el('div', { class: 'row' }, slot, find_), el('div', { class: 'anywrap' }, item, menu)), edit)];
@@ -980,7 +980,7 @@ function recordShape(before) { ED.hist.push({ k: 's', other: before }); ED.fut =
 function undoEntry(e, redo) {
   if (e.k === 'p') { ED.replaying = true; redo ? ED.painter.redo() : ED.painter.undo(); ED.replaying = false; return e; }
   if (e.k === 'g') return { k: 'g', parts: e.parts.slice().reverse().map(x => undoEntry(x, redo)) };
-  const now = JSON.stringify(ED.model); ED.model = JSON.parse(e.other); ED.box = Math.min(ED.box || 0, boxesOf(ED.model).length - 1); ED.reshaped = true; return { k: 's', other: now };
+  const now = JSON.stringify(ED.model), keep = boxesOf(ED.model)[ED.box || 0]?.node.name; ED.model = JSON.parse(e.other); { const bs = boxesOf(ED.model), i = bs.findIndex(x => x.node.name === keep); ED.box = i >= 0 ? i : Math.min(ED.box || 0, bs.length - 1); } ED.reshaped = true; return { k: 's', other: now };
 }
 function wsUndo(redo) {
   if (!ED) return; ED.float = null; const from = redo ? ED.fut : ED.hist, to = redo ? ED.hist : ED.fut, e = from.pop(); if (!e) return;
@@ -991,7 +991,7 @@ function shapeEdit(fn) {   // with Symmetry on, the box's twin on the other side
   const before = JSON.stringify(ED.model), b0 = curBox(), tw = symTwin(); fn();
   if (tw && b0 && b0.node !== tw && boxesOf(ED.model).some(x => x.node === b0.node) && boxesOf(ED.model).some(x => x.node === tw)) mirrorNode(b0.node, tw);
   finishShape(before); }
-async function setMode(m) { if (ED.float) placeFloat(); if (m === 'shape') { await editModel(); ED.box ||= 0; ED.stool ||= 'select'; st.cursor(null); ED.hover = ED.hoverM = null; } ED.mode = m; ED.shapeOpen = m === 'shape'; render(); placeGizmo(); }
+async function setMode(m) { if (ED.float) placeFloat(); say(''); if (m === 'shape') { await editModel(); ED.box ||= 0; ED.stool ||= 'select'; st.cursor(null); ED.hover = ED.hoverM = null; } ED.mode = m; ED.shapeOpen = m === 'shape'; render(); placeGizmo(); }
 function pickTool(id) { if (ED.mode === 'shape') ED.stool = id; else { if (id !== 'select' && ED.float) placeFloat(); ED.painter.tool = id; } render(); placeGizmo(); }
 function curBox() { return ED.model ? boxesOf(ED.model)[ED.box || 0] : null; }
 function placeGizmo() {
