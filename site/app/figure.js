@@ -216,10 +216,12 @@ async function buildWorld(sc, tint) {
   // place's hills and trees as a fixed ring of distant scenery standing on it, from RIN blocks out into the haze. Nothing that slides is
   // solid and nothing solid moves, so nothing can ever reach the character or the camera, and no move ever needs a correction.
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const P = 80, RIN = 17, R = 27, TAU = Math.PI * 2, sym = v => { const w = ((v % P) + P) % P; return w >= P / 2 ? w - P : w; };
+  const P = 128, RIN = 17, R = 60, TAU = Math.PI * 2, sym = v => { const w = ((v % P) + P) % P; return w >= P / 2 ? w - P : w; };
   const raw = (x, z) => { const n = Math.sin(TAU * 2 * x / P + 1.3) * Math.cos(TAU * 3 * z / P - 0.7) + 0.7 * Math.sin(TAU * (x + z) / P + 2.1) + 0.4 * Math.cos(TAU * 4 * (x - z) / P);
     return Math.max(0, (n + 0.5) * sc.hills * 0.55); };
-  const h = (x, z) => { const d = Math.hypot(x, z); return d < RIN ? 0 : Math.round(raw(x, z) * Math.min(1, (d - RIN) / 5)); };   // the ring's hills rise gently from its inner edge
+  const h = (x, z) => { const d = Math.hypot(x, z); if (d < RIN) return 0; const a = Math.atan2(z, x), far = Math.max(0, (d - RIN - 9) / (R - RIN - 9));   // rolling hills from the ring's inner edge, growing into a ring of mountains on the horizon
+    const peaks = 0.55 + 0.25 * Math.sin(a * 3 + 1.1) + 0.2 * Math.cos(a * 7 - 0.4) + 0.12 * Math.sin(a * 13 + x * 0.21 - z * 0.17);
+    return Math.round(raw(x, z) * Math.min(1, (d - RIN) / 12) * 0.8 + Math.pow(far, 1.8) * (2 + 7.5 * peaks)); };   // low enough that the sky shows over them from eye height
   const items = new Map(), put = (key, x, y, z, q, plant, slide) => { const k = key + (slide ? '|s' : '|f'); (items.get(k) || items.set(k, { plant, slide, name: key, list: [] }).get(k)).list.push([x, y, z, q]); };
   const nTops = (await blockParts(sc.ground, tint)).length;
   // plant sizes (third value): 1 low, 2 knee-high, none tall
@@ -227,8 +229,8 @@ async function buildWorld(sc, tint) {
     for (const [n, w] of from) if ((r -= w) <= 0) return n; return from[0][0]; };
   // trees in the ring, each wholly inside it, never touching another
   const taken = new Set(), trees = await Promise.all(sc.trees.map(p => game.json(p))), placed = [];
-  for (let i = 0, tries = 0; placed.length < 7 && tries < 600; tries++) { const tb = trees[i % trees.length].blocks, reach = Math.max(0, ...tb.map(b => Math.hypot(b.x, b.z)));
-    const a = rnd() * TAU, d = RIN + reach + 2 + rnd() * Math.max(0, R - 2 - (RIN + reach + 2)), cx = Math.round(Math.cos(a) * d), cz = Math.round(Math.sin(a) * d);
+  for (let i = 0, tries = 0; placed.length < 30 && tries < 2400; tries++) { const tb = trees[i % trees.length].blocks, reach = Math.max(0, ...tb.map(b => Math.hypot(b.x, b.z)));
+    const a = rnd() * TAU, d = RIN + reach + 2 + rnd() * Math.max(0, Math.min(R - 2, RIN + 26) - (RIN + reach + 2)), cx = Math.round(Math.cos(a) * d), cz = Math.round(Math.sin(a) * d);
     if (placed.some(t => Math.hypot(t[0] - cx, t[1] - cz) < t[2] + reach + 2)) { if (tries % 40 === 39) i++; continue; }
     placed.push([cx, cz, reach]); i++;
     const trunks = tb.filter(b => /Trunk/.test(b.name)), lift = trunks.length ? -Math.min(...trunks.map(b => b.y)) : 0, base = h(cx, cz);   // the trunk's foot on the ground
@@ -272,7 +274,7 @@ function lights(scene) { scene.add(new THREE.AmbientLight(0xffffff, 1.7)); const
 export function stage(canvas, Controls) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   const scene = new THREE.Scene(); lights(scene);
-  const cam = new THREE.PerspectiveCamera(32, 1, 1, 6000); cam.position.set(-75, 95, 255);
+  const cam = new THREE.PerspectiveCamera(32, 1, 1, 16000); cam.position.set(-75, 95, 255);
   const ctl = new Controls(cam, canvas); ctl.target.set(0, 62, 0); ctl.enablePan = false; ctl.zoomToCursor = false;   // zoom stays on the figure's centre, lined up with the buttons under it
   ctl.minDistance = 40; ctl.maxDistance = 480; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
   const disc = new THREE.Mesh(new THREE.CircleGeometry(58, 48), new THREE.MeshBasicMaterial({ color: 0x0b1626, transparent: true, opacity: 0.55, fog: false })); disc.rotation.x = -Math.PI / 2; disc.position.y = -0.2; scene.add(disc);
@@ -496,12 +498,12 @@ export function stage(canvas, Controls) {
     disc.material.map = bd ? shadow : null; disc.material.color.set(bd ? 0xffffff : 0x0b1626); disc.material.opacity = bd ? 1 : 0.55; disc.material.needsUpdate = true; disc.position.y = bd ? 0.9 : -0.2;   // the shadow above the sliding floor
     ctl.maxPolarAngle = Math.PI * (bd ? 0.47 : 0.55); ctl.update();   // on real land the camera stays above the ground
     if (!bd) return;
-    const top = new THREE.Color(bd.top), hor = new THREE.Color(bd.fog), R = 2600, g = new THREE.SphereGeometry(R, 48, 24), p = g.attributes.position, cols = [];
+    const top = new THREE.Color(bd.top), hor = new THREE.Color(bd.fog), R = 11000, g = new THREE.SphereGeometry(R, 48, 24), p = g.attributes.position, cols = [];
     for (let i = 0; i < p.count; i++) { const c = hor.clone().lerp(top, Math.pow(Math.max(0, p.getY(i) / R), 0.5)); cols.push(c.r, c.g, c.b); }
     g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     sky = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })); sky.renderOrder = -2; scene.add(sky);
     if (built) { world = built; scene.add(world); world.userData.avoid = pendingRects; groundRects(); }
-    scene.fog = new THREE.Fog(hor, FOG[0], FOG[1]); mist = null;   // the far edge of the land melts into the sky, as the game's fog does
+    scene.fog = null; mist = null;   // clear air all the way out: the mountain ring closes the horizon
   };
   return api;
 }
