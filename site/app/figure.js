@@ -261,7 +261,7 @@ async function buildWorld(sc, tint) {
           k = Math.min(e((d - clear) / 1.8), e((38 - d) / 8), c ? e((Math.hypot(x * BLOCK - c.x, z * BLOCK - c.z) / BLOCK - 1.2) / 2.2) : 1);
           for (const r of rects) if (x > r[0] - 0.6 && x < r[2] + 0.6 && z > r[1] - 0.6 && z < r[3] + 0.6) k = 0;
           if (k < 0.02) continue; }
-        st.im.setMatrixAt(n++, M.compose(V.set(x * BLOCK, y * BLOCK, z * BLOCK), st.plant ? Q.setFromAxisAngle(Y, q) : q || Q.identity(), st.plant ? SC.setScalar(k) : ONE)); }
+        st.im.setMatrixAt(n++, M.compose(V.set(x * BLOCK, (y - (1 - k) * 2.2) * BLOCK, z * BLOCK), st.plant ? Q.setFromAxisAngle(Y, q) : q || Q.identity(), ONE)); }   /* a plant that must clear the way sinks into the ground at full size (never a shrunken miniature) */
       st.im.count = n; st.im.instanceMatrix.needsUpdate = true; if (!st.slide) st.laid = true; } };
   const span = P * BLOCK;
   root.userData.move = (dx, dz) => { if (!dx && !dz) return layout(true); ax = (ax + dx) % span; az = (az + dz) % span; layout(false); };
