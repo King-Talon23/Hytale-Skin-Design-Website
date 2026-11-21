@@ -724,7 +724,8 @@ async function openAsset(a) {
   if (ED.rects.length) { const m = new Uint8Array(c.width * c.height); for (const r of ED.rects) for (let y = Math.max(0, Math.floor(r.y)); y < Math.min(c.height, Math.ceil(r.y + r.h)); y++) for (let x = Math.max(0, Math.floor(r.x)); x < Math.min(c.width, Math.ceil(r.x + r.w)); x++) m[y * c.width + x] = 1; ED.painter.mask = m; }
   ED.palette = ED.painter.palette(); ED.ovl = el('canvas', { className: 'limits' }); requestAnimationFrame(() => { fitTexture(); render(); }); if (ED.reopenShape) { ED.reopenShape = false; setMode('shape').catch(e => console.warn(e)); }
   const flatPx = e => { const r = c.getBoundingClientRect(); return { x: Math.min(c.width - 1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * c.width))), y: Math.min(c.height - 1, Math.max(0, Math.floor((e.clientY - r.top) / r.height * c.height))) }; };
-  bindPaint(c, flatPx, 1e9); bindSelect(c, flatPx);
+  const flatPxM = e => { const p = flatPx(e); if (ED && ED.mirror && st) { const m = st.twinTexel(ED.canvas, p.x, p.y); if (m && (m.x !== p.x || m.y !== p.y)) p.m = m; } return p; };   /* Symmetry on the flat texture: the matching texel on the other side */
+  bindPaint(c, flatPxM, 1e9); bindSelect(c, flatPx);
   c.addEventListener('pointermove', e => { if (!ED) return; ED.hover = flatPx(e); ED.hoverM = null; drawOvl(); }); c.addEventListener('pointerleave', () => { if (!ED) return; ED.hover = null; drawOvl(); });
   registerAssets(); ED.before = beforeEdit || cur.skin; beforeEdit = null; { const s = { ...cur.skin, [a.field]: 'Custom_' + a.id + '.Mine' }, cov = (HIDE[a.field] || []).filter(f => s[f]); for (const f of cov) delete s[f]; if (cov.length || !(cur.skin[a.field] || '').startsWith('Custom_' + a.id)) setSkin(s); }   /* what covers the item comes off while editing */
   setMount(null); ED.iso = true; st.isolate(c); st.anim.set(null); st.paintMode(true); tab = 'creator'; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === 'creator'); render(); rebuild();
@@ -778,7 +779,7 @@ function turnDrag(e) {   // drag on empty space or another body part: the model 
   v.addEventListener('pointermove', move); v.addEventListener('pointerup', up); v.addEventListener('pointercancel', up);
 }
 function bindPaint(target, toPixel, reach, onModel) { let down = false, last = null;
-  const twin = (a, b) => { const t = ED.painter.tool; if (ED.mirror && b.m && !SHAPES.has(t) && !ONCE.has(t)) ED.painter.stroke(a && a.m ? a.m : b.m, b.m); };
+  const twin = (a, b) => { const t = ED.painter.tool; if (ED.mirror && b.m && !SHAPES.has(t) && !ONCE.has(t)) ED.painter.stroke(a && a.m && Math.abs(a.m.x - b.m.x) + Math.abs(a.m.y - b.m.y) <= 10 ? a.m : b.m, b.m); };   /* never a line across the texture when the twin jumps faces */
   let lastC = null, startC = null;
   const at = (x, y) => toPixel({ clientX: x, clientY: y });
   const along = (a, b, step = 2) => { const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / step)), out = []; for (let i = 1; i <= n; i++) out.push({ x: a.x + (b.x - a.x) * i / n, y: a.y + (b.y - a.y) * i / n }); return out; };
