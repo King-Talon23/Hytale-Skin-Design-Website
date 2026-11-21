@@ -68,7 +68,7 @@ async function checkGameUpdate(force) {
   try { if ((await h.queryPermission({ mode: 'read' })) !== 'granted') return; const f = await h.getFile();
     if (!force && f.size === META.size && f.lastModified === META.modified && (META.v || 1) >= game.FILES_V) return;   // same file, and read with today's list of files
     say(force ? 'Reading your game files again…' : (META.v || 1) < game.FILES_V && f.size === META.size ? 'Reading a few more of your game files…' : 'Hytale updated, reading the new game files…'); BD_MADE.clear(); bdShown = null; await game.connect(f, () => {}); fig.clearCache(); pics.clear(); META = await game.status(); CAT = await game.catalog(); R = rules(CAT); registerAssets(); setConn(META); rebuild(); render(); say('Game files updated.');
-  } catch (e) { console.warn('game update check', e); say('Hytale seems to have updated, but the new game files could not be read. Use Connect again in Help.', true); } }
+  } catch (e) { console.warn('game update check', e); say('Could not read the updated game files', true); } }
 // the browser forgets the read permission between visits: the first click of a visit asks for it once (Chrome then offers "Allow on every
 // visit"), so a game update is picked up without the player connecting again
 async function askZipOnce() { askZipOnce.done = true; const h = await game.zipHandle().catch(() => null); if (!h || !META) return;
@@ -107,7 +107,7 @@ async function startApp() {
   $('connect').hidden = true; $('app').hidden = false;
   if (!st) { st = fig.stage($('view'), OrbitControls);
     if (location.hostname.endsWith('localhost')) { window.__st = st; window.__dbg = { combineWith: (...a) => combineWith(...a), combinePick: () => combinePick(), cat: () => CAT, ed: () => ED, sizeOf: sh => sizeOf(sh) }; }   // local tests only
-    st.onMissing = () => say('Some of the game objects this move uses are not in your saved copy of the game files yet. Connect your Assets.zip again in Help to see them.', true); st.onFacing(f => { const t = $('facing') || $('view').parentElement.appendChild(el('div', { id: 'facing', class: 'facing' })); t.textContent = 'Facing you: ' + f; }); bindPaint($('view'), e => ED && !ED.shapeOpen && ED.painter.tool !== 'select' ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true);
+    st.onMissing = () => say('Missing game files for this move', true); st.onFacing(f => { const t = $('facing') || $('view').parentElement.appendChild(el('div', { id: 'facing', class: 'facing' })); t.textContent = 'Facing you: ' + f; }); bindPaint($('view'), e => ED && !ED.shapeOpen && ED.painter.tool !== 'select' ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true);
     $('view').addEventListener('pointermove', e => { if (!ED) return; partHover(e); const p = ED.shapeOpen || ED.painter.tool === 'select' ? st.cursor(null) : st.cursor(e.clientX, e.clientY, ED.canvas, brushSize(), ED.mirror);
       ED.hover = p; ED.hoverM = p?.m || null; drawOvl(); });
     $('view').addEventListener('pointerleave', () => { if (!ED) return; st.cursor(null); ED.hover = ED.hoverM = null; drawOvl(); });
@@ -358,7 +358,7 @@ async function showBackdrop(key) {
   const stg = $('view').parentElement, slow = setTimeout(() => stg.classList.add('loading'), 250);   // a place that takes a moment to build says so
   try { const spec = await backdropSpec(key); if (bdShown === key) await st.setBackdrop(spec.sky, spec.sc, spec.tint); }
   catch (e) { console.warn('backdrop', e); bdShown = 'dark'; st.setBackdrop(null); store_.set('se_backdrop', 'dark'); drawStageBtns();
-    say('This background needs a few more of your game files. Connect your Assets.zip again in Help and it will show.', true); }
+    say('Missing game files for this background', true); }
   finally { clearTimeout(slow); stg.classList.remove('loading'); } }
 function drawStageBtns() {
   const box = $('stagebtns'), stg = $('view').parentElement; if (!box) return;
@@ -367,7 +367,7 @@ function drawStageBtns() {
   let bd = store_.get('se_backdrop'); if (!BACKDROPS.some(b => b[0] === bd)) bd = 'dark'; showBackdrop(bd);
   const name = BACKDROPS.find(b => b[0] === bd)[1], clean = stg.classList.contains('clean');
   box.replaceChildren(...[
-    el('button', { class: 'stbtn', title: 'Background', 'aria-label': 'Background: ' + name, 'aria-haspopup': 'listbox', 'aria-expanded': String(!!box._open), onclick: e => { e.stopPropagation(); box._open = !box._open; drawStageBtns(); } },
+    el('button', { class: 'stbtn', title: null, 'aria-label': 'Background: ' + name, 'aria-haspopup': 'listbox', 'aria-expanded': String(!!box._open), onclick: e => { e.stopPropagation(); box._open = !box._open; drawStageBtns(); } },
       el('span', { class: 'bdchip bd-' + bd }), el('b', { text: name }), el('span', { class: 'caret', text: '▾' })),
     box._open ? el('div', { class: 'bdmenu', role: 'listbox', 'aria-label': 'Backgrounds' }, BACKDROPS.map(([k, n]) => el('button', { class: 'bdopt' + (k === bd ? ' on' : ''), role: 'option', 'aria-selected': String(k === bd),
       onclick: e => { e.stopPropagation(); box._open = false; store_.set('se_backdrop', k); drawStageBtns(); } }, el('span', { class: 'bdchip bd-' + k }), el('b', { text: n })))) : null,
@@ -757,11 +757,11 @@ async function closeAsset(quiet, keep = false) {
 const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 function sharersOf(node) { const mine = ED.rects.filter(r => r.node === node); return [...new Set(ED.rects.filter(r => r.node !== node && mine.some(m => overlaps(m, r))).map(r => r.node))]; }
 async function colourPart(node) {
-  await editModel(); splitShared();   /* every part (cuffs and other attached pieces too) gets its own paint first, so the colour never leaks to a twin */
+  const h0 = ED.hist.length; await editModel(); splitShared();   /* every part (cuffs and other attached pieces too) gets its own paint first, so the colour never leaks to a twin */
   const others = sharersOf(node);
   if (others.length) { await editModel(); const k = boxesOf(ED.model).findIndex(b => b.node.name === node);
     if (k >= 0) { ED.box = k; if (!ownArea(true)) return say('Texture full', true); } }
-  tintAll(ED.painter.color, node);
+  tintAll(ED.painter.color, node); if (ED.hist.length - h0 > 1) ED.hist.push({ k: 'g', parts: ED.hist.splice(h0) });   /* one click, one undo */
 }
 const partName = n => { const b = ED.model && boxesOf(ED.model).find(x => x.node.name === n); return b ? boxLabel(b.node) : /^Box_/.test(n) ? 'New box' : boxLabel({ name: n }); };   // same names in Paint as in Shape's outliner
 function partHover(e) { if (ED.mode === 'shape' || ED.painter.tool !== 'part') return;
@@ -1046,8 +1046,9 @@ const PAINT_TOOLS = [['select', 'Select area', 'M', '⬚'], ['brush', 'Brush', '
   ['line', 'Line', 'L', '╱'], ['box', 'Rectangle', 'U', '▢'], ['boxfill', 'Filled rectangle', '', '■'], ['light', 'Lighten', '', '☀'], ['dark', 'Darken', '', '☾'], ['noise', 'Noise', 'N', '░']];
 const SHORT = { part: 'Whole part', more: 'More', select: 'Select', pick: 'Pick', replace: 'Replace', boxfill: 'Filled', light: 'Lighten', dark: 'Darken', dup: 'Copy', del: 'Delete' };   // names under the tool icons
 const SHAPE_TOOLS = [['move', 'Move', 'G', '✥'], ['resize', 'Resize', 'S', '⤢'], ['rotate', 'Turn', 'R', '⟳']];   // click a part to pick it; these set what its handles do
-const recordPaint = () => { if (ED && !ED.replaying) { ED.hist.push({ k: 'p' }); ED.fut = []; } };
-function recordShape(before) { ED.hist.push({ k: 's', other: before }); ED.fut = []; }
+const capHist = () => { if (ED.hist.length > 90) ED.hist.splice(0, ED.hist.length - 90); };   /* below the painter's own step limit, so every undo still has its paint */
+const recordPaint = () => { if (ED && !ED.replaying) { ED.hist.push({ k: 'p' }); ED.fut = []; capHist(); } };
+function recordShape(before) { ED.hist.push({ k: 's', other: before }); ED.fut = []; capHist(); }
 function undoEntry(e, redo) {
   if (e.k === 'p') { ED.replaying = true; redo ? ED.painter.redo() : ED.painter.undo(); ED.replaying = false; return e; }
   if (e.k === 'g') return { k: 'g', parts: e.parts.slice().reverse().map(x => undoEntry(x, redo)) };
@@ -1120,12 +1121,12 @@ function paintSide() {
     el('div', { class: 'swlabel', text: 'Basic' }), swatchRow(BASIC), el('div', { class: 'swlabel', text: 'In this item' }), swatchRow(ED.palette),
     RECENT.length ? el('div', { class: 'swlabel', text: 'Recent' }) : null, RECENT.length ? swatchRow(RECENT) : null,
     el('button', { class: 'btn ghost wide', text: 'Tint item', onclick: () => tintAll(P.color) }),
-    el('div', { class: 'wshead', text: 'Brush' }),
-    slider('Size', 1, 8, 1, () => P.size, v => { P.size = v; }, v => v), slider('Strength', 10, 100, 10, () => Math.round(P.opacity * 100), v => { P.opacity = v / 100; }, v => v + '%'),
+    ['brush', 'erase', 'light', 'dark', 'noise', 'line', 'box'].includes(P.tool) ? [el('div', { class: 'wshead', text: 'Brush' }),   /* only tools that use them show size and strength */
+      slider('Size', 1, 8, 1, () => P.size, v => { P.size = v; }, v => v), ['brush', 'line', 'box'].includes(P.tool) ? slider('Strength', 10, 100, 10, () => Math.round(P.opacity * 100), v => { P.opacity = v / 100; }, v => v + '%') : null] : null,
     P.tool === 'fill' ? [el('div', { class: 'swlabel', text: 'Fill' }), el('div', { class: 'seg', role: 'radiogroup' }, ...[['area', 'Area', ''], ['side', 'Face', ''], ['every', 'Colour', '']]
       .map(([m, t, why]) => el('button', { class: (P.fillMode || 'area') === m ? 'on' : '', role: 'radio', 'aria-checked': String((P.fillMode || 'area') === m), text: t, onclick: () => { P.fillMode = m; render(); viewHint(); } }))),
       el('p', { class: 'dim small seghelp', text: { area: 'Fills the patch you click and the touching pixels of a similar colour.', side: 'Fills the whole side of the part you click, in one flat colour.', every: 'Changes that colour everywhere on the item, even where the patches are apart.' }[P.fillMode || 'area'] }),
-      P.fillMode !== 'side' ? slider('Similar colours', 0, 100, 4, () => P.tolerance, v => { P.tolerance = v; }, v => v ? v + '%' : 'exact only') : null] : null,
+      P.fillMode !== 'side' ? slider('Tolerance', 0, 100, 4, () => P.tolerance, v => { P.tolerance = v; }, v => v + '%') : null] : null,
     el('div', { class: 'options' }, toggle('Symmetry', ED.mirror, () => { ED.mirror = !ED.mirror; render(); })),
     P.tool === 'select' || ED.sel || ED.float || CLIP ? [el('div', { class: 'wshead', text: 'Selection' }), el('div', { class: 'options' },
       ...(ED.float ? [chip('Place', placeFloat, 'Enter'), chip('Flip ↔', () => flipFloat(true)), chip('Flip ↕', () => flipFloat(false)), chip('Cancel', () => { ED.float = null; render(); }, 'Esc')]
@@ -1323,7 +1324,7 @@ function renderWorkspace() {
     el('button', { class: 'btn icon', text: '↷', title: 'Redo (Ctrl+Y)', disabled: !ED.fut.length, onclick: () => wsUndo(true) }),
     
     el('button', { id: 'wsequip', class: 'btn', text: 'Wear it', title: 'Save and wear', onclick: () => finishAsset(true) }), el('button', { id: 'wsdone', class: 'btn primary', text: 'Done', title: 'Save and close', onclick: () => finishAsset() })].filter(Boolean));
-  const tool = (id, label, key, ic, on, fn) => el('button', { class: 'wstool' + (on ? ' on' : ''), title: label + (key ? ` (${key})` : ''), onclick: fn }, el('span', { text: ic }), el('b', { text: SHORT[id] || label }), key && key.length === 1 ? el('i', { text: key }) : null);
+  const tool = (id, label, key, ic, on, fn) => el('button', { class: 'wstool' + (on ? ' on' : ''), title: (SHORT[id] || label) + (key ? ` (${key})` : ''), onclick: fn }, el('span', { text: ic }), el('b', { text: SHORT[id] || label }), key && key.length === 1 ? el('i', { text: key }) : null);
   const pickAny = (kind, id) => guard(async () => { if (ED.mode !== kind) await setMode(kind); pickTool(id); })();
   const paintIds = ['brush', 'erase', 'fill', 'pick'], extra = PAINT_TOOLS.filter(t => !paintIds.includes(t[0]));
   const NAMES = { brush: 'Paint', erase: 'Erase', fill: 'Fill', pick: 'Pick', move: 'Move', resize: 'Resize', rotate: 'Turn' };
@@ -1341,7 +1342,7 @@ function renderWorkspace() {
   ED.box_.replaceChildren(el('div', { class: 'paintwrap' }, c, limits(c), sizeOvl()));
   ED.box_.classList.toggle('resizing', mode === 'shape' && ED.stool === 'resize');   // drag a part's area on the texture to resize it
   $('wsleft').replaceChildren(...[el('div', { class: 'wshead row' }, el('span', { text: 'Texture', class: 'grow' }),
-      el('button', { class: 'chip' + (ED.wide ? ' on' : ''), text: ED.wide ? 'Smaller' : 'Bigger', onclick: () => { ED.wide = !ED.wide; $('app').classList.toggle('ws-wide', ED.wide); requestAnimationFrame(() => { fitTexture(); render(); }); } })),
+      el('button', { class: 'chip' + (ED.wide ? ' on' : ''), text: ED.wide ? 'Smaller' : 'Bigger', onclick: e => { ED.wide = !ED.wide; e.currentTarget.textContent = ED.wide ? 'Smaller' : 'Bigger'; e.currentTarget.classList.toggle('on', ED.wide); $('app').classList.toggle('ws-wide', ED.wide); requestAnimationFrame(() => { fitTexture(); render(); }); } })),
     ED.box_,
     el('div', { class: 'row' }, el('button', { class: 'btn icon', text: '−', title: 'Zoom out (mouse wheel)', onclick: () => { ED.zoom = Math.max(1, ED.zoom - 1); render(); } }), el('button', { class: 'btn icon', text: '+', title: 'Zoom in (mouse wheel)', onclick: () => { ED.zoom = Math.min(24, ED.zoom + 1); render(); } }),
       ED.rects.length ? el('button', { class: 'chip' + (P.inside ? '' : ' on'), text: 'Paint outside', 'aria-pressed': String(!P.inside), onclick: () => { P.inside = !P.inside; render(); } }) : null),
@@ -1369,7 +1370,7 @@ addEventListener('keydown', e => {
   else if (ED.mode !== 'shape' && (k === 'delete' || k === 'backspace') && ED.sel && !ED.float) clearSel();
   else if ((k === 'delete' || k === 'x') && ED.mode === 'shape' && !ctrl) delBox();
   else if (k === 'a' && !ctrl && !e.altKey) guard(async () => { if (ED.mode !== 'shape') await setMode('shape'); startPlacing(); })();
-  else if (ED.float && !ctrl && k.startsWith('arrow')) { const d = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] }[k], m = e.shiftKey ? 8 : 1; ED.float.x += d[0] * m; ED.float.y += d[1] * m; render(); }   /* arrows move a paste that isn't placed yet */
+  else if (ED.float && !ctrl && k.startsWith('arrow')) { const d = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, -1], arrowdown: [0, 1] }[k], m = e.shiftKey ? 8 : 1; keepFloatOn(ED.float.x + d[0] * m, ED.float.y + d[1] * m); render(); }   /* arrows move a paste that isn't placed yet */
   else if (ED.mode === 'shape' && !ctrl && k.startsWith('arrow') && curBox()) { const sh = curBox().node.shape, d = { arrowleft: [-1, 0], arrowright: [1, 0], arrowup: [0, 1], arrowdown: [0, -1] }[k];
     shapeEdit(() => { const o = { x: 0, y: 0, z: 0, ...sh.offset }; if (e.shiftKey) o.z += d[1] || -d[0]; else { o.x += d[0]; o.y += d[1]; } sh.offset = o; }); }
   else if (k === 'tab' && !ctrl && !e.shiftKey && !e.target?.closest?.('button, a, [tabindex], label')) setMode(ED.mode === 'shape' ? 'paint' : 'shape');
@@ -1402,7 +1403,7 @@ function bindSelect(c, toPixel) {   // the Select tool: drag out an area, or dra
     const f = ED.float; if (f && p.x >= f.x && p.y >= f.y && p.x < f.x + f.img.width && p.y < f.y + f.img.height) drag = { move: true, dx: p.x - f.x, dy: p.y - f.y };
     else { if (f) placeFloat(); drag = { x: p.x, y: p.y }; ED.sel = { x: p.x, y: p.y, w: 1, h: 1 }; } drawOvl(); });
   c.addEventListener('pointermove', e => { if (!drag || !ED) return; const p = toPixel(e);
-    if (drag.move) { ED.float.x = p.x - drag.dx; ED.float.y = p.y - drag.dy; } else ED.sel = { x: Math.min(drag.x, p.x), y: Math.min(drag.y, p.y), w: Math.abs(p.x - drag.x) + 1, h: Math.abs(p.y - drag.y) + 1 };
+    if (drag.move) keepFloatOn(p.x - drag.dx, p.y - drag.dy); else ED.sel = { x: Math.min(drag.x, p.x), y: Math.min(drag.y, p.y), w: Math.abs(p.x - drag.x) + 1, h: Math.abs(p.y - drag.y) + 1 };
     drawOvl(); });
   const up = () => { if (drag) { drag = null; render(); } }; c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
 }
@@ -1417,11 +1418,12 @@ function pasteClip() {
   const W = ED.canvas.width, H = ED.canvas.height, a0 = ED.sel || ED.hover || { x: 0, y: 0 }, at = { x: Math.max(0, Math.min(a0.x, W - CLIP.width)), y: Math.max(0, Math.min(a0.y, H - CLIP.height)) }; ED.float = { img: new ImageData(new Uint8ClampedArray(CLIP.data), CLIP.width, CLIP.height), x: at.x, y: at.y };
   ED.painter.tool = 'select'; render();
 }
+function keepFloatOn(x, y) { const f = ED.float, W = ED.canvas.width, H = ED.canvas.height; f.x = Math.max(1 - f.img.width, Math.min(W - 1, x)); f.y = Math.max(1 - f.img.height, Math.min(H - 1, y)); }   // at least one texel of a paste stays on the texture
 function placeFloat() {   // stamps the pasted piece where it sits (see-through texels stay as they were; Inside only still holds)
   const f = ED.float; if (!f) return; ED.float = null; const P = ED.painter, w = f.img.width, h = f.img.height, s = f.img.data;
   P.write((d, W, H) => { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const X = f.x + i, Y = f.y + j, a = (j * w + i) * 4; if (X < 0 || Y < 0 || X >= W || Y >= H || !s[a + 3]) continue;
     const k = Y * W + X; if (P.inside && P.mask && !P.mask[k]) continue; d.set(s.subarray(a, a + 4), k * 4); } });
-  ED.sel = { x: Math.max(0, f.x), y: Math.max(0, f.y), w, h };
+  { const W = ED.canvas.width, H = ED.canvas.height, x0 = Math.max(0, f.x), y0 = Math.max(0, f.y); ED.sel = { x: x0, y: y0, w: Math.max(1, Math.min(W, f.x + w) - x0), h: Math.max(1, Math.min(H, f.y + h) - y0) }; }
 }
 function flipFloat(across) {
   const f = ED.float; if (!f) return; const w = f.img.width, h = f.img.height, s = f.img.data, out = new ImageData(w, h);
