@@ -305,7 +305,7 @@ export function stage(canvas, Controls) {
       world.userData.move(mx, mz); }
     for (const w of flowing) { const [ox, oz] = world ? world.userData.offset() : [0, 0], m = w.material.map; if (m) m.offset.set(-ox / w.userData.flow, oz / w.userData.flow); }   // water drifts with the land
     grid.position.x = (grid.position.x - vel.x * dt) % CELL; grid.position.z = (grid.position.z - vel.y * dt) % CELL;   // the ground runs backwards under the figure
-    grid.material.opacity += ((anim.move && anim.anim && !world ? 0.5 : 0) - grid.material.opacity) * (1 - Math.exp(-dt * 6)); grid.visible = grid.material.opacity > 0.01;
+    grid.material.opacity += ((!world ? 0.5 : 0) - grid.material.opacity) * (1 - Math.exp(-dt * 6)); grid.visible = grid.material.opacity > 0.01;
     const wy = wallG.position.y - WALL_Y - (wallOn ? wallOn[1] : 0) * dt, wx = wallG.position.x - (wallOn ? wallOn[0] : 0) * dt;
     wallG.position.set(wx % CELL, WALL_Y + wy % CELL, WALL_Z); for (const p of scrollers) { const b = p.userData.scroll; if (!wallOn) { p.position.copy(b); continue; } p.position.x = b.x + (p.position.x - b.x - wallOn[0] * dt) % BLOCK; p.position.y = b.y + (p.position.y - b.y - wallOn[1] * dt) % BLOCK; }
     wallG.material.opacity += ((wallOn && !scrollers.length ? 0.5 : 0) - wallG.material.opacity) * (1 - Math.exp(-dt * 6)); wallG.visible = wallG.material.opacity > 0.01; }
