@@ -908,7 +908,8 @@ function anyItem() {   // or start from any free item in the game, worn or not
     menu.replaceChildren(...list.map(([n], i) => el('div', { role: 'option', class: 'anyopt', text: n, data: { i } })));
     const worn = !q && parse(cur.skin[slot.value]).id, kept = (anyItem.picks ||= {})[slot.value], at0 = id => list.findIndex(r => r[2] && r[2].Id === id); at = q ? (list.length ? 0 : -1) : kept ? at0(kept) : -1; if (!q && at < 0) at = at0(worn);   // the item shown last time stays, so the picker doesn't jump around between visits
     if (!q && at < 0 && (anyItem.rand ||= {})[slot.value]) at = at0(anyItem.rand[slot.value]);
-    if (!q && at < 0 && list.length) { at = Math.floor(Math.random() * list.length); anyItem.rand[slot.value] = list[at][2].Id; } act = Math.max(0, at); label(); item.disabled = !list.length; close(); clearTimeout(hov); draw(at); };
+    if (!q && at < 0 && list.length) { at = Math.floor(Math.random() * list.length); anyItem.rand[slot.value] = list[at][2].Id; } if (!q && at >= 0 && list[at][2]) anyItem.picks[slot.value] = list[at][2].Id;   // whatever is shown first stays shown (wearing something new doesn't swap it)
+    act = Math.max(0, at); label(); item.disabled = !list.length; close(); clearTimeout(hov); draw(at); };
   slot.value = slots.includes(anyItem.slot) ? anyItem.slot : slots.includes('overtop') ? 'overtop' : slots[0]; fill(); slot.onchange = () => { anyItem.slot = slot.value; keepAny(); find_.value = ''; fill(); }; find_.oninput = fill;
   find_.onkeydown = ev => { if (ev.key === 'ArrowDown' && list.length) { ev.preventDefault(); item.focus(); item.onkeydown(ev); } };
   return [el('h3', { text: 'Or start from any item' }), el('div', { class: 'row anyitem' }, pic, el('div', { class: 'anycol' }, el('div', { class: 'row' }, slot, find_), el('div', { class: 'anywrap' }, item, menu)), edit)];
