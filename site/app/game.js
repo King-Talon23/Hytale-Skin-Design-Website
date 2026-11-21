@@ -11,7 +11,7 @@ const LANG = 'Common/Languages/en-US/avatarCustomization/';
 export const PROPS = {
   glider: ['Items/Glider/Scrap.blockymodel', 'Items/Glider/Scrap_Texture.png'], battleaxe: ['Items/Weapons/Battleaxe/Iron.blockymodel', 'Items/Weapons/Battleaxe/Iron_Texture.png'],
   book: ['Items/Weapons/Spellbook/Book.blockymodel', 'Items/Weapons/Spellbook/Book_Fire_Texture.png'], pickaxe: ['Items/Tools/Pickaxe/Iron.blockymodel', 'Items/Tools/Pickaxe/Iron_Texture.png'],
-  staff: ['Items/Weapons/Staff/Bo_Wood.blockymodel', 'Items/Weapons/Staff/Bo_Wood_Texture.png'], sword: ['Items/Weapons/Sword/Iron.blockymodel', 'Items/Weapons/Sword/Iron_Texture.png'],
+  staff: ['Items/Weapons/Staff/Bo_Wood.blockymodel', 'Items/Weapons/Staff/Bo_Wood_Texture.png'], wizstaff: ['Items/Weapons/Staff/Wizard.blockymodel', 'Items/Weapons/Staff/Wizard_Texture.png'], sword: ['Items/Weapons/Sword/Iron.blockymodel', 'Items/Weapons/Sword/Iron_Texture.png'],
   mace: ['Items/Weapons/Mace/Iron.blockymodel', 'Items/Weapons/Mace/Iron_Texture.png'], bow: ['Items/Weapons/Bow/Bronze.blockymodel', 'Items/Weapons/Bow/Bronze_Texture.png'],
   potion: ['Items/Consumables/Potions/Potion.blockymodel', 'Items/Consumables/Potions/Potion_Textures/Pink.png'], block: [null, 'BlockTextures/Rock_Stone.png'] };   // a block is a plain cube with this texture
 // textures for the scenery some moves need (a chair to sit on, a bed, water)
@@ -19,7 +19,7 @@ export const SCENERY_TEX = { wood: 'BlockTextures/Wood_Softwood_Planks_Top.png',
 // backgrounds behind the character and the set pieces of the moves: built from the game's own files (see scene-data.js)
 export { SCENES, SET_PIECES } from './scene-data.js';
 // which set of files a connect reads; raised when the site starts needing more, so a remembered Assets.zip is read again
-export const FILES_V = 4;
+export const FILES_V = 5;
 const PROP_FILES = new Set([...Object.values(PROPS).flat(), ...Object.values(SCENERY_TEX)].filter(Boolean).map(p => 'Common/' + p)
   .concat(SCENE_FILES));
 const wanted = n => EXT.test(n) && !n.includes('..') && (PROP_FILES.has(n) ||

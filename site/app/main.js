@@ -522,7 +522,7 @@ async function setMount(kind, move) {
 }
 // what each move holds, and in which hand (the game's attachment bones)
 const HELD = { Glide: { '*': [['glider', 'R-Attachment', [0, -62, 0]]] },   // as in game: the hands on the glider's grips (measured 62 above them unshifted)
-  Poses: { BattleAxe: [['battleaxe', 'R-Attachment']], Book_Read: [['book', 'L-Attachment']], Show_Block: [['block', 'R-Attachment']], Show_Item: [['potion', 'R-Attachment']], Pickaxe: [['pickaxe', 'R-Attachment']], Staff: [['staff', 'R-Attachment']], Sword: [['sword', 'R-Attachment']],
+  Poses: { BattleAxe: [['battleaxe', 'R-Attachment']], Book_Read: [['book', 'L-Attachment']], Show_Block: [['block', 'R-Attachment']], Show_Item: [['potion', 'R-Attachment']], Pickaxe: [['pickaxe', 'R-Attachment']], Staff: [['wizstaff', 'R-Attachment', null, [180, 0, 0]]], Sword: [['sword', 'R-Attachment']],
     Warhammer: [['mace', 'R-Attachment']], Outlander_Sword: [['sword', 'R-Attachment']], Outlander_Archer_Bow_Charge: [['bow', 'L-Attachment']], Outlander_Archer_Bow_Pose: [['bow', 'L-Attachment']] },
   Taunt: { Staff_Helicopter: [['staff', 'R-Attachment']], Sword_Back: [['sword', 'R-Attachment']], Sword_Front: [['sword', 'R-Attachment', [0, 0, 14]]] } };   // [item, hand, shift]: Sword Front's blade would cross the face and body
 const heldBy = (g, n) => HELD[g]?.[n] || HELD[g]?.['*'] || [];
@@ -549,7 +549,7 @@ function sceneryFor(g, n) {
 const facesAway = (g, n) => g === 'Climb' || g === 'Mantle' || (g === 'Default' && n === 'Interact');
 let propsKey = '';   // the props in the hands now: a move that uses the same ones keeps them (the glider never blinks out between glide moves)
 async function setProps(g, n) { const want = heldBy(g, n), key = JSON.stringify(want); if (key === propsKey) return; propsKey = key;
-  const built = await Promise.all(want.map(async ([k, bone, shift]) => { try { const [model, tex] = game.PROPS[k]; return { root: model ? await fig.buildCreature({ model, tex }) : await fig.buildBlock(tex), bone, shift }; } catch (e) { console.warn(k, e.message); return null; } }));
+  const built = await Promise.all(want.map(async ([k, bone, shift, turn]) => { try { const [model, tex] = game.PROPS[k]; return { root: model ? await fig.buildCreature({ model, tex }) : await fig.buildBlock(tex), bone, shift, turn }; } catch (e) { console.warn(k, e.message); return null; } }));
   st.props(built.filter(Boolean)); if (built.some(b => !b)) say('Your saved copy of the game files is from before held items were added. Refresh it once in the Locker to see them (your skins are kept).', true); }
 // st.lift: tall moves aim the view higher, moves near the floor aim lower so they clear the buttons under the view
 // the speed each move plays at in game (Server/Models/Human/Player.json, AnimationSets); everything else plays at 1
@@ -1476,7 +1476,7 @@ addEventListener('keydown', e => { if (!R || e.target?.matches?.('input, textare
 (async function boot() {
   try {
     // Local development only: read the developer's own Assets.zip through the dev server (dev/ is never deployed).
-    if ((['localhost', '127.0.0.1'].includes(location.hostname) || location.hostname.endsWith('.localhost')) && new URLSearchParams(location.search).has('devzip') && !(await game.status()))
+    if ((['localhost', '127.0.0.1'].includes(location.hostname) || location.hostname.endsWith('.localhost')) && new URLSearchParams(location.search).has('devzip') && ((await game.status())?.v || 0) < game.FILES_V)   // dev: read again whenever the file list grows
       { const { devSource } = await import('../dev/devsource.js'); showConnect(); return doConnect(async () => game.importFrom(await devSource(), { name: 'Assets.zip (dev)', size: 0, modified: 0 }, progress)); }
     if (await game.status()) { await startApp(); checkGameUpdate().then(trimThumbs); } else showConnect();
   } catch (e) { console.error(e); showConnect(); $('connerr').textContent = 'This browser blocked local storage, which the editor needs. Try a normal (not private) window.'; }

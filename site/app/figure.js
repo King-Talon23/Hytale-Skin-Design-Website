@@ -304,7 +304,7 @@ export function stage(canvas, Controls) {
     wallG.position.set(wx % CELL, WALL_Y + wy % CELL, WALL_Z); for (const p of scrollers) { const b = p.userData.scroll; if (!wallOn) { p.position.copy(b); continue; } p.position.x = b.x + (p.position.x - b.x - wallOn[0] * dt) % BLOCK; p.position.y = b.y + (p.position.y - b.y - wallOn[1] * dt) % BLOCK; }
     wallG.material.opacity += ((wallOn && !scrollers.length ? 0.5 : 0) - wallG.material.opacity) * (1 - Math.exp(-dt * 6)); wallG.visible = wallG.material.opacity > 0.01; }
   let hl = null, helpers = [];   // outlines around picked boxes (see drawHL)
-  const anim = new Animator(), mountAnim = new Animator(); let figure = null, held = [], perchY = 0, faceCb = null, faced = '', last = performance.now(), mountRoot = null, seat = null, hoverTo = 0, hoverAt = 0, pitchTo = 0, pitchAt = 0;
+  const anim = new Animator(), mountAnim = new Animator(); let figure = null, held = [], perchY = 0, perchFrom = 0, faceCb = null, faced = '', last = performance.now(), mountRoot = null, seat = null, hoverTo = 0, hoverAt = 0, pitchTo = 0, pitchAt = 0;
   let inset = 0, insetR = 0, figTop = 130, autoFit = true;   // the buttons over the bottom and right of the view: the picture is centred on what is left, at the same scale
   const insets = () => { const w = canvas.clientWidth || 1, h = canvas.clientHeight || 1; return [inset > 0 && inset < h * 0.45 ? inset : 0, insetR > 0 && insetR < w * 0.35 ? insetR : 0, w, h]; };
   function fit() { const w = canvas.clientWidth, h = canvas.clientHeight; if (!w || !h) return; renderer.setSize(w, h, false);
@@ -391,7 +391,7 @@ export function stage(canvas, Controls) {
   }
   const VIEWS = { front: [0, 62, 270], back: [0, 62, -270], side: [-270, 62, 0], top: [0, 330, 1], persp: [-75, 95, 255] };
   // a ridden animal under the figure: the figure sits at the animal's seat (in model units) and the view backs off to fit both
-  const seatAt = () => { if (!figure) return; const k = anim.blend < 1 ? anim.blend * anim.blend * (3 - 2 * anim.blend) : 1; figure.position.set(0, (seat ? seat[1] : 0) + hoverAt + perchY * k, seat ? seat[2] : 0);
+  const seatAt = () => { if (!figure) return; const k = anim.blend < 1 ? anim.blend * anim.blend * (3 - 2 * anim.blend) : 1; figure.position.set(0, (seat ? seat[1] : 0) + hoverAt + perchFrom + (perchY - perchFrom) * k, seat ? seat[2] : 0);
   figure.rotation.x = pitchAt; if (pitchAt) { const c = 70; figure.position.y += c - c * Math.cos(pitchAt); figure.position.z -= c * Math.sin(pitchAt); } };   // a swimmer lies forward, turning about the chest   // a seat's lift eases in with the pose, so nobody stands on the chair first
   // scenery a move needs: boxes and planes in the scene (a chair, a bed, the water's surface); perch lifts the figure onto it
   const setPiece = new THREE.Group(); scene.add(setPiece);
@@ -410,14 +410,14 @@ export function stage(canvas, Controls) {
     const lost = made.some(m => !m); made.splice(0, made.length, ...made.filter(Boolean)); if (lost) api.onMissing?.();   // older copies of the game files lack the furniture
     if (my !== scenery.n) return made.forEach(drop);
     for (const m of [...setPiece.children]) { setPiece.remove(m); drop(m); }
-    for (const m of made) setPiece.add(m); scrollers = made.filter(m => m.userData.scroll); flowing = made.filter(m => m.userData.flow); perchY = perch; seatAt(); groundRects(); }
+    for (const m of made) setPiece.add(m); scrollers = made.filter(m => m.userData.scroll); flowing = made.filter(m => m.userData.flow); perchFrom = perchY; perchY = perch; seatAt(); groundRects(); }
   // the ground each set piece stands on, in blocks, so no plant grows through a chair, a bed or a ladder wall
   function groundRects() { const box = new THREE.Box3(), rs = []; setPiece.updateMatrixWorld(true);
     for (const m of setPiece.children) { if (m.userData.flow || m.userData.volume) continue; box.setFromObject(m); if (box.isEmpty() || box.min.y > 40) continue; rs.push([box.min.x / BLOCK, box.min.z / BLOCK, box.max.x / BLOCK, box.max.z / BLOCK]); }
     if (world) { world.userData.avoid = rs; world.userData.relayout(); } else pendingRects = rs; }
   let pendingRects = [];
   // flying moves: the figure rises off the ground and bobs gently, easing up and down when the move changes
-  function float(dt, now) { if (figure && perchY) seatAt(); for (const h of held) { if (anim.blend > 0.8 || now - (h.at || 0) > 600) h.shown = true; h.root.visible = !!h.shown; }   // a held thing shows once the hands have reached it, not swinging up from the feet
+  function float(dt, now) { if (figure && (perchY || perchFrom)) seatAt(); for (const h of held) { if (anim.blend > 0.8 || now - (h.at || 0) > 600) h.shown = true; h.root.visible = !!h.shown; }   // a held thing shows once the hands have reached it, not swinging up from the feet
     if (figure && (pitchTo || pitchAt)) { pitchAt += (pitchTo - pitchAt) * (1 - Math.exp(-dt * 5)); if (Math.abs(pitchTo - pitchAt) < 0.002) pitchAt = pitchTo; seatAt(); }
     if (!figure || (!hoverTo && !hoverAt)) return; hoverAt += (hoverTo - hoverAt) * (1 - Math.exp(-dt * 4)); if (Math.abs(hoverTo - hoverAt) < 0.05) hoverAt = hoverTo;
     seatAt(); if (hoverAt > 1 && hoverTo) figure.position.y += Math.sin(now / 1000 * 2.2) * 2.5 * Math.min(1, hoverAt / hoverTo); }
@@ -432,7 +432,7 @@ export function stage(canvas, Controls) {
   // the moves animate the held thing's own parts too (the glider's frame and flaps), so those parts join the figure's while it is held;
   // parts sharing a name with the body (the item's root is named after the hand's attachment) stay out, or the move would apply twice
   const unhang = () => { for (const h of held) { h.root.parent?.remove(h.root); const fp = h.on?.userData.parts; if (fp) for (const [k, g] of h.added || []) { const gs = fp.get(k); if (gs) { const i = gs.indexOf(g); if (i >= 0) gs.splice(i, 1); if (!gs.length) fp.delete(k); } } h.on = null; h.added = []; } };
-  const hang = () => { unhang(); for (const h of held) { const b = figure?.userData.bones?.[h.bone]; if (!b) continue; b.add(h.root);
+  const hang = () => { unhang(); for (const h of held) { const b = figure?.userData.bones?.[h.bone]; if (!b) continue; b.add(h.root); if (h.turn) h.root.rotation.set(...h.turn.map(d => d * Math.PI / 180));
     if (h.root.children.length === 1) { const top = h.root.children[0]; top.position.set(0, 0, 0); top.userData.rest?.p.set(0, 0, 0); }   // as in game: the item's own root node sits ON the hand's attachment point (its offset in the file is ignored)
     const fp = figure.userData.parts; h.on = figure; h.added = [];
     h.root.userData.parts?.forEach((gs, k) => { if (fp.has(k) && !h.added.some(a => a[0] === k)) return; for (const g of gs) { (fp.get(k) || fp.set(k, []).get(k)).push(g); h.added.push([k, g]); } }); }
