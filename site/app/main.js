@@ -400,8 +400,8 @@ function card(rec, kind, i) {
     el('div', { class: 'pic' }, portrait(rec.skin)), el('b', { text: rec.name }), kind === 'game' ? el('small', { text: 'Slot ' + (rec.slot + 1) }) : null, el('div', { class: 'acts' }, acts));
 }
 // Features that need a Hytale account. Sign in with Hytale is not available to this site yet, so they are shown greyed out.
-const NEED = f => ACCOUNT ? `Hytale does not offer ${f} to other apps yet` : `Must connect Hytale account to enable ${f}`;
-const locked = (label, feature, cls = 'btn ghost') => el('button', { class: cls + ' locked', disabled: true, title: NEED(feature), text: label });
+const NEED = f => ACCOUNT ? `Hytale does not offer ${f} to other apps yet` : !auth.enabled ? `Coming soon: ${f} needs Sign in with Hytale, which is waiting on Hytale's approval` : `Connect your Hytale account to enable ${f}`;
+const locked = (label, feature, cls = 'btn ghost') => el('button', { class: cls + ' locked', 'aria-disabled': 'true', title: NEED(feature), text: label, onclick: e => { e.stopPropagation(); say(NEED(feature)); } });   // not disabled: a click says why it can't be used yet
 const need = feature => el('p', { class: 'need', text: NEED(feature) + '.' });
 function accountRow() {
   if (!auth.enabled) return el('div', { class: 'folder account' }, el('div', {}, el('b', {}, 'Hytale account ', el('span', { class: 'tag none', text: 'WIP' })),
