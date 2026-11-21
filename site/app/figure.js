@@ -414,7 +414,7 @@ export function stage(canvas, Controls) {
     if (world) { world.userData.avoid = rs; world.userData.relayout(); } else pendingRects = rs; }
   let pendingRects = [];
   // flying moves: the figure rises off the ground and bobs gently, easing up and down when the move changes
-  function float(dt, now) { if (figure && perchY) seatAt(); for (const h of held) { if (anim.blend > 0.8) h.shown = true; h.root.visible = !!h.shown; }   // a held thing shows once the hands have reached it, not swinging up from the feet
+  function float(dt, now) { if (figure && perchY) seatAt(); for (const h of held) { if (anim.blend > 0.8 || now - (h.at || 0) > 600) h.shown = true; h.root.visible = !!h.shown; }   // a held thing shows once the hands have reached it, not swinging up from the feet
     if (!figure || (!hoverTo && !hoverAt)) return; hoverAt += (hoverTo - hoverAt) * (1 - Math.exp(-dt * 4)); if (Math.abs(hoverTo - hoverAt) < 0.05) hoverAt = hoverTo;
     seatAt(); if (hoverAt > 1 && hoverTo) figure.position.y += Math.sin(now / 1000 * 2.2) * 2.5 * Math.min(1, hoverAt / hoverTo); }
   // things held in the hands (a glider, a sword ...): each hangs on a bone of the figure and moves with it; re-hung when the figure is rebuilt
@@ -433,7 +433,7 @@ export function stage(canvas, Controls) {
     const fp = figure.userData.parts; h.on = figure; h.added = [];
     h.root.userData.parts?.forEach((gs, k) => { if (fp.has(k) && !h.added.some(a => a[0] === k)) return; for (const g of gs) { (fp.get(k) || fp.set(k, []).get(k)).push(g); h.added.push([k, g]); } }); }
     anim.setFigure(figure); };
-  function props(list) { unhang(); for (const h of held) dispose(h.root); held = list || []; if (figure) hang(); }
+  function props(list) { unhang(); for (const h of held) dispose(h.root); held = list || []; for (const h of held) h.at = performance.now(); if (figure) hang(); }
   // a tall move (gliding, arms and glider high overhead): aim higher and back off so it all fits; lift(0) puts the view back
   let lifted = null;
   function lift(y, phi = 0, len = 360, z = 0) { const off = cam.position.clone().sub(ctl.target);   // phi: look down from at least this high (polar angle), to see into a bed
