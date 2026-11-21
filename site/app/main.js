@@ -498,7 +498,7 @@ const MOUNTS = {
   Camel: { model: MOUNT_PATH + 'Camel/Models/Model.blockymodel', tex: MOUNT_PATH + 'Camel/Models/Texture.png', seat: [0, 2.25, 0.2], anims: MOUNT_PATH + 'Camel/Animations/Default/',
     atts: [{ model: MOUNT_PATH + 'Camel/Models/Attachments/Shell.blockymodel', tex: MOUNT_PATH + 'Camel/Models/Attachments/Shell_Textures/Green.png' }] },
   Ram: { model: MOUNT_PATH + 'Ram/Models/Model.blockymodel', tex: MOUNT_PATH + 'Ram/Models/Texture.png', seat: [0, 1.3, 0], anims: MOUNT_PATH + 'Ram/Animations/Default/', atts: [] } };
-const MOUNT_MOVE = { Mount_Idle: ['Idle', 1], Mount_Walk: ['Walk', 1], Mount_Walk_Backward: ['Walk_Backward', 1], Mount_Run: ['Run', 1], Mount_Run_Backward: ['Walk_Backward', 1.6], Mount_Sprint: ['Run', 1.3] };
+const MOUNT_MOVE = { Mount_Idle: ['Idle', 1], Mount_Walk: ['Walk', 1], Mount_Walk_Backward: ['Walk_Backward', 1], Mount_Run: ['Run', 1], Mount_Run_Backward: ['Walk_Backward', 1], Mount_Sprint: ['Run', 1] };   // the game's animals have only Idle/Walk/WalkBackward/Run, all at speed 1 (Server/Models/Livestock/*.json)
 let mountKind = 'Horse', mountOn = null, mountMsg = '';
 async function setMount(kind, move) {
   if (!st) return; if (!kind) { if (mountOn) { st.mount(null); mountOn = null; } return; }
