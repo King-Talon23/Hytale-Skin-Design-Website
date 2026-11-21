@@ -1291,7 +1291,11 @@ function shapeSide() {
   const xyz = (label, fields) => el('div', { class: 'wsgroup' }, el('b', { text: label }), el('div', { class: 'xyzrow' }, ...fields));   /* one row of axis fields, as in other editors */
   const own = /^Box_/.test(b.node.name), pos = own ? [b.node, 'position'] : [sh, 'offset'];
   const act = (t, fn, tip) => el('button', { class: 'chip', text: t, title: tip || '', onclick: fn });
-  const nudgeZ = d => () => shapeEdit(() => { const [o_, k_] = pos; o_[k_] = { x: 0, y: 0, z: 0, ...o_[k_], z: Math.round(((o_[k_]?.z ?? 0) + d) * 2) / 2 }; });
+  const nudgeZ = d => () => { let ax = 'z', sg = 1; const m = st.findMesh(o => o.userData.nodeName === b.node.name);   /* forward = away from the body's middle, in the part's own axes */
+    if (m && m.parent) { let root = m; while (root.parent && root.parent.type !== 'Scene') root = root.parent; const v = m.position.clone(), rp = m.position.clone(); m.getWorldPosition(v); root.getWorldPosition(rp);
+      const out = v.clone().sub(rp); out.y = 0; if (out.length() < 2) out.set(0, 1, 0); const fr = pos[0] === b.node && m.parent.parent ? m.parent.parent : m.parent; out.normalize().applyQuaternion(fr.getWorldQuaternion(fr.quaternion.clone()).invert());
+      ax = ['x', 'y', 'z'].reduce((a, c) => Math.abs(out[c]) > Math.abs(out[a]) ? c : a, 'x'); sg = Math.sign(out[ax]) || 1; }
+    shapeEdit(() => { const [o_, k_] = pos; o_[k_] = { x: 0, y: 0, z: 0, ...o_[k_], [ax]: Math.round(((o_[k_]?.[ax] ?? 0) + d * sg) * 2) / 2 }; }); };
   return [el('div', { class: 'wshead row' }, el('span', { class: 'grow', text: 'Parts' }),
       el('button', { class: 'iconbtn', text: '+', title: 'New part (A)', 'aria-label': 'New part', onclick: startPlacing }), el('button', { class: 'iconbtn', text: '⧉', title: 'Add item…', 'aria-label': 'Add item', onclick: guard(combinePick) })),
     el('div', { class: 'outliner' }, boxes.map((x, k) => { const name = boxLabel(x.node), same = boxes.filter(y => boxLabel(y.node) === name), nth = same.length > 1 ? ' ' + (same.findIndex(y => y.node === x.node) + 1) : '';
