@@ -991,6 +991,8 @@ const boxesOf = m => { const out = []; const walk = (n, parent) => { const s = n
 async function editModel() { if (!ED.model) ED.model = ED.asset.shape ? JSON.parse(ED.asset.shape) : structuredClone(await game.json(game.common(ED.asset.model))); return ED.model; }
 function shapeChanged() {   // the preview, the drawn-area guide and the saved copy follow every edit
   ED.shapeN = (ED.shapeN || 0) + 1; ED.rects = fig.usedRects(ED.model); maskFromRects();
+  if (ED.asset.labels) { const have = new Set(); const walk = l => { for (const n of l || []) { have.add(n.name); walk(n.children); } }; walk(ED.model.nodes);   /* names of parts that are gone are dropped */
+    const kept = Object.fromEntries(Object.entries(ED.asset.labels).filter(([k]) => have.has(k))); if (Object.keys(kept).length !== Object.keys(ED.asset.labels).length) ED.asset = { ...ED.asset, labels: kept }; }
   registerAssets(); rebuild(); queueAssetSave(); render();
   clearTimeout(shapeChanged.t); shapeChanged.t = setTimeout(() => checkReplica(), 1200);
 }
@@ -1085,7 +1087,7 @@ function paintSide() {
     el('button', { class: 'btn primary wide', text: 'Colour whole item', title: 'Turn the whole item this colour and keep its light and dark shading', onclick: () => tintAll(P.color) }),
     el('div', { class: 'wshead', text: 'Brush' }),
     slider('Size', 1, 8, 1, () => P.size, v => { P.size = v; }, v => v), slider('Strength', 10, 100, 10, () => Math.round(P.opacity * 100), v => { P.opacity = v / 100; }, v => v + '%'),
-    P.tool === 'fill' ? [el('div', { class: 'swlabel', text: 'Fill what?' }), el('div', { class: 'seg', role: 'radiogroup' }, ...[['area', 'Area', 'The patch you click and the touching pixels of a similar colour'], ['side', 'Whole side', 'The whole side of the part you click, in one flat colour'], ['every', 'Everywhere', 'That colour everywhere on the item']]
+    P.tool === 'fill' ? [el('div', { class: 'swlabel', text: 'Fill what?' }), el('div', { class: 'seg', role: 'radiogroup' }, ...[['area', 'Area', 'The patch you click and the touching pixels of a similar colour'], ['side', 'Whole side', 'The whole side of the part you click, in one flat colour'], ['every', 'This colour', 'The colour you click, everywhere it appears on the item']]
       .map(([m, t, why]) => el('button', { class: (P.fillMode || 'area') === m ? 'on' : '', role: 'radio', 'aria-checked': String((P.fillMode || 'area') === m), text: t, title: why, onclick: () => { P.fillMode = m; render(); viewHint(); } }))),
       el('p', { class: 'dim small seghelp', text: { area: 'Fills the patch you click and the touching pixels of a similar colour.', side: 'Fills the whole side of the part you click, in one flat colour.', every: 'Changes that colour everywhere on the item, even where the patches are apart.' }[P.fillMode || 'area'] }),
       P.fillMode !== 'side' ? slider('Similar colours', 0, 100, 4, () => P.tolerance, v => { P.tolerance = v; }, v => v ? v + '%' : 'exact only') : null] : null,
