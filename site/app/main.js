@@ -961,7 +961,7 @@ function limits(c) {
     const spots = new Map(); for (const r of ED.rects) { const k = r.x + ',' + r.y; (spots.get(k) || spots.set(k, []).get(k)).push(r); }   // faces sharing one spot (left and right glasses painted alike) get one label
     for (const rs of spots.values()) { const r = rs[0]; if (!(r.w * z > 34 && r.h * z > 14)) continue; const uniq = a => [...new Set(a)];
       const parts = uniq(rs.map(q => partName(q.node))), faces = uniq(rs.map(q => q.face)).join('/');
-      const opts = [many ? parts.join(' + ') + ' · ' + faces : faces, many && parts.length > 1 ? parts[0] + ' +' + (parts.length - 1) + ' · ' + faces : null, faces, parts.length > 1 ? parts[0] + ' +' + (parts.length - 1) : null].filter(Boolean);
+      const opts = parts.length > 1 ? [parts.join(' + ') + ' (shared paint)', parts.join(' + '), parts[0] + ' +' + (parts.length - 1) + ' (shared)', 'Shared paint'] : [many ? parts[0] + ' · ' + faces : faces, faces];   /* parts painted alike: name them once and say so, no repeated sides */
       const t = opts.find(v => x.measureText(v).width <= r.w * z - 6); if (t) x.fillText(t, r.x * z + 3, r.y * z + 11); } }
   return o;
 }
