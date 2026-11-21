@@ -284,7 +284,7 @@ export function stage(canvas, Controls) {
   const vel = new THREE.Vector2(), want = new THREE.Vector2();
   function travel(dt) { const v = anim.velocity; want.set(v ? v[0] : 0, v ? v[1] : 0); vel.lerp(want, 1 - Math.exp(-dt * 9));
     // the clearing's floor slides with the move (a horse needs more room round it than a person)
-    if (world) { world.userData.cam = cam.position; world.userData.clear = Math.max(mountRoot ? 2.3 : 1, plantClear, painting ? 4 : 0);
+    if (world) { world.userData.cam = cam.position; world.userData.clear = Math.max(mountRoot ? 2.3 : anim.move ? 1.7 : 1, plantClear, painting ? 4 : 0);
       let mx = anim.move ? -vel.x * dt : 0, mz = anim.move ? -vel.y * dt : 0; const [ox, oz] = world.userData.offset(), span = world.userData.span;
       world.userData.move(mx, mz); }
     for (const w of flowing) { const [ox, oz] = world ? world.userData.offset() : [0, 0], m = w.material.map; if (m) m.offset.set(-ox / w.userData.flow, oz / w.userData.flow); }   // water drifts with the land
