@@ -386,21 +386,21 @@ export function stage(canvas, Controls) {
   // follows live; on release onEnd gets the change in the box's own axes, and the caller rebuilds the model from its data.
   const tc = new TransformControls(cam, canvas); tc.setSize(0.85); tc.setTranslationSnap(0.5); tc.setRotationSnap(THREE.MathUtils.degToRad(5)); tc.setScaleSnap(0.05); scene.add(tc);
   const handle = new THREE.Object3D(); scene.add(handle);
-  let gz = null, start = null;
+  let gz = null, start = null; const damp = v => new THREE.Vector3(1 + (v.x - 1) * 0.4, 1 + (v.y - 1) * 0.4, 1 + (v.z - 1) * 0.4);   // the resize cubes are gentler than the raw scale
   tc.addEventListener('dragging-changed', e => { ctl.enabled = !e.value; });
   tc.addEventListener('objectChange', () => { if (!gz) return; const g = gz.mesh.parent;
     if (gz.mode === 'move') gz.mesh.position.copy(handle.position.clone().sub(start.p).applyQuaternion(start.q.clone().invert()));
-    else if (gz.mode === 'resize') gz.mesh.scale.copy(handle.scale);
+    else if (gz.mode === 'resize') { const k = damp(handle.scale), c = start.c; gz.mesh.scale.copy(k); gz.mesh.position.set(start.mp.x + c.x * (1 - k.x), start.mp.y + c.y * (1 - k.y), start.mp.z + c.z * (1 - k.z)); }   /* grows about its middle, as the result does */
     else g.quaternion.copy(g.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(handle.quaternion)); });
   tc.addEventListener('mouseUp', () => { if (!gz) return; const g = gz.mesh.parent;
-    gz.onEnd({ move: handle.position.clone().sub(start.p).applyQuaternion(start.q.clone().invert()), scale: handle.scale.clone(),
+    gz.onEnd({ move: handle.position.clone().sub(start.p).applyQuaternion(start.q.clone().invert()), scale: damp(handle.scale),
       turn: g.parent.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(handle.quaternion) }); });
   function gizmo(o) {
     gz = o; if (!o) { tc.detach(); return; }
     const g = o.mesh.parent; g.updateMatrixWorld(true);
     handle.position.copy(o.mode === 'rotate' ? g.getWorldPosition(new THREE.Vector3()) : new THREE.Box3().setFromObject(o.mesh).getCenter(new THREE.Vector3()));
     handle.quaternion.copy(g.getWorldQuaternion(new THREE.Quaternion())); handle.scale.set(1, 1, 1);
-    start = { p: handle.position.clone(), q: handle.quaternion.clone() };
+    o.mesh.geometry.computeBoundingBox(); start = { p: handle.position.clone(), q: handle.quaternion.clone(), mp: o.mesh.position.clone(), c: o.mesh.geometry.boundingBox.getCenter(new THREE.Vector3()) };
     tc.setMode(o.mode === 'move' ? 'translate' : o.mode === 'resize' ? 'scale' : 'rotate'); tc.setSpace('local'); tc.attach(handle);
   }
   const VIEWS = { front: [0, 62, 270], back: [0, 62, -270], side: [-270, 62, 0], top: [0, 330, 1], persp: [-75, 95, 255] };

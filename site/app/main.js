@@ -1016,7 +1016,8 @@ fig.setShapeSource(async id => {
   const a = ASSETS.find(x => x.id === id); if (!a || !a.shape) throw new Error('that shape is gone'); return JSON.parse(a.shape);
 });
 const boxesOf = m => { const out = []; const walk = (n, parent) => { const s = n.shape || {}; if ((s.type === 'box' || s.type === 'quad') && s.visible !== false) out.push({ node: n, parent }); for (const c of n.children || []) walk(c, n); }; for (const n of m.nodes) walk(n, null); return out; };
-async function editModel() { if (!ED.model) ED.model = ED.asset.shape ? JSON.parse(ED.asset.shape) : structuredClone(await game.json(game.common(ED.asset.model))); return ED.model; }
+function uniqNames(model) { const seen = new Set(); const walk = l => { for (const n of l || []) { if (seen.has(n.name) && !n.children?.length) { let k = 2; while (seen.has(n.name + '~' + k)) k++; n.name += '~' + k; } seen.add(n.name); walk(n.children); } }; walk(model.nodes); return model; }   // game models repeat some part names; every part gets its own, so picking and dragging find the right one
+async function editModel() { if (!ED.model) ED.model = uniqNames(ED.asset.shape ? JSON.parse(ED.asset.shape) : structuredClone(await game.json(game.common(ED.asset.model)))); return ED.model; }
 function shapeChanged() {   // the preview, the drawn-area guide and the saved copy follow every edit
   ED.shapeN = (ED.shapeN || 0) + 1; ED.rects = fig.usedRects(ED.model); maskFromRects();
   if (ED.asset.labels) { const have = new Set(); const walk = l => { for (const n of l || []) { have.add(n.name); walk(n.children); } }; walk(ED.model.nodes);   /* names of parts that are gone are dropped */
@@ -1075,7 +1076,7 @@ function placeGizmo() {
   const mesh = b && st.findMesh(o => o.material?.map?.image === ED.canvas && o.userData.nodeName === b.node.name);
   if (!mesh) return st.gizmo(null);
   st.gizmo({ mesh, mode: ED.stool, onEnd: ({ move, scale, turn }) => shapeEdit(() => { const sh = b.node.shape, r = (v, q) => Math.round(v / q) * q;
-    if (ED.stool === 'move') sh.offset = { x: r((sh.offset?.x ?? 0) + move.x, 0.5), y: r((sh.offset?.y ?? 0) + move.y, 0.5), z: r((sh.offset?.z ?? 0) + move.z, 0.5) };
+    if (ED.stool === 'move') { const o = sh.offset || {}, m1 = (a) => Math.abs(move[a]) < 1e-4 ? (o[a] ?? 0) : r((o[a] ?? 0) + move[a], 0.5); sh.offset = { x: m1('x'), y: m1('y'), z: m1('z') }; }   /* only the dragged axis snaps */
     else if (ED.stool === 'resize') { const z = sh.settings.size, f = v => Math.max(0.25, Math.min(4, v)), c = v => Math.max(0, Math.min(64, v));
       sh.settings.size = { x: c(r(z.x * f(scale.x), 1)), y: c(r(z.y * f(scale.y), 1)), z: c(r((z.z ?? 0) * f(scale.z), 1)) }; }
     else { const k = v => Math.round(v * 1e6) / 1e6; b.node.orientation = { x: k(turn.x), y: k(turn.y), z: k(turn.z), w: k(turn.w) }; } }) });
@@ -1140,7 +1141,7 @@ function paintSide() {
 function boxLabel(node) {
   const own = ED.asset.labels && ED.asset.labels[node.name]; if (own) return own;
   if (/^Box_/.test(node.name)) { const all = boxesOf(ED.model).filter(b => /^Box_/.test(b.node.name)); return 'Box ' + (all.findIndex(b => b.node === node) + 1); }
-  const raw = n => { const m = /^(.*?)-+C(\d+)$/i.exec(n), base = (m ? m[1] : n).replace(/Costume$/, '').replace(/([A-Za-z])(\d+)$/, '$1 $2').replace(/^L-/, 'Left ').replace(/^R-/, 'Right ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ')
+  const raw = n => { n = String(n).replace(/~\d+$/, ''); const m = /^(.*?)-+C(\d+)$/i.exec(n), base = (m ? m[1] : n).replace(/Costume$/, '').replace(/([A-Za-z])(\d+)$/, '$1 $2').replace(/^L-/, 'Left ').replace(/^R-/, 'Right ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ')
       .replace(/\bbot\b/ig, 'bottom').replace(/\bacc\b/ig, 'accessory').replace(/\bc (\d+)\b/ig, 'part $1').replace(/\s+/g, ' ').trim().toLowerCase();
     const t = base ? base[0].toUpperCase() + base.slice(1) : n; return m ? `${t}, piece ${+m[2] + 1}` : t; };   // "ChestPart--C1" -> "Chest part, piece 2"
   const s = raw(node.name), same = (ED.model ? boxesOf(ED.model) : []).filter(b => !/^Box_/.test(b.node.name) && !(ED.asset.labels || {})[b.node.name] && raw(b.node.name) === s);
@@ -1218,7 +1219,7 @@ const TOOL_TIPS = {
 function viewHint() {
   let h = $('viewhint'); if (!h) { h = el('div', { id: 'viewhint', class: 'viewhint' }); $('view').parentElement.appendChild(h); }
   const key = ED ? (ED.mode === 'shape' ? 's-' + (ED.stool || 'select') : ED.painter.tool) : '';
-  h.hidden = !ED; if (ED && ED.placing) h.textContent = 'Add box: click on the item where it should go. Esc cancels.'; else if (ED) h.textContent = TOOL_TIPS[key] || '';
+  h.hidden = true; h.textContent = ''; void key;   /* no tool sentences on the view; the placing bar says Esc */
   // the first time a tool is used, its tip lights up for a few seconds (help when it is needed, instead of a tour up front)
   if (ED && key && !ED.placing) { let seen; try { seen = new Set(JSON.parse(store_.get('se_tips') || '[]')); } catch { seen = new Set(); }
     if (!seen.has(key)) { seen.add(key); store_.set('se_tips', JSON.stringify([...seen])); h.classList.remove('fresh'); void h.offsetWidth; h.classList.add('fresh'); clearTimeout(h._t); h._t = setTimeout(() => h.classList.remove('fresh'), 9000); } }
@@ -1308,14 +1309,21 @@ function shapeSide() {
 }
 const dupBox = () => addBox('dup');
 function delBox(k = ED.box || 0) { const boxes = boxesOf(ED.model), i = k, b = boxes[i]; if (!b) return;   /* a part goes with the parts attached to it (an added hat's pieces) */
-  const inside = boxesOf({ nodes: [b.node] }).length; if (boxes.length - inside < 1) return say('A piece needs at least one part.', true);
+  const inside = boxesOf({ nodes: [b.node] }).length; if (boxes.length - inside < 1) return say("Can't delete the last part", true);
   shapeEdit(() => { const list = b.parent ? b.parent.children : ED.model.nodes; list.splice(list.indexOf(b.node), 1); ED.box = Math.max(0, Math.min(i, boxesOf(ED.model).length - 1)); });
   const keep = fig.usedRects(ED.model);   /* the paint no part uses any more goes too, so no old blocks stay on the texture */
   ED.painter.write((d, W, H) => { const used = new Uint8Array(W * H); for (const r of keep) for (let y = Math.max(0, Math.floor(r.y)); y < Math.min(H, Math.ceil(r.y + r.h)); y++) used.fill(1, y * W + Math.max(0, Math.floor(r.x)), y * W + Math.min(W, Math.ceil(r.x + r.w)));
     for (let k = 0; k < W * H; k++) if (!used[k]) d[k * 4 + 3] = 0; }); ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); render();
 }
-const resetShape = guard(async () => {
-  const orig = structuredClone(await game.json(game.common(ED.asset.model))); shapeEdit(() => { ED.model = orig; ED.box = 0; }); });
+const resetShape = guard(async () => {   // the game's own shape and paint come back (one undo step)
+  const e = ED, f = e.asset.field, base = CAT.items[f]?.find(x => x.Id === e.asset.baseId && !x.custom), orig = uniqNames(structuredClone(await game.json(game.common(e.asset.model))));
+  let img = null; if (base) { const worn = e.before?.[f], val = worn && parse(worn).id === base.Id ? worn : R.partStr(base), sk = { ...cur.skin, [f]: val }; for (const h of HIDE[f] || []) delete sk[h];
+    const r = R.resolve(f, sk); if (r) img = await fig.bakedCanvas(r.tex, r.tint).catch(() => null); }
+  if (ED !== e) return; const h0 = e.hist.length;
+  if (img) { const c = e.canvas; if (img.width > c.width || img.height > c.height) { e.painter.grow(Math.max(c.height, img.height), Math.max(c.width, img.width)); e.asset = { ...e.asset, w: c.width, h: c.height }; }
+    const src = img.getContext('2d').getImageData(0, 0, img.width, img.height).data; e.painter.write((d, W) => { d.fill(0); for (let y = 0; y < img.height; y++) d.set(src.subarray(y * img.width * 4, (y + 1) * img.width * 4), y * W * 4); }); }
+  e.asset = { ...e.asset, split: false, labels: undefined }; e.splitDone = false;   /* shared paint is shared again, as in the game */
+  shapeEdit(() => { ED.model = orig; ED.box = 0; }); if (e.hist.length - h0 > 1) e.hist.push({ k: 'g', parts: e.hist.splice(h0) }); ED.palette = ED.painter.palette(); requestAnimationFrame(() => { if (ED) { fitTexture(); render(); } }); });
 function renderWorkspace() {
   const P = ED.painter, a = ED.asset, c = ED.canvas, mode = ED.mode || 'paint'; ED.shapeOpen = mode === 'shape';
   const tools = mode === 'paint' ? PAINT_TOOLS : SHAPE_TOOLS, active = mode === 'paint' ? P.tool : ED.stool || 'select';
@@ -1475,6 +1483,10 @@ const twinParentOf = parent => { const sw = parent && sideSwap(parent.name), t =
 function twinOf(b) {   // the box on the other side: the part with the other side's name, else the mirrored box in the other side's parent or beside it
   if (!b) return null; const n = b.node, sh = n.shape, near = (a, c) => Math.abs((a ?? 0) - (c ?? 0)) < 0.01;
   const sw = sideSwap(n.name), byName = sw && nodeNamed(sw); if (byName && byName.node.shape) return byName.node;
+  { const path = (l, t, acc = []) => { for (const x of l || []) { if (x === t) return [...acc, x]; const p = path(x.children, t, [...acc, x]); if (p) return p; } return null; }, chain = path(ED.model.nodes, n) || [];   /* a part deep under L-Arm: the same place under R-Arm */
+    for (let i = chain.length - 2; i >= 0; i--) { const s2 = sideSwap(chain[i].name), top = s2 && nodeNamed(s2)?.node; if (!top) continue; let at = top;
+      for (let j = i + 1; j < chain.length && at; j++) { const k = (chain[j - 1].children || []).indexOf(chain[j]); at = (at.children || [])[k]; }
+      if (at && at !== n && at.shape && at.shape.type === sh.type) return at; break; } }
   const tp = twinParentOf(b.parent);
   if (!tp && Math.abs((n.position?.x ?? 0) + (sh.offset?.x ?? 0)) < 0.25) return null;
   return (tp ? tp.children || [] : b.parent ? b.parent.children : ED.model.nodes).find(t => t !== n && t.shape && t.shape.type === sh.type && ['x', 'y', 'z'].every(k => near(t.shape.settings?.size?.[k], sh.settings?.size?.[k]))
@@ -1576,8 +1588,8 @@ function addBox(kind = 'dup', at = null) {   // 'dup' a copy, 'mirror' a copy on
     const lay = allocLayout(cs) || (growTexture() ? allocLayout(cs) : null); if (lay) { cs.textureLayout = lay; paint = paintFaces(cs, lay, sh.textureLayout, kind === 'mirror', kind === 'add' ? hexRgb(standOut(ED.painter.color)) : null); }
     if (into) (into.children ||= []).push(copy); else (b.parent ? b.parent.children : ED.model.nodes).push(copy); ED.box = boxesOf(ED.model).findIndex(x => x.node === copy);
     ED.asset = { ...ED.asset, labels: { ...(ED.asset.labels || {}), [copy.name]: label } }; });
-  if (paint) { ED.painter.write(paint); ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); render(); if (kind === 'add') say(at ? 'New box added where you clicked, outlined in gold. Drag it with the Move tool (G) to adjust.' : 'New box added on the front, outlined in gold. Drag it with the Move tool (G).'); }
-  else say('Texture full: the copy shares paint', true);
+  if (paint) { ED.painter.write(paint); ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); render(); }
+  else say('Texture full', true);
 }
 // parts painted from one shared spot each get their own spot (paint copied, so nothing looks different): the texture then matches the parts list
 function splitShared() { if (ED.splitDone || ED.asset.split) return; ED.splitDone = true; ED.asset = { ...ED.asset, split: true }; const keep = ED.box || 0, seen = new Set(); let n = 0;
