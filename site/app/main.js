@@ -1391,7 +1391,9 @@ function addBox(kind = 'dup', at = null) {   // 'dup' a copy, 'mirror' a copy on
   shapeEdit(() => { const label = nextBoxName(), copy = structuredClone({ ...n, children: [] }), cs = copy.shape; copy.name = 'Box_' + Math.random().toString(36).slice(2, 7); cs.offset = { x: 0, y: 0, z: 0, ...cs.offset };
     if (kind === 'mirror') mirrorNode(n, copy); else if (kind === 'add' && at) { cs.type = 'box'; cs.settings = { ...cs.settings, normal: undefined, size: { x: 4, y: 4, z: 4 } };   // always a solid box, even when started from a flat part
       cs.stretch = { x: 1, y: 1, z: 1 }; const r = v => Math.round(v * 2) / 2;
-      cs.offset = { x: r(at.point.x + at.normal.x * 2), y: r(at.point.y + at.normal.y * 2), z: r(at.point.z + at.normal.z * 2) }; }
+      const o = { x: at.point.x + at.normal.x * 2, y: at.point.y + at.normal.y * 2, z: at.point.z + at.normal.z * 2 }, q = n.orientation || { x: 0, y: 0, z: 0, w: 1 }, p = n.position || { x: 0, y: 0, z: 0 };
+      const ix = q.w * o.x + q.y * o.z - q.z * o.y, iy = q.w * o.y + q.z * o.x - q.x * o.z, iz = q.w * o.z + q.x * o.y - q.y * o.x, iw = -q.x * o.x - q.y * o.y - q.z * o.z;
+      copy.position = { x: r(p.x + ix * q.w - iw * q.x - iy * q.z + iz * q.y), y: r(p.y + iy * q.w - iw * q.y - iz * q.x + ix * q.z), z: r(p.z + iz * q.w - iw * q.z - ix * q.y + iy * q.x) }; cs.offset = { x: 0, y: 0, z: 0 }; }
     else if (kind === 'add') { const front = (sh.offset?.z ?? 0) + Math.abs(sh.settings?.size?.z ?? 0) / 2 * (n.shape?.stretch?.z || 1); cs.type = 'box'; cs.settings = { ...cs.settings, normal: undefined, size: { x: 4, y: 4, z: 4 } }; cs.stretch = { x: 1, y: 1, z: 1 }; cs.offset.z = front + 2; } else cs.offset.x += 2;
     const lay = allocLayout(cs) || (growTexture() ? allocLayout(cs) : null); if (lay) { cs.textureLayout = lay; paint = paintFaces(cs, lay, sh.textureLayout, kind === 'mirror', kind === 'add' ? hexRgb(standOut(ED.painter.color)) : null); }
     if (into) (into.children ||= []).push(copy); else (b.parent ? b.parent.children : ED.model.nodes).push(copy); ED.box = boxesOf(ED.model).findIndex(x => x.node === copy);
