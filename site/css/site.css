@@ -322,7 +322,7 @@ footer { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wr
 
 /* which side of the figure faces the camera: shown while an item is edited (the body is see-through then) */
 .facing { display: none; position: absolute; right: 10px; bottom: 10px; z-index: 3; font: 700 11px var(--h); letter-spacing: .06em; text-transform: uppercase; color: var(--gold); background: #0b1626cc; border: 1px solid #f4c45255; border-radius: 3px; padding: 3px 7px; pointer-events: none; }
-#app.ws .facing { display: block; }
+#app.ws .facing { display: block; } #app.ws .viewhint { bottom: 40px; }   /* the tool tip sits above the facing label, not under it */
 
 /* between the stacked phone layout and a wide screen the top bar ran past the window and dragged the page wider: tighten it */
 @media (max-width: 1180px) and (min-width: 981px) {
