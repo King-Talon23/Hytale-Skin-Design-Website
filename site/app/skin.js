@@ -21,7 +21,8 @@ export function sanitize(o) {
   for (const f of FIELDS) { const v = o[f]; out[f] = typeof v === 'string' && PART.test(v) ? v : null; any ||= out[f] != null; }
   return any ? out : null;
 }
-export const cleanName = s => String(s ?? '').replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, 40);
+export const cleanName = s => { const t = (typeof s === 'string' || typeof s === 'number' ? String(s) : '').replace(/<[^>]{0,80}>/g, '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/[<>​-‏‪-‮⁦-⁩﻿]/g, '').replace(/ {2,}/g, ' ').trim();   // tags, control and direction marks out; newlines become spaces
+  let out = ''; for (const ch of t) { if (out.length + ch.length > 40) break; out += ch; } return out.trim(); };   // never cuts an emoji in half
 
 export const parse = v => { const [id, color, variant] = (v || '').split('.'); return { id, color, variant }; };
 
