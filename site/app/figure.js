@@ -423,7 +423,9 @@ export function stage(canvas, Controls) {
   // the moves animate the held thing's own parts too (the glider's frame and flaps), so those parts join the figure's while it is held;
   // parts sharing a name with the body (the item's root is named after the hand's attachment) stay out, or the move would apply twice
   const unhang = () => { for (const h of held) { h.root.parent?.remove(h.root); const fp = h.on?.userData.parts; if (fp) for (const [k, g] of h.added || []) { const gs = fp.get(k); if (gs) { const i = gs.indexOf(g); if (i >= 0) gs.splice(i, 1); if (!gs.length) fp.delete(k); } } h.on = null; h.added = []; } };
-  const hang = () => { unhang(); for (const h of held) { const b = figure?.userData.bones?.[h.bone]; if (!b) continue; b.add(h.root); const fp = figure.userData.parts; h.on = figure; h.added = [];
+  const hang = () => { unhang(); for (const h of held) { const b = figure?.userData.bones?.[h.bone]; if (!b) continue; b.add(h.root);
+    if (h.root.children.length === 1) { const top = h.root.children[0]; top.position.set(0, 0, 0); top.userData.rest?.p.set(0, 0, 0); }   // as in game: the item's own root node sits ON the hand's attachment point (its offset in the file is ignored)
+    const fp = figure.userData.parts; h.on = figure; h.added = [];
     h.root.userData.parts?.forEach((gs, k) => { if (fp.has(k) && !h.added.some(a => a[0] === k)) return; for (const g of gs) { (fp.get(k) || fp.set(k, []).get(k)).push(g); h.added.push([k, g]); } }); }
     anim.setFigure(figure); };
   function props(list) { unhang(); for (const h of held) dispose(h.root); held = list || []; if (figure) hang(); }

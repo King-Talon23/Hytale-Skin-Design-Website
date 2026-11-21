@@ -499,7 +499,7 @@ async function setMount(kind, move) {
 const HELD = { Glide: { '*': [['glider', 'R-Attachment', [0, -62, 0]]] },   // as in game: the hands on the glider's grips (measured 62 above them unshifted)
   Poses: { BattleAxe: [['battleaxe', 'R-Attachment']], Book_Read: [['book', 'L-Attachment']], Show_Block: [['block', 'R-Attachment']], Show_Item: [['potion', 'R-Attachment']], Pickaxe: [['pickaxe', 'R-Attachment']], Staff: [['staff', 'R-Attachment']], Sword: [['sword', 'R-Attachment']],
     Warhammer: [['mace', 'R-Attachment']], Outlander_Sword: [['sword', 'R-Attachment']], Outlander_Archer_Bow_Charge: [['bow', 'L-Attachment']], Outlander_Archer_Bow_Pose: [['bow', 'L-Attachment']] },
-  Taunt: { Staff_Helicopter: [['staff', 'R-Attachment']], Sword_Back: [['sword', 'R-Attachment']], Sword_Front: [['sword', 'R-Attachment', [0, -5, 14]]] } };   // [item, hand, shift]: Sword Front's blade would cross the face and body
+  Taunt: { Staff_Helicopter: [['staff', 'R-Attachment']], Sword_Back: [['sword', 'R-Attachment']], Sword_Front: [['sword', 'R-Attachment', [0, 0, 14]]] } };   // [item, hand, shift]: Sword Front's blade would cross the face and body
 const heldBy = (g, n) => HELD[g]?.[n] || HELD[g]?.['*'] || [];
 // scenery for the moves that use something in the world, in model units (a block is 64; the figure faces +z, its pelvis rests at 51)
 const W = game.SCENERY_TEX;
