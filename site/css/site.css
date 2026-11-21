@@ -175,7 +175,7 @@ button.tag { cursor: help; border: 0; font: inherit; }
 .acts { display: flex; flex-wrap: wrap; gap: 3px; }
 .mini { background: #0d1826; border: 1px solid var(--line); border-radius: 2px; font-size: 11px; padding: 2px 5px; color: #c5d6e2; }
 .mini:hover { border-color: var(--gold2); color: #fff; } .mini.danger:hover { border-color: var(--bad); color: #ff9c8f; }
-.blank { color: var(--dim); font-style: italic; }
+.blank { color: var(--dim); font-style: italic; } .cards > .blank { grid-column: 1 / -1; align-self: center; margin: 0; padding: 8px 2px; }
 
 .folder { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; margin-bottom: 14px; background: #0d182680; }
 .folder > div { flex: 1; min-width: 200px; } .folder b { display: block; font-size: 14px; } .folder small { color: var(--dim); font-size: 12.5px; }
