@@ -619,26 +619,20 @@ function panelLookup() {
 }
 
 function panelHelp() {
-  const sec = (t, ...ps) => [el('h3', { text: t }), ...ps.map(p => typeof p === 'string' ? el('p', { text: p }) : p)];
+  const sec = (t, ...ps) => [el('h3', { text: t }), ...ps.filter(p => p !== '').map(p => typeof p === 'string' ? el('p', { text: p }) : p)];
   const backupFile = el('input', { type: 'file', accept: '.json,application/json', hidden: true, onchange: guard(async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const r = await store.importAll(await readJsonFile(f, 40_000_000)); await reloadAssets(); await refreshWard(); say(`Restored ${r.added} skin${r.added === 1 ? '' : 's'}${r.skipped ? `, ${r.skipped} did not fit` : ''}`); }) });
-  const steps = [['Wardrobe', 'pick a slot like Haircut or Capes, then click items to try them on. Changes save themselves.'], ['Locker', 'all your skins. Load one, rename it, copy it or put it in an in-game slot. Publishing comes once Sign in with Hytale is switched on.'],
-    ['Animations', "play the game's own moves on your skin. Click the tab again to stop."], ['Creator', 'make your own pieces. Start from any game item, paint it, and it shows up under Custom in the Wardrobe.'],
-    ['Players', "look up someone by username to see what they're wearing and what they've published."]];
+  const steps = [['Wardrobe', 'pick a slot, click items to try them on.'], ['Locker', 'your saved skins.'], ['Animations', "the game's moves on your skin."],
+    ['Creator', 'make your own pieces from any item.'], ['Players', 'look someone up by username.']];
   return [head('Help'), el('div', { class: 'pbody prose' },
     sec('How it works', el('ul', { class: 'howto' }, steps.map(([t, d]) => el('li', {}, el('b', { text: t + ' ' }), d))),
-      'Drag the character to turn it, scroll to zoom. Front turns it back to face you. The button at the top left of the view changes the background (Studio or one of the game’s places, built from your game files); Clean view hides the buttons, Esc brings them back.'),
-    sec('Good to know', el('ul', { class: 'howto' }, [
-      ['Saving', 'every change saves itself; a new look becomes "My skin N". Save as gives it a name or puts it in an in-game slot. Randomize starts a new look and never changes a saved one.'],
-      ['Stars', 'the ☆ keeps an item in Favourites. On a move it adds it to the round quick buttons beside the character.'],
-      ['Creator', 'Paint colours the item, Shape changes its boxes. Done saves and closes; Equip saves and puts it on.'],
-      ['Limits', `up to ${store.CUSTOM_MAX} skins in My skins, ${store.GAME_SLOTS} in-game slots and ${assets.MAX} custom items.`]].map(([t, d]) => el('li', {}, el('b', { text: t + ' ' }), d)))),
+      'Drag to turn, scroll to zoom. Changes save themselves.'),
     sec('Game files', META ? `Connected: ${META.name}, ${META.files} character files, read on ${new Date(META.at).toLocaleDateString()}.` : 'Not connected yet.',
       el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Connect again', onclick: showConnect }),
         el('button', { class: 'btn danger', text: 'Forget game files', onclick: guard(async () => { if (!await confirmBox('Forget game files', 'Removes the copy of your game files from this browser. Your saved skins stay.', 'Forget', true)) return; await game.forget(); R = null; pics.clear(); fig.clearCache(); showConnect(); }) }))),
-    MOD_URL ? sec('Skin Editor Sync', 'Wear what you design in your own worlds: install the mod, pick a skins folder in the Locker, then turn on In game. Everyone who joins a world running on your PC sees you dressed. Other servers can’t read your folder, so there you keep your usual look.', el('div', { class: 'row' }, modLink('primary'))) : null,
-    sec('Backup', 'Keep a backup file if you have not picked a skins folder in the Locker.',
+    MOD_URL ? sec('Skin Editor Sync', 'Wear your skins in your own worlds: install the mod, pick a skins folder in the Locker, turn on In game.', el('div', { class: 'row' }, modLink('primary'))) : null,
+    sec('Backup', '',
       el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Download backup', onclick: guard(async () => download('skin-editor-backup.json', await store.exportAll())) }), el('label', { class: 'btn ghost' }, 'Restore backup', backupFile))),
-    el('p', {}, el('a', { href: '/privacy', text: 'Privacy: what the site keeps and how to delete it' })))];
+    )];
 }
 
 
