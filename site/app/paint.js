@@ -44,8 +44,11 @@ export function createPainter(canvas, onChange, onPick) {
   }
   function fillSide(x, y) {   // the whole side of a box under the click, in one colour (the caller says where that side sits on the texture)
     const r = P.faceAt && P.faceAt(x, y); if (!r) return flood(x, y); const d = img.data, [cr, cg, cb] = rgb(P.color);
-    for (let Y = Math.max(0, Math.floor(r.y)); Y < Math.min(H, Math.ceil(r.y + r.h)); Y++) for (let X = Math.max(0, Math.floor(r.x)); X < Math.min(W, Math.ceil(r.x + r.w)); X++) {
-      const i = (Y * W + X) * 4; d[i] = cr; d[i + 1] = cg; d[i + 2] = cb; d[i + 3] = 255; } }
+    const y0 = Math.max(0, Math.floor(r.y)), y1 = Math.min(H, Math.ceil(r.y + r.h)), x0 = Math.max(0, Math.floor(r.x)), x1 = Math.min(W, Math.ceil(r.x + r.w));
+    let solid = false; for (let Y = y0; Y < y1 && !solid; Y++) for (let X = x0; X < x1; X++) if (d[(Y * W + X) * 4 + 3]) { solid = true; break; }
+    const keepHoles = P.inside && solid;   // see-through gaps (a ragged edge) stay see-through unless "Paint outside the item" is on; an empty new side fills completely
+    for (let Y = y0; Y < y1; Y++) for (let X = x0; X < x1; X++) {
+      const i = (Y * W + X) * 4; if (keepHoles && !d[i + 3]) continue; d[i] = cr; d[i + 1] = cg; d[i + 2] = cb; d[i + 3] = 255; } }
   function fillEvery(x, y) {   // every texel close to the clicked colour, anywhere on the item ("Similar colours" sets how close)
     const d = img.data, from = colourAt(d, (y * W + x) * 4), [r, g, b] = rgb(P.color), tol = P.tolerance * 3; if (!from[3]) return flood(x, y);
     for (let i = 0; i < d.length; i += 4) { if (!d[i + 3] || Math.abs(d[i] - from[0]) + Math.abs(d[i + 1] - from[1]) + Math.abs(d[i + 2] - from[2]) > tol) continue;
