@@ -441,17 +441,18 @@ export function stage(canvas, Controls) {
   // a tall move (gliding, arms and glider high overhead): aim higher and back off so it all fits; lift(0) puts the view back
   let lifted = null;
   // camera moves glide (about 0.4 s) around the character instead of jumping; grabbing the view stops a glide
+  const endGlide = () => { if (tw) stepCam(tw.at + 1e6); };   // jump a running glide to its end
   const glideCam = fn => { const t0 = ctl.target.clone(), p0 = cam.position.clone(); const r = fn(); const t1 = ctl.target.clone(), p1 = cam.position.clone();
     if (t0.distanceTo(t1) < 0.5 && p0.distanceTo(p1) < 0.5) return r;
     const s0 = new THREE.Spherical().setFromVector3(p0.clone().sub(t0)), s1 = new THREE.Spherical().setFromVector3(p1.clone().sub(t1)); let dth = s1.theta - s0.theta; dth = ((dth + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
     tw = { t0, t1, s0, s1, dth, at: performance.now() }; ctl.target.copy(t0); cam.position.copy(p0); ctl.update(); return r; };
   function lift(...a) { return glideCam(() => liftNow(...a)); }
   function liftNow(y, phi = 0, len = 360, z = 0) { const off = cam.position.clone().sub(ctl.target);   // phi: look down from at least this high (polar angle), to see into a bed
-    if (y) { if (!lifted) lifted = { len: off.length(), phi: new THREE.Spherical().setFromVector3(off).phi }; off.setLength(len < 0 ? -len : Math.max(off.length(), len)); ctl.target.set(0, y, z);   // a negative len is an exact distance (close on the face)
+    if (y) { if (!lifted) lifted = { len: off.length(), phi: new THREE.Spherical().setFromVector3(off).phi }; off.setLength(len < 0 ? -len : Math.max(off.length(), len)); if (len < 0) { const sp = new THREE.Spherical().setFromVector3(off); sp.theta = 0; off.setFromSpherical(sp); } ctl.target.set(0, y, z);   // a negative len is an exact distance (close on the face)
       if (phi) { const sp = new THREE.Spherical().setFromVector3(off); sp.phi = Math.min(sp.phi, phi); off.setFromSpherical(sp); } }
     else if (lifted) { const sp = new THREE.Spherical().setFromVector3(off); sp.radius = lifted.len; sp.phi = Math.max(sp.phi, lifted.phi); off.setFromSpherical(sp); ctl.target.set(0, 62, 0); lifted = null; } else return;
     cam.position.copy(ctl.target).add(off); ctl.update(); }
-  function mount(root, at) { return glideCam(() => mountNow(root, at)); }
+  function mount(root, at) { endGlide(); return mountNow(root, at); }
   function mountNow(root, at) {
     const was = !!mountRoot; if (mountRoot) { scene.remove(mountRoot); dispose(mountRoot); }
     mountRoot = root || null; seat = root ? at : null; if (root) { scene.add(root); mountAnim.setFigure(root); } else { mountAnim.anim = null; mountAnim.figure = null; }
@@ -492,7 +493,7 @@ export function stage(canvas, Controls) {
     view(front) { return glideCam(() => api.viewNow(front)); },
     viewNow(front) { const off = new THREE.Vector3(front ? 0 : -75, 33, front ? 265 : 255);   // during a tall move (gliding, flying, climbing) keep its raised aim and distance
       if (lifted) off.setLength(Math.max(off.length(), 360)); else { ctl.target.set(0, 62, 0); off.setLength(fitLen()); autoFit = true; } cam.position.copy(ctl.target).add(off); ctl.update(); },
-    behind() { return glideCam(() => api.behindNow()); },
+    behind() { endGlide(); return api.behindNow(); },
     behindNow() { if (cam.position.z - ctl.target.z < 0) return; const off = cam.position.clone().sub(ctl.target); off.x = -off.x; off.z = -off.z; cam.position.copy(ctl.target).add(off); ctl.update(); } };   // a climb is watched from behind, as in the game
   // ---- in-game backgrounds: a sky dome from the zone's sky and fog colours, and a floor of its ground blocks fading into that fog
   const shadow = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
