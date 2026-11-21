@@ -293,16 +293,16 @@ export function stage(canvas, Controls) {
       let mx = anim.move ? -vel.x * dt : 0, mz = anim.move ? -vel.y * dt : 0; const [ox, oz] = world.userData.offset(), span = world.userData.span;
       const along = Math.abs(want.x) > Math.abs(want.y) ? 'x' : Math.abs(want.y) > 0 ? 'z' : null;   // the lane the new move runs down
       if (along === 'x') mz = 0; else if (along === 'z') mx = 0;   // the land only ever slides down the current move's lane
-      // the character must be on the lane the move runs down. A little off it (a dash to the side): the land drifts back over about a second,
-      // with no haze at all. Far off it: the land eases into the zone's haze, jumps to the lane while hidden, and eases back out, still moving.
+      // the character must be on the lane the move runs down. It is always on the lane of the move before, and sliding along that lane is
+      // safe, so the land glides (eased, no haze, no jump) along it to the nearest crossing while the new move starts; the new move can't
+      // leave the old lane before the glide ends. A small offset (a short dash) just drifts back.
       const sym = c => { c = ((c % span) + span) % span; return c > span / 2 ? c - span : c; }, cross = along === 'x' ? sym(oz) : along === 'z' ? sym(ox) : 0;
-      if (!mist && along && Math.abs(cross) > 2.5 * BLOCK) mist = { t: 0, along, snapped: false };
-      else if (!mist && along && Math.abs(cross) > 0.01) { const step = -Math.sign(cross) * Math.min(Math.abs(cross), (0.3 + Math.abs(cross) / BLOCK * 0.9) * BLOCK * dt); if (along === 'x') mz = step; else mx = step; }
-      if (mist) { mist.t += dt / 0.8; const u = Math.min(1, mist.t), e = u < 0.4 ? u / 0.4 : u < 0.6 ? 1 : (1 - u) / 0.4, k = e * e * (3 - 2 * e), f = scene.fog;
-        if (!mist.snapped && mist.t >= 0.5) { world.userData.snap(mist.along); mist.snapped = true; }
-        if (f) { const d = cam.position.distanceTo(ctl.target); f.near = FOG[0] + (d + 60 - FOG[0]) * k; f.far = FOG[1] + (d + 330 - FOG[1]) * k; }   // the land fades into the zone's own haze and back
-        world.userData.plantFade = 1 - k; world.userData.move(mx, mz); if (mist.t >= 1) { if (f) { f.near = FOG[0]; f.far = FOG[1]; } world.userData.plantFade = 1; mist = null; } }
-      else world.userData.move(mx, mz); }
+      if (!mist && along && Math.abs(cross) > 2.5 * BLOCK) { const speed = Math.max(60, Math.hypot(want.x, want.y)); mist = { t: 0, along, c0: cross, dur: Math.min(2, Math.max(0.6, 0.9 * 8 * BLOCK / speed, Math.abs(cross) / BLOCK / 45)) }; }
+      if (mist && mist.along !== along && along) mist = null;
+      if (mist) { mist.t = Math.min(1, mist.t + dt / mist.dur); const e = mist.t * mist.t * (3 - 2 * mist.t), goal = mist.c0 * (1 - e), now = mist.along === 'x' ? sym(oz) : sym(ox), step = goal - now;
+        if (mist.along === 'x') mz = step; else mx = step; if (mist.t >= 1) mist = null; }
+      else if (along && Math.abs(cross) > 0.01) { const step = -Math.sign(cross) * Math.min(Math.abs(cross), (0.3 + Math.abs(cross) / BLOCK * 0.9) * BLOCK * dt); if (along === 'x') mz = step; else mx = step; }
+      world.userData.move(mx, mz); }
     for (const w of flowing) { const [ox, oz] = world ? world.userData.offset() : [0, 0], m = w.material.map; if (m) m.offset.set(-ox / w.userData.flow, oz / w.userData.flow); }   // water drifts with the land
     grid.position.x = (grid.position.x - vel.x * dt) % CELL; grid.position.z = (grid.position.z - vel.y * dt) % CELL;   // the ground runs backwards under the figure
     grid.material.opacity += ((anim.move && anim.anim && !world ? 0.5 : 0) - grid.material.opacity) * (1 - Math.exp(-dt * 6)); grid.visible = grid.material.opacity > 0.01;
