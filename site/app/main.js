@@ -1270,7 +1270,7 @@ function renderWorkspace() {
     ].filter(Boolean));
   $('wsright').replaceChildren(...(mode === 'paint' ? paintSide() : shapeSide()).flat(Infinity).filter(Boolean));
   viewHint();
-  $('viewbtns').replaceChildren(el('button', { text: '−', title: 'Zoom out (wheel or pinch)', onclick: () => st.zoomBy(1.25) }), el('button', { text: '+', title: 'Zoom in (wheel or pinch)', onclick: () => st.zoomBy(0.8) }), ...[['front', 'Front', '1'], ['back', 'Back', '2'], ['side', 'Side', '3'], ['top', 'Top', '7'], ['persp', 'Persp', '5']].map(([v, t, k]) => el('button', { text: t, title: `${t} view (${k})`, onclick: () => { st.setView(v); st.frameOn(ED.canvas); } })), animPicker(),
+  $('viewbtns').replaceChildren(   // just the item/whole-body switch: turning and zooming are drag and wheel (number keys still jump to a view)
     el('button', { class: ED.iso ? 'on' : '', text: ED.iso ? 'Item only' : 'Whole body', title: 'Show only the item you are editing, or the whole character', onclick: () => { ED.iso = !ED.iso; st.isolate(ED.iso ? ED.canvas : null); render(); } }));
 }
 // shortcuts while the workspace is open (caught before the page's own Ctrl+Z, which undoes the skin)
