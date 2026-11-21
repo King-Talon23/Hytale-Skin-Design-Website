@@ -104,7 +104,7 @@ async function startApp() {
   META = await game.status(); CAT = await game.catalog(); R = rules(CAT); setConn(META); ASSETS = await assets.list().catch(() => []); registerAssets(); await loadLock(); await loadEmotes(); SHOWGAME = !!(await db.get('meta', 'showInGame').catch(() => false));
   $('connect').hidden = true; $('app').hidden = false;
   if (!st) { st = fig.stage($('view'), OrbitControls);
-    if (location.hostname.endsWith('localhost')) { window.__st = st; window.__dbg = { combineWith: (...a) => combineWith(...a), combinePick: () => combinePick(), cat: () => CAT, ed: () => ED }; }   // local tests only
+    if (location.hostname.endsWith('localhost')) { window.__st = st; window.__dbg = { combineWith: (...a) => combineWith(...a), combinePick: () => combinePick(), cat: () => CAT, ed: () => ED, sizeOf: sh => sizeOf(sh) }; }   // local tests only
     st.onMissing = () => say('Some of the game objects this move uses are not in your saved copy of the game files yet. Connect your Assets.zip again in Help to see them.', true); st.onFacing(f => { const t = $('facing') || $('view').parentElement.appendChild(el('div', { id: 'facing', class: 'facing' })); t.textContent = 'Facing you: ' + f; }); bindPaint($('view'), e => ED && !ED.shapeOpen && ED.painter.tool !== 'select' ? st.pick(e.clientX, e.clientY, ED.canvas, ED.mirror) : null, 10, true);
     $('view').addEventListener('pointermove', e => { if (!ED) return; partHover(e); const p = ED.shapeOpen || ED.painter.tool === 'select' ? st.cursor(null) : st.cursor(e.clientX, e.clientY, ED.canvas, brushSize(), ED.mirror);
       ED.hover = p; ED.hoverM = p?.m || null; drawOvl(); });
@@ -1216,13 +1216,14 @@ async function finishAsset(equip = false) {
 const sizeOf = sh => ['x', 'y', 'z'].map(k => Math.ceil(Math.abs(sh.settings?.size?.[k] ?? 0)));
 function tidyResized(beforeJson) {
   let before; try { before = JSON.parse(beforeJson); } catch { return []; }
-  const old = new Map(); for (const b of boxesOf(before)) old.set(b.node.name, b.node.shape);
+  const old = new Map(), oldList = boxesOf(before), nowList = boxesOf(ED.model); for (const b of oldList) old.set(b.node.name, b.node.shape);
   const paints = [];
-  for (const b of boxesOf(ED.model)) {
-    const sh = b.node.shape, o = old.get(b.node.name); if (!o || !sh.textureLayout || !o.textureLayout) continue;
+  for (const [k, b] of nowList.entries()) {   /* parts are matched by their place in the list (game models reuse names), by name only when parts were added or removed */
+    const sh = b.node.shape, o = oldList.length === nowList.length ? oldList[k].node.shape : old.get(b.node.name); if (!o || !sh.textureLayout || !o.textureLayout) continue;
     const ns = sizeOf(sh), os = sizeOf(o); if (!ns.some((v, k) => v > os[k])) continue;   // only a box that grows can spill over other paint
     if (JSON.stringify(sh.textureLayout) !== JSON.stringify(o.textureLayout)) continue;
-    const lay = allocLayout(sh) || (growTexture() ? allocLayout(sh) : null); if (!lay) { say('Texture full', true); continue; }
+    let lay = allocLayout(sh); while (!lay && (ED.canvas.width < ED.canvas.height ? growWider() || growTexture() : growTexture() || growWider())) lay = allocLayout(sh);
+    if (!lay) { sh.settings = { ...sh.settings, size: { ...o.settings.size } }; say('Texture full', true); continue; }   /* no room even at the largest texture: the part keeps its old size, never paint off the texture */
     const src = o.textureLayout; sh.textureLayout = lay;
     paints.push((d, W, H) => { for (const [f, fu, fv] of faceDims(sh)) { const to = lay[f], from = src[f]; if (!to || !from) continue;
       const [ua, va] = FACE_UV[f], ou = Math.max(1, os[ua]), ov = Math.max(1, os[va]);
