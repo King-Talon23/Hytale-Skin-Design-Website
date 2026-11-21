@@ -612,7 +612,7 @@ function panelHelp() {
     sec('Game files', META ? `Connected: ${META.name}, ${META.files} character files, read on ${new Date(META.at).toLocaleDateString()}.` : 'Not connected yet.',
       el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Connect again', onclick: showConnect }),
         el('button', { class: 'btn danger', text: 'Forget game files', onclick: guard(async () => { if (!await confirmBox('Forget game files', 'Removes the copy of your game files from this browser. Your saved skins stay.', 'Forget', true)) return; await game.forget(); R = null; pics.clear(); fig.clearCache(); showConnect(); }) }))),
-    MOD_URL ? sec('Skin Editor Sync', 'Wear what you design in your own worlds: install the mod, pick a skins folder in the Locker, then turn on In game.', el('div', { class: 'row' }, modLink('primary'))) : null,
+    MOD_URL ? sec('Skin Editor Sync', 'Wear what you design in your own worlds: install the mod, pick a skins folder in the Locker, then turn on In game. Everyone who joins a world running on your PC sees you dressed. Other servers can’t read your folder, so there you keep your usual look.', el('div', { class: 'row' }, modLink('primary'))) : null,
     sec('Backup', 'Keep a backup file if you have not picked a skins folder in the Locker.',
       el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Download backup', onclick: guard(async () => download('skin-editor-backup.json', await store.exportAll())) }), el('label', { class: 'btn ghost' }, 'Restore backup', backupFile))),
     el('p', {}, el('a', { href: '/privacy', text: 'Privacy: what the site keeps and how to delete it' })))];
