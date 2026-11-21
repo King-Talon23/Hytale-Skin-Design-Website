@@ -731,8 +731,14 @@ const flushNow = () => { if (queueAssetSave.pending) { queueAssetSave.pending = 
 addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushNow(); });
 addEventListener('pagehide', () => { flushNow(); if (ED && beforeEdit) { cur.skin = beforeEdit; db.put('meta', 'draft', { id: cur.id, kind: cur.kind, slot: cur.slot, name: cur.name, skin: cur.skin, auto: !!cur.auto }).catch(() => {}); } });
 addEventListener('beforeunload', e => { if (queueAssetSave.pending || (ED && ED.saved === false)) { flushNow(); e.preventDefault(); e.returnValue = ''; } });
-async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; const e = ED, data = await new Promise(ok => e.canvas.toBlob(ok, 'image/png'));
-  try { e.asset = await assets.save({ ...e.asset, data, shape: e.model && e.shapeN ? JSON.stringify(e.model) : e.asset.shape }); ASSETS = await assets.list(); syncFolder(); } finally { if (ED === e) markSaved(true); } }
+// the saved picture is only as big as what is drawn and used (a texture that grew for parts since removed shrinks back), in powers of two
+function trimmedCanvas(e) { const c = e.canvas, W = c.width, H = c.height; let mx = 0, my = 0;
+  for (const r of e.rects || []) { mx = Math.max(mx, Math.ceil(r.x + r.w)); my = Math.max(my, Math.ceil(r.y + r.h)); }
+  const d = c.getContext('2d').getImageData(0, 0, W, H).data; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3]) { if (x + 1 > mx) mx = x + 1; if (y + 1 > my) my = y + 1; }
+  const up = v => { let k = 16; while (k < v) k *= 2; return k; }, w = Math.min(W, up(mx)), h = Math.min(H, up(my)); if (w === W && h === H) return c;
+  const t = document.createElement('canvas'); t.width = w; t.height = h; t.getContext('2d').drawImage(c, 0, 0); return t; }
+async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; const e = ED, out = trimmedCanvas(e), data = await new Promise(ok => out.toBlob(ok, 'image/png'));
+  try { e.asset = await assets.save({ ...e.asset, data, w: out.width, h: out.height, shape: e.model && e.shapeN ? JSON.stringify(e.model) : e.asset.shape }); ASSETS = await assets.list(); syncFolder(); } finally { if (ED === e) markSaved(true); } }
 let beforeEdit = null;   // the outfit before an item went on for editing: Done puts it back, Equip keeps the item on
 const STEPS = new Map();   // undo history per custom item, kept for this visit so reopening an item can still undo
 async function closeAsset(quiet, keep = false) {
