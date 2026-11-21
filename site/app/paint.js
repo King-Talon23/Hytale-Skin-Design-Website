@@ -56,7 +56,7 @@ export function createPainter(canvas, onChange, onPick) {
   const show = () => { ctx.putImageData(img, 0, 0); dirty = true; onChange(false); };
   function swap(from, to) { if (!from.length) return; to.push(copy()); ctx.putImageData(from.pop(), 0, 0); onChange(true); }
   const P = { tool: 'brush', size: 1, color: '#e0b050', opacity: 1, inside: true, mask: null, tolerance: 24, fillMode: 'area', faceAt: null,   // tolerance: how far a colour may differ (0-100) and still count as the same for Fill
-    begin() { img = ctx.getImageData(0, 0, W, H); base = new ImageData(new Uint8ClampedArray(img.data), W, H); undo.push(base); if (undo.length > 40) undo.shift(); touched = new Set(); fresh = true; dirty = false; start = null; },
+    begin() { img = ctx.getImageData(0, 0, W, H); base = new ImageData(new Uint8ClampedArray(img.data), W, H); undo.push(base); if (undo.length > 100) undo.shift(); touched = new Set(); fresh = true; dirty = false; start = null; },
     stroke(a, b) { if (!img) return; const first = fresh, t = P.tool; fresh = false; if (first) start = a;
       if (t === 'pick') { if (first) { const i = (b.y * W + b.x) * 4, d = img.data; if (d[i + 3]) { P.color = hex(d[i], d[i + 1], d[i + 2]); onPick && onPick(); } } return; }
       if (t === 'fill' || t === 'replace') { if (first) { (t === 'replace' ? replaceAll : P.fillMode === 'side' ? fillSide : P.fillMode === 'every' ? fillEvery : flood)(b.x, b.y); show(); } return; }
@@ -73,7 +73,7 @@ export function createPainter(canvas, onChange, onPick) {
     trace(points, reach) { if (!img) return; fresh = false; img.data.set(base.data); touched.clear(); let prev = null;
       for (const p of points) { if (!p) { prev = null; continue; } if (prev && Math.abs(prev.x - p.x) + Math.abs(prev.y - p.y) <= reach) line(prev, p); else dot(p.x, p.y); prev = p; }
       show(); },
-    write(fn) { undo.push(copy()); if (undo.length > 40) undo.shift(); redo.length = 0; const d = ctx.getImageData(0, 0, W, H); fn(d.data, W, H); ctx.putImageData(d, 0, 0); onChange(true); },   // copy-paste and box paint areas
+    write(fn) { undo.push(copy()); if (undo.length > 100) undo.shift(); redo.length = 0; const d = ctx.getImageData(0, 0, W, H); fn(d.data, W, H); ctx.putImageData(d, 0, 0); onChange(true); },   // copy-paste and box paint areas
     replace(source) { undo.push(copy()); redo.length = 0; ctx.clearRect(0, 0, W, H); ctx.drawImage(source, 0, 0, W, H); onChange(true); },
     // recolour the whole item: hue in degrees, saturation and brightness from -1 to 1. Previews from the picture as it was when the sliders were first moved.
     adjust(h, s, l, commit) {

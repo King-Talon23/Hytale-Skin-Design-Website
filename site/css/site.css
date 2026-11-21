@@ -442,3 +442,5 @@ dialog.wide { width: min(760px, 94vw); }
 .skin .cardacts .mini { width: 100%; text-align: left; }
 .status .linkbtn { background: none; border: 0; padding: 0 0 0 6px; min-height: 0; color: var(--gold); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; pointer-events: auto; }
 .status:has(.linkbtn) { pointer-events: auto; }
+.elsewhere { position: fixed; inset: 0; z-index: 9999; background: rgba(8, 12, 20, .78); display: grid; place-items: center; }
+.elsewhere .elsebox { display: grid; gap: 14px; justify-items: center; padding: 22px 28px; background: var(--panel, #17202e); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; }

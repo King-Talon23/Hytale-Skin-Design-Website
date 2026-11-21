@@ -35,21 +35,22 @@ export async function swap(customId, slot) {
 }
 
 export async function exportAll() { const { game, custom } = await list();
-  const mine = []; for (const a of await assets.list()) mine.push({ id: a.id, name: a.name, field: a.field, baseId: a.baseId, model: a.model, w: a.w, h: a.h, png: await toBase64(a.data) });
+  const mine = []; for (const a of await assets.list()) mine.push(await packAsset(a));
   return { format: 'skin-editor-backup', version: 2, game: game.map(r => r && { name: r.name, skin: r.skin }), custom: custom.map(r => ({ name: r.name, skin: r.skin })), assets: mine }; }
+export async function packAsset(a) { return { id: a.id, name: a.name, field: a.field, baseId: a.baseId, model: a.model, w: a.w, h: a.h, shape: a.shape, labels: a.labels, split: !!a.split, png: await toBase64(a.data) }; }   // one item with its texture, shape and part names
+export async function unpackAssets(list) { const have = new Set((await assets.list()).map(a => a.id)); let n = 0; for (const m of Array.isArray(list) ? list.slice(0, 200) : []) { try { if (typeof m.png === 'string' && m.png.length < 3_000_000 && await takeAsset(m, Uint8Array.from(atob(m.png), c => c.charCodeAt(0)), have)) n++; } catch { /* not a usable item */ } } return n; }
 async function toBase64(blob) { const b = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 // a custom asset from outside (a backup or the skins folder): the picture must really be a PNG of the size it claims, and its id must be free
 async function takeAsset(meta, bytes, have) {
   if (!meta || typeof meta.id !== 'string' || have.has(meta.id) || have.size >= assets.MAX || bytes.length > 2_000_000 || !PNG.every((v, i) => bytes[i] === v)) return false;
   const data = new Blob([bytes], { type: 'image/png' }), bmp = await createImageBitmap(data); if (bmp.width !== meta.w || bmp.height !== meta.h) return false;
-  await assets.save({ id: meta.id, name: meta.name, field: meta.field, baseId: meta.baseId, model: meta.model, w: bmp.width, h: bmp.height, data }); have.add(meta.id); return true;
+  await assets.save({ id: meta.id, name: meta.name, field: meta.field, baseId: meta.baseId, model: meta.model, w: bmp.width, h: bmp.height, data, shape: typeof meta.shape === 'string' && meta.shape.length < 1_000_000 ? meta.shape : undefined, labels: meta.labels, split: !!meta.split }); have.add(meta.id); return true;
 }
 export async function importAll(data) {   // adds to what is there; never overwrites a filled in-game slot
   if (!data || data.format !== 'skin-editor-backup' || !Array.isArray(data.custom)) throw new Error('That file is not a Skin Editor backup.');
   const cur = await list(); let added = 0, skipped = 0, room = CUSTOM_MAX - cur.custom.length;
-  const have = new Set((await assets.list()).map(a => a.id));   // assets first, so restored skins that wear them find them
-  for (const m of Array.isArray(data.assets) ? data.assets.slice(0, 200) : []) { try { if (typeof m.png === 'string' && m.png.length < 3_000_000 && await takeAsset(m, Uint8Array.from(atob(m.png), c => c.charCodeAt(0)), have)) added++; } catch { /* not a usable asset */ } }
+  added += await unpackAssets(data.assets);   // items first, so restored skins that wear them find them
   const same = new Set(cur.custom.map(r => r.name + '|' + JSON.stringify(r.skin)));   // restoring the same backup twice does not double up
   for (const r of data.custom.slice(0, 500)) { const s = sanitize(r?.skin); if (!s) continue; const k = cleanName(r.name) + '|' + JSON.stringify(s); if (same.has(k)) continue; if (room <= 0) { skipped++; continue; } await saveCustom(r.name, s); same.add(k); room--; added++; }
   for (let i = 0; i < GAME_SLOTS; i++) { const r = data.game?.[i], s = sanitize(r?.skin); if (s && !cur.game[i]) { await saveGame(i, r.name, s); added++; } }
@@ -114,7 +115,7 @@ async function attach() {   // bring in skins the folder has and this browser do
   try { const d = await dir.getDirectoryHandle(ASSET_DIR, { create: true }), have = new Set((await assets.list()).map(a => a.id)); let n = 0;
     for await (const [name, h] of d.entries()) { if (h.kind !== 'file' || !/\.json$/i.test(name) || ++n > 200) continue;
       try { const f = await h.getFile(); if (f.size > 20000) continue; const meta = JSON.parse(await f.text()); if (!meta || meta.format !== 'skin-editor-asset') continue;
-        const png = await (await d.getFileHandle(name.replace(/\.json$/i, '.png'))).getFile(); known.add(ASSET_DIR + '/' + name); known.add(ASSET_DIR + '/' + name.replace(/\.json$/i, '.png'));
+        const png = await (await d.getFileHandle(name.replace(/\.json$/i, '.png'))).getFile(); try { const sh = await (await d.getFileHandle(name.replace(/\.json$/i, '.blockymodel'))).getFile(); if (sh.size < 1_000_000) meta.shape = await sh.text(); } catch { /* no reshaped model */ } known.add(ASSET_DIR + '/' + name); known.add(ASSET_DIR + '/' + name.replace(/\.json$/i, '.png'));
         if (await takeAsset(meta, new Uint8Array(await png.arrayBuffer()), have)) imported++; } catch { /* not one of ours */ } } } catch (e) { console.warn(e); }
   await mirror(); return { imported };
 }
@@ -133,7 +134,7 @@ async function doMirror() {
       for (const path of [...known]) if (path.startsWith(SUB[kind] + '/') && !want.has(path)) { try { await d.removeEntry(path.slice(SUB[kind].length + 1)); } catch { /* already gone */ } known.delete(path); written.delete(path); } }
     // custom assets: the painted picture as a PNG, with a small .json beside it saying which item it belongs to
     const ad = await dir.getDirectoryHandle(ASSET_DIR, { create: true }), keep = new Set();
-    for (const a of await assets.list()) { const stem = `${safe(a.name)} (${a.id})`, files = [[stem + '.png', a.data, a.id + '@' + a.updated], ...(a.shape ? [[stem + '.blockymodel', a.shape, null]] : []), [stem + '.json', JSON.stringify({ format: 'skin-editor-asset', version: 1, id: a.id, name: a.name, field: a.field, baseId: a.baseId, model: a.model, w: a.w, h: a.h, locked: !!lockedOf(a) }, null, 1), null]];
+    for (const a of await assets.list()) { const stem = `${safe(a.name)} (${a.id})`, files = [[stem + '.png', a.data, a.id + '@' + a.updated], ...(a.shape ? [[stem + '.blockymodel', a.shape, null]] : []), [stem + '.json', JSON.stringify({ format: 'skin-editor-asset', version: 1, id: a.id, name: a.name, field: a.field, baseId: a.baseId, model: a.model, w: a.w, h: a.h, labels: a.labels, split: !!a.split, locked: !!lockedOf(a) }, null, 1), null]];
       for (const [name, body, stamp] of files) { const path = ASSET_DIR + '/' + name, mark = stamp || body; keep.add(path); if (written.get(path) === mark) continue;
         const w = await (await ad.getFileHandle(name, { create: true })).createWritable(); await w.write(body); await w.close(); written.set(path, mark); known.add(path); } }
     for (const path of [...known]) if (path.startsWith(ASSET_DIR + '/') && !keep.has(path)) { try { await ad.removeEntry(path.slice(ASSET_DIR.length + 1)); } catch { /* already gone */ } known.delete(path); written.delete(path); }
