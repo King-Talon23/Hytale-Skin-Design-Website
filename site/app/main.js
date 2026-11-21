@@ -455,7 +455,7 @@ function gameSteps() {   // the path to wearing your skins in Hytale, in order
   const row = (n, done, title, text, action) => el('li', { class: done ? 'done' : '' }, el('span', { class: 'num', text: done ? '✓' : n }), el('b', { text: title }), done ? null : action);
   return el('details', { class: 'gamesteps', open: !all }, el('summary', { text: all ? 'In game: ready' : 'Play in Hytale' }), el('ol', {},
     row(1, !!FOLDER.mod, 'Skin Editor Sync mod', '', modLink('ghost')),
-    row(2, linked, 'Skins folder', '', linked ? null : el('button', { class: 'btn primary', text: FOLDER.state === 'ask' ? 'Reconnect folder' : 'Choose folder', onclick: guard(async () => { FOLDER.state === 'ask' ? await store.resumeFolder(true) : await store.chooseFolder(); FOLDER = await store.folderState(); await reloadAssets(); await refreshWard(); pushWearing(); }) })),
+    row(2, linked, 'Skins folder', '', linked ? null : el('button', { class: 'btn ghost', text: FOLDER.state === 'ask' ? 'Reconnect folder' : 'Choose folder', onclick: guard(async () => { FOLDER.state === 'ask' ? await store.resumeFolder(true) : await store.chooseFolder(); FOLDER = await store.folderState(); await reloadAssets(); await refreshWard(); pushWearing(); }) })),
     row(3, linked && SHOWGAME, 'In game', '', el('button', { class: 'btn ghost', text: 'Turn on', disabled: !linked, onclick: () => { if (!SHOWGAME) $('ingame').onclick(); } }))));
 }
 function panelWardrobe() {
@@ -1266,7 +1266,7 @@ function shapeSide() {
   return [el('div', { class: 'wshead row' }, el('span', { class: 'grow', text: 'Parts' }),
       el('button', { class: 'iconbtn', text: '+', title: 'New part (A)', 'aria-label': 'New part', onclick: startPlacing }), el('button', { class: 'iconbtn', text: '⧉', title: 'Add item…', 'aria-label': 'Add item', onclick: guard(combinePick) })),
     el('div', { class: 'outliner' }, boxes.map((x, k) => { const name = boxLabel(x.node), same = boxes.filter(y => boxLabel(y.node) === name), nth = same.length > 1 ? ' ' + (same.findIndex(y => y.node === x.node) + 1) : '';
-      return el('div', { class: 'partrow' + (k === i ? ' on' : '') }, el('button', { class: k === i ? 'on' : '', text: name + nth, onclick: e => { const now = Date.now(), again = ED.box === k && now - (ED.pickAt || 0) < 450; ED.pickAt = now; if (again) return renameBox(e.currentTarget, x.node); ED.box = k; render(); placeGizmo(); },
+      return el('div', { class: 'partrow' + (k === i ? ' on' : '') }, el('button', { class: k === i ? 'on' : '', text: name + nth, onclick: e => { const now = Date.now(), again = ED.box === k && now - (ED.pickAt || 0) < 450; ED.pickAt = now; if (again) return renameBox(e.currentTarget, x.node); ED.box = k; render(); placeGizmo(); st.showMesh(st.findMesh(o => o.material?.map?.image === ED.canvas && o.userData.nodeName === x.node.name)); },
         onmouseenter: () => st.highlight(o => o.material?.map?.image === ED.canvas && o.userData.nodeName === x.node.name), onmouseleave: () => outlineBox() }),
         el('button', { class: 'partdel', text: '✕', title: 'Delete (Del)', 'aria-label': 'Delete ' + name + nth, onclick: () => delBox(k) })); })),
     el('div', { class: 'options' }, act('Reset item', resetShape)),
@@ -1576,9 +1576,9 @@ function panelCreator() {
     const paidIn = f => { const it = R.find(f, cur.skin[f]), b = it && it.custom ? CAT.items[f].find(e => e.Id === it.baseId) : it; return b && paidLocked(b); };
     const tile = f => { const it = R.find(f, cur.skin[f]), p = parse(cur.skin[f]), paid = paidIn(f);
       return el('div', { class: 'skin starttile' + (paid ? ' paid' : '') }, el('div', { class: 'pic' }, itemThumb(f, it, p.color, p.variant)), el('b', { text: itemName(it) }), el('small', { text: LABEL[f] }),
-        paid ? el('small', { class: 'dim', text: 'Paid' }) : it.custom ? el('div', { class: 'acts' }, el('button', { class: 'mini primary', text: 'Open', title: 'Keep editing your version', onclick: guard(() => { const a = ASSETS.find(x => 'Custom_' + x.id === it.Id); if (!a) throw new Error('That custom item is gone.'); return openAsset(a); }) }),
+        paid ? el('small', { class: 'dim', text: 'Paid' }) : it.custom ? el('div', { class: 'acts' }, el('button', { class: 'mini', text: 'Open', title: 'Keep editing your version', onclick: guard(() => { const a = ASSETS.find(x => 'Custom_' + x.id === it.Id); if (!a) throw new Error('That custom item is gone.'); return openAsset(a); }) }),
           el('button', { class: 'mini', text: 'Copy', title: 'Make a second version to edit', onclick: () => newAsset(f) }))
-        : el('button', { class: 'mini primary', text: 'Edit a copy', onclick: () => newAsset(f) })); };
+        : el('button', { class: 'mini', text: 'Edit a copy', onclick: () => newAsset(f) })); };
     return [head('Creator'), el('div', { class: 'pbody' },
       el('h3', { text: 'Your outfit' }), el('div', { class: 'cards' }, worn.map(tile)), anyItem(),
       el('h3', { text: `My items ${ASSETS.length}/${assets.MAX}` }),

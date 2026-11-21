@@ -487,6 +487,8 @@ export function stage(canvas, Controls) {
       ctl.target.copy(c); const half = Math.min(cam.fov * Math.PI / 360, Math.atan(Math.tan(cam.fov * Math.PI / 360) * cam.aspect));   // the narrower of the two view angles
       cam.position.copy(c).add(dir.multiplyScalar(Math.min(ctl.maxDistance, Math.max(ctl.minDistance, r / Math.sin(half) * 1.1)))); ctl.update(); },
     orbit(dx, dy) { const off = cam.position.clone().sub(ctl.target), s = new THREE.Spherical().setFromVector3(off); const k = 0.55 * 2 * Math.PI / Math.max(1, canvas.clientHeight); s.theta -= dx * k; s.phi = Math.max(0.05, Math.min(Math.PI - 0.05, s.phi - dy * k)); off.setFromSpherical(s); cam.position.copy(ctl.target).add(off); ctl.update(); },
+    showMesh(mesh) { if (!mesh) return; const box = new THREE.Box3().setFromObject(mesh); if (box.isEmpty()) return; const c = box.getCenter(new THREE.Vector3()), p = c.clone().project(cam);   /* a picked part off screen: the view slides over to it, keeping its angle and distance */
+      if (Math.abs(p.x) < 0.8 && Math.abs(p.y) < 0.8 && p.z < 1) return; glideCam(() => { const off = cam.position.clone().sub(ctl.target); ctl.target.copy(c); cam.position.copy(c).add(off); autoFit = false; ctl.update(); }); },
     findMesh(keep) { let hit = null; figure?.traverse(o => { if (!hit && o.isMesh && keep(o)) hit = o; }); return hit; },
     setView(name) { const v = VIEWS[name] || VIEWS.persp; cam.position.set(...v); ctl.target.set(0, 62, 0); ctl.update(); },
     highlight(f) { hl = f; drawHL(); },
