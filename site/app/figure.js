@@ -289,7 +289,7 @@ export function stage(canvas, Controls) {
   const vel = new THREE.Vector2(), want = new THREE.Vector2();
   function travel(dt) { const v = anim.velocity; want.set(v ? v[0] : 0, v ? v[1] : 0); vel.lerp(want, 1 - Math.exp(-dt * 9));
     // the clearing's floor slides with the move (a horse needs more room round it than a person)
-    if (world) { world.userData.cam = cam.position; world.userData.clear = mountRoot ? 2.3 : 1;
+    if (world) { world.userData.cam = cam.position; world.userData.clear = Math.max(mountRoot ? 2.3 : 1, plantClear, painting ? 4 : 0);
       let mx = anim.move ? -vel.x * dt : 0, mz = anim.move ? -vel.y * dt : 0; const [ox, oz] = world.userData.offset(), span = world.userData.span;
       const along = Math.abs(want.x) > Math.abs(want.y) ? 'x' : Math.abs(want.y) > 0 ? 'z' : null;   // the lane the new move runs down
       if (along === 'x') mz = 0; else if (along === 'z') mx = 0;   // the land only ever slides down the current move's lane
@@ -341,7 +341,8 @@ export function stage(canvas, Controls) {
     const p = texel(image); if (!p || !mirror) return p;
     ray.ray.origin.x *= -1; ray.ray.direction.x *= -1; p.m = texel(image); return p; }   // the same ray flipped left to right lands on the matching spot of the other side
   // while painting, the left button paints and the right button turns the view
-  function paintMode(on) { ctl.maxPolarAngle = on ? Math.PI * 0.97 : Math.PI * 0.55; ctl.mouseButtons.LEFT = on ? -1 : THREE.MOUSE.ROTATE; ctl.mouseButtons.RIGHT = THREE.MOUSE.ROTATE; ctl.touches.ONE = on ? -1 : THREE.TOUCH.ROTATE; canvas.style.cursor = on ? 'crosshair' : ''; }
+  let painting = false, plantClear = 0;   // plants keep further away while an item is edited, or when a move sits or lies on the ground
+  function paintMode(on) { painting = !!on; ctl.maxPolarAngle = on ? Math.PI * 0.97 : Math.PI * 0.55; ctl.mouseButtons.LEFT = on ? -1 : THREE.MOUSE.ROTATE; ctl.mouseButtons.RIGHT = THREE.MOUSE.ROTATE; ctl.touches.ONE = on ? -1 : THREE.TOUCH.ROTATE; canvas.style.cursor = on ? 'crosshair' : ''; }
   // the box under a screen point (first hit that passes the filter), and outlines around the boxes a filter picks
   // the picked box glows (its own copy of the material, lit gold) as well as getting an outline
   let lit = []; const glow = new Map();
@@ -440,7 +441,7 @@ export function stage(canvas, Controls) {
     if (was !== !!root) { const k = root ? 1.6 : 1 / 1.6, ty = root ? 62 + at[1] * 0.7 : 62, off = cam.position.clone().sub(ctl.target).multiplyScalar(k);
       ctl.target.set(0, ty, 0); cam.position.copy(ctl.target).add(off); ctl.update(); }
   }
-  const api = { isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, props, lift, scenery, onFacing: cb => { faceCb = cb; faced = ''; }, wall: v => { wallOn = v || null; }, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
+  const api = { plantClear: r => { plantClear = r || 0; }, isolate: img => { isoImage = img || null; applyIsolate(); drawHL(); }, anim, mountAnim, mount, props, lift, scenery, onFacing: cb => { faceCb = cb; faced = ''; }, wall: v => { wallOn = v || null; }, hover: h => { hoverTo = Math.max(0, h || 0); }, pick, pickMesh, paintMode, gizmo, cursor, afterShow: null,
     gizmoBusy: () => tc.dragging || tc.axis !== null,
     // where a click lands on a box: the point and the face's outward direction, in the box's own part (node) space
     pickHit(cx, cy, keep) { if (!figure) return null; aim(cx, cy); for (const h of ray.intersectObject(figure, true)) if (h.object.visible && keep(h.object)) {
