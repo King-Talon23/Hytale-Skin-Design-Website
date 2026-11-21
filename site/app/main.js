@@ -890,7 +890,8 @@ function anyItem() {   // or start from any free item in the game, worn or not
   const find_ = el('input', { type: 'search', placeholder: 'Search', class: 'anysearch' }), pic = el('div', { class: 'pic anypic' });
   let list = [], at = -1, act = -1, hov = 0;
   const pick = () => { const r = list[at]; return r ? [r[1], r[2]] : []; };
-  const draw = i => { const r = list[i], img = itemThumb(r ? r[1] : slot.value, r ? r[2] : null, undefined, undefined, true);
+  const draw = i => { const r = list[i]; setPic(itemThumb(r ? r[1] : slot.value, r ? r[2] : null, undefined, undefined, true)); };
+  const setPic = img => {
     if (img.src || !pic.firstChild) { pic.replaceChildren(img); return; }   // ready now: swap at once; otherwise keep the old picture until the new one is drawn
     img.classList.add('next'); img.addEventListener('load', () => { if (img.isConnected) { img.classList.remove('next'); pic.replaceChildren(img); } }, { once: true });
     [...pic.querySelectorAll('img.next')].forEach(x => x.remove()); pic.append(img); };
@@ -923,9 +924,18 @@ function anyItem() {   // or start from any free item in the game, worn or not
     if (!q && at < 0 && (anyItem.rand ||= {})[slot.value]) at = at0(anyItem.rand[slot.value]);
     if (!q && at < 0 && list.length) { at = Math.floor(Math.random() * list.length); anyItem.rand[slot.value] = list[at][2].Id; } if (!q && at >= 0 && list[at][2]) anyItem.picks[slot.value] = list[at][2].Id;   // whatever is shown first stays shown (wearing something new doesn't swap it)
     act = Math.max(0, at); label(); item.disabled = !list.length; close(); clearTimeout(hov); draw(at); };
-  slot.value = slots.includes(anyItem.slot) ? anyItem.slot : slots.includes('overtop') ? 'overtop' : slots[0]; fill(); slot.onchange = () => { anyItem.slot = slot.value; keepAny(); find_.value = ''; fill(); }; find_.oninput = fill;
+  slot.value = slots.includes(anyItem.slot) ? anyItem.slot : slots.includes('overtop') ? 'overtop' : slots[0]; fill(); slot.onchange = () => { anyItem.slot = slot.value; keepAny(); find_.value = ''; fill(); slotBtn.textContent = LABEL[slot.value]; }; find_.oninput = fill;
+  const slotBtn = el('button', { type: 'button', class: 'anypick', text: LABEL[slot.value], title: 'Item type' }), slotMenu = el('div', { class: 'anymenu', role: 'listbox', hidden: true });
+  const slotItem = f => { const items = oneEach(CAT.items[f]).filter(ok), want = (anyItem.picks || {})[f] || parse(cur.skin[f]).id; return items.find(e => e.Id === want) || items[0] || null; };
+  const showSlot = f => setPic(itemThumb(f, slotItem(f), undefined, undefined, true));
+  const slotClose = () => { if (slotMenu.hidden) return; slotMenu.hidden = true; slotMenu.remove(); draw(at); document.removeEventListener('pointerdown', slotAway, true); };
+  const slotAway = ev => { if (!slotMenu.contains(ev.target) && ev.target !== slotBtn) slotClose(); };
+  slotMenu.replaceChildren(...slots.map(f => el('div', { role: 'option', class: 'anyopt', text: LABEL[f], onpointerenter: () => showSlot(f), onclick: () => { slot.value = f; slotClose(); slot.onchange(); } })));
+  slotMenu.onpointerleave = () => draw(at);
+  slotBtn.onclick = () => { if (!slotMenu.hidden) return slotClose(); document.querySelectorAll('body > .anymenu').forEach(x => x.remove()); document.body.append(slotMenu); const r = slotBtn.getBoundingClientRect();
+    Object.assign(slotMenu.style, { left: r.left + 'px', width: Math.max(r.width, 180) + 'px', top: r.bottom + 2 + 'px', maxHeight: Math.min(420, innerHeight - r.bottom - 12) + 'px', bottom: '' }); slotMenu.hidden = false; document.addEventListener('pointerdown', slotAway, true); };
   find_.onkeydown = ev => { if (ev.key === 'ArrowDown' && list.length) { ev.preventDefault(); item.focus(); item.onkeydown(ev); } };
-  return [el('h3', { text: 'Or start from any item' }), el('div', { class: 'row anyitem' }, pic, el('div', { class: 'anycol' }, el('div', { class: 'row' }, slot, find_), el('div', { class: 'anywrap' }, item, menu)), edit)];
+  return [el('h3', { text: 'Or start from any item' }), el('div', { class: 'row anyitem' }, pic, el('div', { class: 'anycol' }, el('div', { class: 'row' }, el('div', { class: 'anywrap' }, slotBtn), find_), el('div', { class: 'anywrap' }, item, menu)), edit)];
 }
 function assetCard(a) {
   const act = (label, fn, cls) => el('button', { class: 'mini ' + (cls || ''), text: label, onclick: e => { e.stopPropagation(); fn(); } });
