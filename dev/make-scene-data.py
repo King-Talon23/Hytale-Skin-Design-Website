@@ -49,7 +49,7 @@ SCENES = {
                'plants': [['Plant_Bush_Winter_Snow', 4], ['Plant_Bramble_Winter', 3, 2]], 'density': 0.06,
                'trees': [first('Fir_Snow/Stage_3/'), first('Fir_Snow/Stage_1/')]},
     # Zone 4: the Volcanic1 jungle under the zone's own weather (Env_Zone4 -> Zone4_Light, the reddish haze over the devastated lands)
-    'volcanic': {'name': 'Volcanic', 'weather': 'Server/Weathers/Zone4/Zone4_Light.json', 'tintFrom': 'Server/HytaleGenerator/Biomes/Volcanic1/Volcanic1_Jungle.json',
+    'volcanic': {'name': 'Jungle', 'weather': 'Server/Weathers/Zone4/Zone4_Light.json', 'tintFrom': 'Server/HytaleGenerator/Biomes/Volcanic1/Volcanic1_Jungle.json',
                'ground': 'Soil_Grass', 'under': 'Soil_Dirt', 'hills': 3,
                # Volcanic1_Jungle_Grasses, _Bushes_Jungles, _Trees and _Trees_Jungles
                'plants': [['Plant_Grass_Lush_Short', 20, 1], ['Plant_Grass_Sharp', 16, 2], ['Plant_Grass_Sharp_Tall', 10], ['Plant_Grass_Sharp_Wild', 6], ['Plant_Fern_Tall', 6], ['Plant_Bush_Jungle', 4], ['Plant_Bush_Dead_Twisted', 1]], 'density': 0.5,

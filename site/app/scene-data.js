@@ -97,7 +97,7 @@ export const SCENES = {
   ]
  },
  "volcanic": {
-  "name": "Volcanic",
+  "name": "Jungle",
   "weather": "Server/Weathers/Zone4/Zone4_Light.json",
   "tintFrom": "Server/HytaleGenerator/Biomes/Volcanic1/Volcanic1_Jungle.json",
   "ground": "Soil_Grass",
