@@ -1426,7 +1426,8 @@ function panelCreator() {
 for (const b of $('tabs').children) b.onclick = () => setTab(b.dataset.tab);
 document.addEventListener('click', e => { const a = e.target.closest('a[data-tab]'); if (a) { e.preventDefault(); if (R) setTab(a.dataset.tab); else ask('How this works', el('p', { text: 'The editor reads the character files from your own Assets.zip and keeps them in this browser only. Nothing is uploaded, and this site hosts no Hytale files.' }), [{ label: 'OK', value: '', primary: true }]); } });
 $('undo').onclick = () => step(-1); $('redo').onclick = () => step(1);
-$('random').onclick = () => setSkin(R.random());
+$('random').onclick = () => { if (cur.id) { flush(); cur = { id: null, kind: null, slot: null, name: '', skin: cur.skin }; hist = [JSON.stringify(cur.skin)]; hpos = 0; dirty = false; say('A new random look. Your saved skins stay as they were.'); }   // never overwrites a saved look
+  setSkin(R.random(e => !e.custom && !isTmp(e))); };
 $('new').onclick = () => { flush(); cur = { id: null, kind: null, slot: null, name: '', skin: R.blank() }; hist = [JSON.stringify(cur.skin)]; hpos = 0; dirty = false; keepDraft(); rebuild(); render(); };
 $('front').onclick = () => st.view(true);
 $('ingame').onclick = async () => { SHOWGAME = !SHOWGAME; await db.put('meta', 'showInGame', SHOWGAME).catch(() => {}); drawGameSwitch(); pushWearing(); say(SHOWGAME ? 'Showing in game' : 'Your own skin is back in game'); };

@@ -11,7 +11,7 @@ export const GROUPS = [
   ['Legs', ['pants', 'overpants', 'shoes']],
   ['Capes', ['cape']]];
 export const REQUIRED = new Set(['bodyCharacteristic', 'face', 'eyes', 'mouth', 'ears', 'underwear']);   // the game never leaves these empty
-export const nice = s => String(s).replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])(\d+)(?=\s|$)/g, '$1 $2');   // Look_Around2 -> Look Around 2
+export const nice = s => String(s).replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])(\d+)(?=\s|$)/g, '$1 $2').replace(/\bSuprised\b/g, 'Surprised');   // Look_Around2 -> Look Around 2
 
 const PART = /^[A-Za-z0-9_ -]{1,64}(\.[A-Za-z0-9_ -]{1,64}){0,2}$/;
 // Anything that comes from outside (a file, a lookup, a backup) passes through here: only known slots, only plain part strings.
@@ -55,10 +55,10 @@ export function rules(CAT) {
   function blank() { const s = empty();
     for (const f of FIELDS) { const d = ITEMS[f].find(e => e.IsDefaultAsset) || (REQUIRED.has(f) ? ITEMS[f][0] : null); s[f] = partStr(d); } return s; }
   const pick = a => a[Math.floor(Math.random() * a.length)];
-  function random() { const s = empty();
-    for (const f of FIELDS) { if (!ITEMS[f].length) continue;
+  function random(ok = () => true) { const s = empty();
+    for (const f of FIELDS) { const pool = ITEMS[f].filter(ok); if (!pool.length) continue;
       const none = !REQUIRED.has(f) && Math.random() < ({ haircut: .05, eyebrows: .05, undertop: .1, pants: .05, shoes: .15 }[f] ?? .6); if (none) continue;
-      const it = pick(ITEMS[f]), v = it.Variants ? pick(Object.keys(it.Variants)) : null; s[f] = partStr(it, pick(colorsOf(it, v))?.[0], v); }
+      const it = pick(pool), v = it.Variants ? pick(Object.keys(it.Variants)) : null; s[f] = partStr(it, pick(colorsOf(it, v))?.[0], v); }
     return s; }
   // a skin from outside may name parts this game version does not have: drop those, and fill what the game requires
   function fit(skin) { const s = { ...empty(), ...skin }, b = blank();
