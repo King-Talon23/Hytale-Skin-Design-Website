@@ -442,6 +442,7 @@ export function stage(canvas, Controls) {
   function liftNow(y, phi = 0, len = 360, z = 0) { const off = cam.position.clone().sub(ctl.target);   // phi: look down from at least this high (polar angle), to see into a bed
     if (y) { if (!lifted) lifted = { len: off.length(), phi: new THREE.Spherical().setFromVector3(off).phi }; off.setLength(len < 0 ? -len : Math.max(off.length(), len)); if (len < 0) { const sp = new THREE.Spherical().setFromVector3(off); sp.theta = 0; off.setFromSpherical(sp); } ctl.target.set(0, y, z);   // a negative len is an exact distance (close on the face)
       if (phi) { const sp = new THREE.Spherical().setFromVector3(off); sp.phi = Math.min(sp.phi, phi); off.setFromSpherical(sp); } }
+    else if (lifted && mountRoot) { lifted = null; return; }   // the mount has framed rider and animal itself: leave that
     else if (lifted) { const sp = new THREE.Spherical().setFromVector3(off); sp.radius = lifted.len; sp.phi = Math.max(sp.phi, lifted.phi); off.setFromSpherical(sp); ctl.target.set(0, 62, 0); lifted = null; } else return;
     cam.position.copy(ctl.target).add(off); ctl.update(); }
   function mount(root, at) { endGlide(); return mountNow(root, at); }

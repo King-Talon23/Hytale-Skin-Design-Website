@@ -205,6 +205,7 @@ const portrait = skin => { const s = R.fit(skin); return lazyImg('p|' + JSON.str
 function setTab(t) { if (t !== 'editor' && picking) leavePicker();
   // opening or leaving the Animations tab stops whatever move is playing (and drops what it holds)
   if (t !== tab && (t === 'animations' || tab === 'animations') && R && !(playing.group === 'Default' && playing.name === 'Idle')) playAnim('Default', 'Idle', 0.5);
+  if (t === 'animations' && tab !== 'animations' && st) st.view(true);   // moves are watched whole, from the front, not from a Wardrobe close-up
   if (ED && t !== 'creator') closeAsset(true).then(() => { playAnim('Default', 'Idle', 0.5); rebuild(); render(); });   // render again once the piece is closed, or the editor (and its tool tip) stays up under the new tab
   tab = t; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t);
   const on = $('tabs').querySelector('.on'), nav = on?.parentElement;   // on a phone the tab row scrolls sideways: keep the open tab in view
