@@ -12,7 +12,7 @@ export const newId = () => [...crypto.getRandomValues(new Uint8Array(4))].map(b 
 export async function list() { return (await db.all('assets')).filter(ok).sort((a, b) => b.updated - a.updated); }
 export async function save(a) {
   const r = { id: a.id, name: cleanName(a.name) || 'My asset', field: a.field, baseId: String(a.baseId || '').slice(0, 64), model: a.model, w: a.w, h: a.h, data: a.data, updated: Date.now(),
-    flag: typeof a.flag === 'string' ? a.flag.slice(0, 80) : undefined,   // set when the asset is too close to a paid item
+    flag: typeof a.flag === 'string' ? a.flag.slice(0, 80) : undefined, split: !!a.split,   /* shared paint spots were split once already */   // set when the asset is too close to a paid item
     shape: okShape(a.shape) ? a.shape : undefined,
     labels: a.labels && typeof a.labels === 'object' ? Object.fromEntries(Object.entries(a.labels).filter(([k, v]) => typeof k === 'string' && k.length <= 64 && typeof v === 'string').slice(0, 64).map(([k, v]) => [k, cleanName(v).slice(0, 30)]).filter(([, v]) => v)) : undefined };   // box names shown in the Creator   // the item's model, reshaped in the Creator (JSON text)
   if (!ok(r)) throw new Error('That asset could not be saved.');

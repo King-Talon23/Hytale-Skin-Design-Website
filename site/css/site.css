@@ -425,3 +425,10 @@ dialog.wide { width: min(760px, 94vw); }
 /* More paint tools: a row floating above the toolbar */
 #app.ws #wstools { overflow: visible; } #wstools .wsgroup2 { position: relative; }
 #wstools .wsextra { position: absolute; bottom: calc(100% + 12px); left: -8px; display: flex; gap: 4px; padding: 6px 8px; background: #102036f2; border: 1px solid var(--line2); border-radius: 10px; }
+/* Creator properties: axis fields in one row, small icon buttons in panel headers */
+.xyzrow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.xyzrow .numfield { width: auto !important; min-width: 0; gap: 2px; } .xyzrow .numfield input { width: 100% !important; min-width: 0; flex: 1; padding-left: 4px; padding-right: 2px; }
+.xyzrow .scrub { width: 16px !important; } .xyzrow .scrub::after { content: ''; }
+.iconbtn { width: 26px; height: 24px; padding: 0; display: grid; place-items: center; background: none; border: 1px solid transparent; border-radius: 3px; color: #c5d6e2; font-size: 15px; line-height: 1; min-height: 0; }
+.iconbtn:hover { background: #1b2e48; border-color: var(--line); }
+.wshead.row { display: flex; align-items: center; gap: 2px; }
