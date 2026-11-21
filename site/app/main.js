@@ -215,7 +215,7 @@ const flushRender = () => { pressing = false; if (renderLater) { renderLater = f
 addEventListener('pointerdown', e => { if (e.target.closest?.('button, a, summary, label, select, .skin')) { pressing = true; setTimeout(flushRender, 1500); } }, true);
 for (const ev of ['pointerup', 'pointercancel']) addEventListener(ev, () => { if (pressing) setTimeout(flushRender, 0); }, true);
 function viewInset() {   // the character is centred above the buttons at the bottom of the view, not behind them
-  const stg = $('view')?.parentElement, bar = stg?.querySelector('.bar'); if (!st || !stg) return;
+  const stg = $('view')?.parentElement, bar = stg?.querySelector('.bar'); if (!st || !stg) return; if (stg.classList.contains('clean')) return;   // Clean view keeps the same picture centre as with the buttons
   const on = bar && bar.offsetParent && !stg.classList.contains('clean') && !$('app').classList.contains('ws');
   const em = stg.querySelector('.emotes'), sr = stg.getBoundingClientRect(), emOn = on && em && em.offsetParent && em.getBoundingClientRect().height > 0;
   const bh = on ? sr.bottom - bar.getBoundingClientRect().top : 0; stg.style.setProperty('--bar', bh + 'px');
@@ -344,12 +344,15 @@ async function showBackdrop(key) {
   finally { clearTimeout(slow); stg.classList.remove('loading'); } }
 function drawStageBtns() {
   const box = $('stagebtns'), stg = $('view').parentElement; if (!box) return;
+  if (!box._menu) { box._menu = true; addEventListener('pointerdown', e => { if (box._open && !box.contains(e.target)) { box._open = false; drawStageBtns(); } }, true); addEventListener('keydown', e => { if (e.key === 'Escape' && box._open) { box._open = false; drawStageBtns(); } }); }
   if (!box._ro) { box._ro = new ResizeObserver(() => { const vb = $('viewbtns'); if (vb) vb.style.paddingLeft = box.offsetWidth ? box.offsetWidth + 10 + 'px' : ''; }); box._ro.observe(box); }   // the Creator's view buttons keep clear of the background button
   let bd = store_.get('se_backdrop'); if (!BACKDROPS.some(b => b[0] === bd)) bd = 'dark'; showBackdrop(bd);
   const name = BACKDROPS.find(b => b[0] === bd)[1], clean = stg.classList.contains('clean');
   box.replaceChildren(...[
-    el('button', { class: 'stbtn', title: 'Change the background behind your character (the game\u2019s own places)', 'aria-label': 'Background: ' + name, onclick: () => { const i = BACKDROPS.findIndex(b => b[0] === bd); store_.set('se_backdrop', BACKDROPS[(i + 1) % BACKDROPS.length][0]); drawStageBtns(); } },
-      el('span', { class: 'bdchip bd-' + bd }), el('b', { text: name })),
+    el('button', { class: 'stbtn', title: 'Choose the background behind your character (the game’s own places)', 'aria-label': 'Background: ' + name, 'aria-haspopup': 'listbox', 'aria-expanded': String(!!box._open), onclick: e => { e.stopPropagation(); box._open = !box._open; drawStageBtns(); } },
+      el('span', { class: 'bdchip bd-' + bd }), el('b', { text: name }), el('span', { class: 'caret', text: '▾' })),
+    box._open ? el('div', { class: 'bdmenu', role: 'listbox', 'aria-label': 'Backgrounds' }, BACKDROPS.map(([k, n]) => el('button', { class: 'bdopt' + (k === bd ? ' on' : ''), role: 'option', 'aria-selected': String(k === bd),
+      onclick: e => { e.stopPropagation(); box._open = false; store_.set('se_backdrop', k); drawStageBtns(); } }, el('span', { class: 'bdchip bd-' + k }), el('b', { text: n })))) : null,
     ED ? null : el('button', { class: 'stbtn', title: clean ? 'Show the buttons again (Esc)' : 'Hide the buttons for a clean look at your character', 'aria-label': clean ? 'Show buttons' : 'Clean view', onclick: () => { stg.classList.toggle('clean'); drawStageBtns(); viewInset(); } },
       el('span', { text: clean ? '\u25c9' : '\u25ce' }), el('b', { text: clean ? 'Show buttons' : 'Clean view' }))].filter(Boolean));
 }
@@ -557,7 +560,6 @@ function panelAnimations() {
     return el('button', { class: A.anim && playing.group === g && playing.name === n ? 'on' : '', title: nice(n), onclick: () => playAnim(g, n) }, animThumb(g, n), el('span', { text: nice(n) }),
       el('i', { class: 'star' + (pinned ? ' on' : ''), title: pinned ? 'Remove from quick slots' : 'Add to quick slots', text: pinned ? '★' : '☆', onclick: e => { e.stopPropagation(); toggleEmote(g, n); render(); } })); };
   return [head('Animations'), el('div', { class: 'pbody' },
-    el('div', { class: 'now' }, el('b', { text: A.anim ? nice(playing.name) : 'Rest pose' })),
     el('div', { class: 'cattiles' }, cats.map(([k, list]) => el('button', { class: 'cattile' + (k === animGroup ? ' on' : ''), onclick: () => { animGroup = k; render(); } },
       catIcon(k), el('b', { text: k }), el('small', { text: String(count(list)) })))),
     animGroup === 'Mount' ? el('div', { class: 'options' }, el('b', { class: 'dim', text: 'Ride:' }), Object.keys(MOUNTS).map(k => el('button', { class: 'chip' + (k === mountKind ? ' on' : ''), text: k,
