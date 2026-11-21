@@ -98,7 +98,7 @@ async function startApp() {
     st.afterShow = () => { outlineBox(); placeGizmo(); if (ED && ED.frame) { ED.frame = false; st.frameOn(ED.canvas); } };
     $('view').addEventListener('pointerdown', e => { if (!ED || !ED.shapeOpen || e.button !== 0 || st.gizmoBusy()) return;
       const mine = o => o.material?.map?.image === ED.canvas;
-      if (ED.placing) { const h = st.pickHit(e.clientX, e.clientY, mine); if (!h) return; e.stopImmediatePropagation(); ED.placing = false;
+      if (ED.placing) { const h = st.pickHit(e.clientX, e.clientY, mine); if (!h) { say('That missed the item: click right on it (zoom in with the wheel for thin parts). Esc cancels.', true); return; } e.stopImmediatePropagation(); ED.placing = false;
         const k = boxesOf(ED.model).findIndex(b => b.node.name === h.mesh.userData.nodeName); if (k >= 0) { ED.box = k; addBox('add', h); } return; }
       const hit = st.pickMesh(e.clientX, e.clientY, mine); if (!hit) return;
       const k = boxesOf(ED.model).findIndex(b => b.node.name === hit.userData.nodeName); if (k >= 0 && k !== ED.box) { ED.box = k; render(); placeGizmo(); return; }
