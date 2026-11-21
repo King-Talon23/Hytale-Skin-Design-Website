@@ -203,7 +203,7 @@ const portrait = skin => { const s = R.fit(skin); return lazyImg('p|' + JSON.str
 function setTab(t) { if (t !== 'editor' && picking) leavePicker();
   // opening or leaving the Animations tab stops whatever move is playing (and drops what it holds)
   if (t !== tab && (t === 'animations' || tab === 'animations') && R && !(playing.group === 'Default' && playing.name === 'Idle')) playAnim('Default', 'Idle', 0.5);
-  if (ED && t !== 'creator') closeAsset(true).then(() => { playAnim('Default', 'Idle', 0.5); rebuild(); });
+  if (ED && t !== 'creator') closeAsset(true).then(() => { playAnim('Default', 'Idle', 0.5); rebuild(); render(); });   // render again once the piece is closed, or the editor (and its tool tip) stays up under the new tab
   tab = t; for (const b of $('tabs').children) b.classList.toggle('on', b.dataset.tab === t);
   const on = $('tabs').querySelector('.on'), nav = on?.parentElement;   // on a phone the tab row scrolls sideways: keep the open tab in view
   if (nav && nav.scrollWidth > nav.clientWidth) nav.scrollTo({ left: nav.scrollLeft + on.getBoundingClientRect().left - nav.getBoundingClientRect().left - (nav.clientWidth - on.offsetWidth) / 2, behavior: 'smooth' });
@@ -692,7 +692,7 @@ async function flushAsset() { clearTimeout(queueAssetSave.t); if (!ED) return; c
   try { e.asset = await assets.save({ ...e.asset, data, shape: e.model && e.shapeN ? JSON.stringify(e.model) : e.asset.shape }); ASSETS = await assets.list(); syncFolder(); } finally { if (ED === e) markSaved(true); } }
 const STEPS = new Map();   // undo history per custom item, kept for this visit so reopening an item can still undo
 async function closeAsset(quiet) {
-  if (!ED) return; keepBrush(); if (ED.float) placeFloat(); STEPS.set(ED.asset.id, { hist: ED.hist, fut: ED.fut, paint: ED.painter.keepSteps() }); tour(99); if ($('viewhint')) $('viewhint').hidden = true; st.cursor(null); await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; registerAssets(); st.highlight(null); st.isolate(null); st.paintMode(false); st.gizmo(null); st.setView('persp'); pics.clear(); lastPic.clear();
+  if (!ED) return; keepBrush(); if (ED.float) placeFloat(); STEPS.set(ED.asset.id, { hist: ED.hist, fut: ED.fut, paint: ED.painter.keepSteps() }); tour(99); if ($('viewhint')) $('viewhint').hidden = true; st.cursor(null); await checkReplica(); await flushAsset().catch(e => say(e.message, true)); ED = null; if ($('viewhint')) $('viewhint').hidden = true; registerAssets(); st.highlight(null); st.isolate(null); st.paintMode(false); st.gizmo(null); st.setView('persp'); pics.clear(); lastPic.clear();
   if (!quiet) { playAnim('Default', 'Idle', 0.5); rebuild(); render(); }
 }
 // painting: the same strokes whether the pointer is on the flat texture or on the 3D model
