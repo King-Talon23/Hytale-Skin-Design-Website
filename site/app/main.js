@@ -619,6 +619,11 @@ function panelHelp() {
   return [head('Help'), el('div', { class: 'pbody prose' },
     sec('How it works', el('ul', { class: 'howto' }, steps.map(([t, d]) => el('li', {}, el('b', { text: t + ' ' }), d))),
       'Drag the character to turn it, scroll to zoom. Front turns it back to face you. The button at the top left of the view changes the background (Studio or one of the game’s places, built from your game files); Clean view hides the buttons, Esc brings them back.'),
+    sec('Good to know', el('ul', { class: 'howto' }, [
+      ['Saving', 'every change saves itself; a new look becomes "My skin N". Save as gives it a name or puts it in an in-game slot. Randomize starts a new look and never changes a saved one.'],
+      ['Stars', 'the ☆ keeps an item in Favourites. On a move it adds it to the round quick buttons beside the character.'],
+      ['Creator', 'Paint colours the item, Shape changes its boxes. Done saves and closes; Equip saves and puts it on.'],
+      ['Limits', `up to ${store.CUSTOM_MAX} skins in My skins, ${store.GAME_SLOTS} in-game slots and ${assets.MAX} custom items.`]].map(([t, d]) => el('li', {}, el('b', { text: t + ' ' }), d)))),
     sec('Game files', META ? `Connected: ${META.name}, ${META.files} character files, read on ${new Date(META.at).toLocaleDateString()}.` : 'Not connected yet.',
       el('div', { class: 'row' }, el('button', { class: 'btn ghost', text: 'Connect again', onclick: showConnect }),
         el('button', { class: 'btn danger', text: 'Forget game files', onclick: guard(async () => { if (!await confirmBox('Forget game files', 'Removes the copy of your game files from this browser. Your saved skins stay.', 'Forget', true)) return; await game.forget(); R = null; pics.clear(); fig.clearCache(); showConnect(); }) }))),
