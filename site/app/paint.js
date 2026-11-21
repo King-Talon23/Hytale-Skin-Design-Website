@@ -61,6 +61,8 @@ export function createPainter(canvas, onChange, onPick) {
       line(a, b); show(); },
     end() { if (!img) return; if (dirty) { redo.length = 0; onChange(true); } else undo.pop(); img = null; base = null; touched = null; },
     undo() { swap(undo, redo); }, redo() { swap(redo, undo); },
+    keepSteps() { return { undo: undo.slice(), redo: redo.slice(), W, H }; },   // the undo steps, kept while the item is closed
+    takeSteps(k) { if (!k || k.W !== W || k.H !== H) return false; undo.splice(0, undo.length, ...k.undo); redo.splice(0, redo.length, ...k.redo); return true; },
     // the texture gets taller: the picture and every undo step keep their pixels where they were, the new rows are empty
     grow(h2) { const old = copy(); canvas.height = h2; H = h2; ctx.putImageData(old, 0, 0);
       const pad = im => { const n = new ImageData(W, h2); n.data.set(im.data); return n; }; for (const a of [undo, redo]) a.forEach((im, i) => { a[i] = pad(im); }); if (adjFrom) adjFrom = pad(adjFrom); },
