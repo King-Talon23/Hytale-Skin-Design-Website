@@ -247,7 +247,7 @@ async function buildWorld(sc, tint) {
   let ax = 0, az = 0, laid = null;   // how far the land has slid (scene units), and where it was last laid out
   const avoid = () => root.userData.avoid || [];   // set pieces' ground rectangles [x0, z0, x1, z1] in blocks: no plant inside them
   // lay out the land for the current slide: wrapped round the character, only what is within R blocks (the fog hides the edge)
-  const layout = (plantsOnly) => { const ox = ax / BLOCK, oz = az / BLOCK, c = root.userData.cam, clear = root.userData.clear || 1, rects = avoid();
+  const layout = (plantsOnly) => { const ox = ax / BLOCK, oz = az / BLOCK, c = root.userData.cam, clear = root.userData.clear || 1, rects = avoid(), fade = root.userData.plantFade ?? 1;
     for (const st of sets) { if (plantsOnly && !st.plant) continue; let n = 0;
       for (const [x0, y, z0, q] of st.list) { const x = sym(x0 + ox), z = sym(z0 + oz); if (x * x + z * z > R * R) continue;
         let k = 1; if (st.plant) { const d = Math.hypot(x, z);   // a plant shrinks away near the character, the camera's lens and any set piece
@@ -255,7 +255,7 @@ async function buildWorld(sc, tint) {
           if (c && k > 0) { const cx = c.x / BLOCK, cz = c.z / BLOCK, L = cx * cx + cz * cz, t = L ? Math.max(0, Math.min(1, (x * cx + z * cz) / L)) : 0;   // and along the line from the lens to the character, so no clump fills the foreground
             k = Math.min(k, Math.max(0, (Math.hypot(x - t * cx, z - t * cz) - 0.9) / 0.8)); }
           for (const r of rects) if (x > r[0] - 0.6 && x < r[2] + 0.6 && z > r[1] - 0.6 && z < r[3] + 0.6) k = 0;
-          if (k < 0.02) continue; }
+          k *= fade; if (k < 0.02) continue; }
         st.im.setMatrixAt(n++, M.compose(V.set(x * BLOCK, y * BLOCK, z * BLOCK), st.plant ? Q.setFromAxisAngle(Y, q) : q || Q.identity(), st.plant ? SC.setScalar(k) : ONE)); }
       st.im.count = n; st.im.instanceMatrix.needsUpdate = true; } };
   const span = P * BLOCK;
@@ -293,11 +293,15 @@ export function stage(canvas, Controls) {
       let mx = anim.move ? -vel.x * dt : 0, mz = anim.move ? -vel.y * dt : 0; const [ox, oz] = world.userData.offset(), span = world.userData.span;
       const along = Math.abs(want.x) > Math.abs(want.y) ? 'x' : Math.abs(want.y) > 0 ? 'z' : null;   // the lane the new move runs down
       if (along === 'x') mz = 0; else if (along === 'z') mx = 0;   // the land only ever slides down the current move's lane
-      if (!mist && along && (along === 'x' ? Math.abs(oz % span) > 1 : Math.abs(ox % span) > 1)) mist = { t: 0, along, snapped: false };
-      if (mist) { mist.t += dt / 0.45; const k = mist.t < 0.5 ? mist.t * 2 : Math.max(0, 2 - mist.t * 2), f = scene.fog;
+      // the character must be on the lane the move runs down. A little off it (a dash to the side): the land drifts back over about a second,
+      // with no haze at all. Far off it: the land eases into the zone's haze, jumps to the lane while hidden, and eases back out, still moving.
+      const sym = c => { c = ((c % span) + span) % span; return c > span / 2 ? c - span : c; }, cross = along === 'x' ? sym(oz) : along === 'z' ? sym(ox) : 0;
+      if (!mist && along && Math.abs(cross) > 2.5 * BLOCK) mist = { t: 0, along, snapped: false };
+      else if (!mist && along && Math.abs(cross) > 0.01) { const step = -Math.sign(cross) * Math.min(Math.abs(cross), (0.3 + Math.abs(cross) / BLOCK * 0.9) * BLOCK * dt); if (along === 'x') mz = step; else mx = step; }
+      if (mist) { mist.t += dt / 0.8; const u = Math.min(1, mist.t), e = u < 0.4 ? u / 0.4 : u < 0.6 ? 1 : (1 - u) / 0.4, k = e * e * (3 - 2 * e), f = scene.fog;
         if (!mist.snapped && mist.t >= 0.5) { world.userData.snap(mist.along); mist.snapped = true; }
         if (f) { const d = cam.position.distanceTo(ctl.target); f.near = FOG[0] + (d + 60 - FOG[0]) * k; f.far = FOG[1] + (d + 330 - FOG[1]) * k; }   // the land fades into the zone's own haze and back
-        world.userData.move(mist.snapped ? mx : 0, mist.snapped ? mz : 0); if (mist.t >= 1) { if (f) { f.near = FOG[0]; f.far = FOG[1]; } mist = null; } }
+        world.userData.plantFade = 1 - k; world.userData.move(mx, mz); if (mist.t >= 1) { if (f) { f.near = FOG[0]; f.far = FOG[1]; } world.userData.plantFade = 1; mist = null; } }
       else world.userData.move(mx, mz); }
     for (const w of flowing) { const [ox, oz] = world ? world.userData.offset() : [0, 0], m = w.material.map; if (m) m.offset.set(-ox / w.userData.flow, oz / w.userData.flow); }   // water drifts with the land
     grid.position.x = (grid.position.x - vel.x * dt) % CELL; grid.position.z = (grid.position.z - vel.y * dt) % CELL;   // the ground runs backwards under the figure
