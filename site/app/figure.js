@@ -281,7 +281,12 @@ export function stage(canvas, Controls) {
   const ctl = new Controls(cam, canvas); ctl.target.set(0, 62, 0); ctl.enablePan = false; ctl.zoomToCursor = false;   // zoom stays on the figure's centre, lined up with the buttons under it
   ctl.minDistance = 40; ctl.maxDistance = 900; ctl.rotateSpeed = 0.55; ctl.maxPolarAngle = Math.PI * 0.55; ctl.update();
   const disc = new THREE.Mesh(new THREE.CircleGeometry(58, 48), new THREE.MeshBasicMaterial({ color: 0x0b1626, transparent: true, opacity: 0.55, fog: false })); disc.rotation.x = -Math.PI / 2; disc.position.y = -0.2; scene.add(disc);
-  const CELL = 32, grid = new THREE.GridHelper(CELL * 40, 40, 0x4a76ad, 0x33557f); grid.material.transparent = true; grid.material.opacity = 0; grid.material.depthWrite = false; scene.add(grid);
+  const CELL = 32, grid = new THREE.Mesh(new THREE.PlaneGeometry(40000, 40000).rotateX(-Math.PI / 2), new THREE.ShaderMaterial({ transparent: true, depthWrite: false,
+    // the Studio floor: grid lines on an endless plane, fading into the dark with distance so no edge is ever seen
+    uniforms: { opacity: { value: 0 }, color: { value: new THREE.Color(0x5a8cc8) }, cell: { value: CELL } },
+    vertexShader: 'varying vec3 vL; varying vec3 vW; void main() { vL = position; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: 'uniform float opacity; uniform vec3 color; uniform float cell; varying vec3 vL; varying vec3 vW; void main() { vec2 g = abs(fract(vL.xz / cell - 0.5) - 0.5) / fwidth(vL.xz / cell); float line = 1.0 - smoothstep(0.0, 1.3, min(g.x, g.y)); float d = length(vW.xz); float fade = 1.0 - smoothstep(300.0, 3200.0, d); gl_FragColor = vec4(color, line * fade * opacity); if (gl_FragColor.a < 0.003) discard; }' }));
+  Object.defineProperty(grid.material, 'opacity', { get() { return this.uniforms.opacity.value; }, set(v) { this.uniforms.opacity.value = v; } }); scene.add(grid);
   let sky = null, world = null, scrollers = [], flowing = [], mist = null; const FOG = [950, 1750];   // mist: the short fade that hides the land going back to the crossing   // the in-game background (setBackdrop below); set pieces that slide while climbing
   // the climbing wall: the same grid stood up in front of the figure, sliding the other way as it climbs
   const wallG = new THREE.GridHelper(CELL * 16, 16, 0x4a76ad, 0x33557f); wallG.rotation.x = Math.PI / 2; wallG.material.transparent = true; wallG.material.opacity = 0; wallG.material.depthWrite = false; wallG.visible = false; scene.add(wallG);
