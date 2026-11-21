@@ -1540,7 +1540,7 @@ async function combineWith(f, e) { say('');
     renameAll(n); into.push(n); const walk = m => { if (m.shape && (m.shape.type === 'box' || m.shape.type === 'quad') && m.shape.visible !== false) added.push([m, m.shape.textureLayout || {}]); for (const c of m.children || []) walk(c); }; walk(n); } };
   const count = boxesOf(ED.model).length, before = JSON.stringify(ED.model), canvasW0 = ED.canvas.width, canvasH0 = ED.canvas.height;
   const incoming = []; { const walk = m => { if (m.shape && (m.shape.type === 'box' || m.shape.type === 'quad') && m.shape.visible !== false) incoming.push(m); for (const c of m.children || []) walk(c); }; src.model.nodes.forEach(walk); }
-  if (count + incoming.length > assets.MAX_BOXES) throw new Error(`Together that would be ${count + incoming.length} boxes; a piece can have up to ${assets.MAX_BOXES}.`);
+  if (count + incoming.length > assets.MAX_BOXES) throw new Error(`Limit is ${assets.MAX_BOXES} parts`);
   merge(ED.model.nodes, src.model.nodes);
   // room on this item's texture for each new box (the texture grows when it must), then their paint is copied across in one step
   let used = fig.usedRects(JSON.parse(before)); const lays = [];   // the free room counts this item's own parts and the new ones already placed (not their old spots)
@@ -1554,7 +1554,7 @@ async function combineWith(f, e) { say('');
     for (let v = 0; v < fv; v++) for (let u = 0; u < fu; u++) { const [dx, dy] = texelAt(a, u, v), [sx, sy] = texelAt(b, u, v); if (dx < 0 || dy < 0 || dx >= W || dy >= H || sx < 0 || sy < 0 || sx >= SW || sy >= SH) continue;
       const j = (dy * W + dx) * 4, k = (sy * SW + sx) * 4; d[j] = sd[k]; d[j + 1] = sd[k + 1]; d[j + 2] = sd[k + 2]; d[j + 3] = sd[k + 3]; } } }); });
   ED.hist.push({ k: 'g', parts: ED.hist.splice(-2) }); shapeChanged();
-  
+  if (added.length) { const k = boxesOf(ED.model).findIndex(b => b.node === added[0][0]); if (k >= 0) { ED.box = k; render(); placeGizmo(); const nm = added[0][0].name; setTimeout(() => { const m = ED && st.findMesh(o => o.userData.nodeName === nm); if (m) { st.showMesh(m); placeGizmo(); } }, 200); } }   /* the added item comes in picked and in view */
 }
 async function combinePick() {   // types down the left (hovering one shows its items at once), item pictures on the right
   const slots = game.FIELDS.filter(f => CAT.items[f]?.length);
