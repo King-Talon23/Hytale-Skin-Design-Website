@@ -74,7 +74,7 @@ def star(name, size=16):
     d.polygon(inner, fill=(232, 169, 59, 255))
     big.resize((size * 2, size * 2), Image.LANCZOS).save(os.path.join(OUT, name + '@2x.png'), optimize=True)
 
-star('Star'); glow('WornGlow', 0.75, 104, 150); glow('HoverGlow', 0.25, 104, 200)
+star('Star'); glow('HoverGlow', 0.25, 104, 200)
 if '--glow-only' in sys.argv: sys.exit()
 WHICH = arg('--set', ','.join(SETS)).split(',')
 tmp = tempfile.mkdtemp()
@@ -236,7 +236,7 @@ def write_ui(set_name, lay):
              (r'Anchor: \(Left: 0, Top: 40, Width: \d+, Height: \d+\);', 'Anchor: (Left: 0, Top: 40, Width: %d, Height: %d);' % (W, H), 1),
              (r'"Wardrobe\.png"', '"Wardrobe%s.png"' % sfx, 1),
              (r'Anchor: \(Left: \d+, Top: \d+, Width: 300, Height: 18\);', 'Anchor: (Left: %d, Top: %d, Width: 300, Height: 18);' % (ox + 8, oy + 2), 1),
-             (r'Anchor: \(Left: \d+, Top: \d+, Width: 94, Height: 200\);(\s*Group #OwnWorn)', r'Anchor: (Left: %d, Top: %d, Width: 94, Height: 200);\g<1>' % (ox, oy), 1),
+             (r'Anchor: \(Left: \d+, Top: \d+, Width: 94, Height: 200\);(\s*Button #OwnCard)', r'Anchor: (Left: %d, Top: %d, Width: 94, Height: 200);\g<1>' % (ox, oy), 1),
              (r'Anchor: \(Left: \d+, Top: \d+, Width: 376, Height: 200\);', 'Anchor: (Left: %d, Top: %d, Width: 376, Height: 200);' % (ox + 94, oy), 1),   # #Presets
              (r'Anchor: \(Left: \d+, Top: \d+, Width: 470, Height: 200\);', 'Anchor: (Left: %d, Top: %d, Width: 470, Height: 200);' % (gx, gy), 2),
              (r'Anchor: \(Left: \d+, Top: \d+, Width: 458, Height: 28\);', 'Anchor: (Left: %d, Top: %d, Width: 458, Height: 28);' % (gx + 8, gy - 6), 1),

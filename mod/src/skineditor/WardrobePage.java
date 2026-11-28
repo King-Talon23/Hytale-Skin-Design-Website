@@ -25,7 +25,8 @@ import javax.annotation.Nonnull;
  * all on one rail that slides along under the mouse wheel when the pointer is on it (a controller moves between the racks and along
  * them with the game's own focus moves), each on a hook with the picture the site saves beside it. A click
  * wears that skin (the mod writes Wearing.json, so custom pieces and the keepOwn rule work as from the site); the own skin gives the
- * real one back. The skin under the pointer lifts off the rail; the worn one hangs forward in a warm light. Opened by using the
+ * real one back. The skin under the pointer comes forward a little; the worn one is lifted off the rail on its hanger and pops
+ * out bigger. Opened by using the
  * Designer Wardrobe block, or any of the game's wardrobes in WardrobeSets (each in its own look); no commands.
  */
 final class WardrobePage extends InteractiveCustomUIPage<WardrobePage.Event> {
@@ -100,23 +101,25 @@ final class WardrobePage extends InteractiveCustomUIPage<WardrobePage.Event> {
         render(ui); sendUpdate(ui, null, false);
     }
 
-    /** the worn skin glows and comes forward (bigger), the one under the pointer a little; both grow around the coat hanger's
-     *  shoulder bar (96 below the rack's top), so a skin never leaves its hanger. Shoulders sit 32% down a site picture and 36%
-     *  down the game's own avatar picture (which is 0.617 as wide as tall). */
+    /** the worn skin is lifted with its coat hanger (hook off the rail) and pops out bigger, the one under the pointer grows a
+     *  little; both grow around the hanger's shoulder bar (96 below the rack's top, less the lift), so a skin never leaves its
+     *  hanger. Shoulders sit 32% down a site picture and 36% down the game's own avatar picture (0.617 as wide as tall). */
     private void render(UICommandBuilder ui) {
         String worn = wardrobe.wornName();
         for (int i = 0; i < looks.size(); i++) {
             boolean on = looks.get(i).name().equals(worn); String card = "#Grid[" + i + "] ";
-            ui.set(card + "#Worn.Visible", on);
-            int s = on ? 94 : hovered == i ? 90 : 86;
-            ui.setObject(card + "#Pic.Anchor", box(47 - s / 2, 96 - Math.round(s * 0.32f), s, s));
+            int s = on ? 102 : hovered == i ? 90 : 86, up = on ? LIFT : 0;
+            ui.setObject(card + "#Hanger.Anchor", box(16, 23 - up, 63, 86));
+            ui.setObject(card + "#Pic.Anchor", box(47 - s / 2, 96 - up - Math.round(s * 0.32f), s, s));
         }
         boolean own = wardrobe.wearingOwn();
-        ui.set("#OwnWorn.Visible", own);
-        int h = own ? 100 : hovered == -1 ? 96 : 92, w = Math.round(h * 0.617f);
-        ui.setObject("#OwnPic.Anchor", box(47 - w / 2, 96 - Math.round(h * 0.36f), w, h));
+        int h = own ? 108 : hovered == -1 ? 96 : 92, w = Math.round(h * 0.617f), up = own ? LIFT : 0;
+        ui.setObject("#OwnHanger.Anchor", box(16, 23 - up, 63, 86));
+        ui.setObject("#OwnPic.Anchor", box(47 - w / 2, 96 - up - Math.round(h * 0.36f), w, h));
         ui.set("#Status.Text", status);
     }
+
+    static final int LIFT = 12;                                 // how far the worn skin's hanger is lifted off the rail
 
     private static Anchor box(int left, int top, int width, int height) {
         Anchor a = new Anchor(); a.setLeft(Value.of(left)); a.setTop(Value.of(top)); a.setWidth(Value.of(width)); a.setHeight(Value.of(height));

@@ -1,5 +1,5 @@
-// One Locker skin on its hook on the wardrobe's bottom rack. The glow marks the skin worn; the skin hangs on a coat hanger (hook over the
-// rail, wooden bar on its shoulders); the plugin grows it around the shoulders while the pointer is on it, and more when worn. Art: dev/tools/render-wardrobe.py.
+// One Locker skin on its hook on the wardrobe's bottom rack. The worn one's hanger is lifted off the rail; the skin hangs on a coat hanger (hook over the
+// rail, wooden bar on its shoulders); the plugin grows it around the shoulders while the pointer is on it, and lifts it with its hanger and grows it more when worn. Art: dev/tools/render-wardrobe.py.
 $C = "../../Common.ui";
 
 @NameStyle = LabelStyle(
@@ -15,11 +15,6 @@ $C = "../../Common.ui";
 Group {
   Anchor: (Width: 94, Height: 200);
 
-  Group #Worn {
-    Anchor: (Left: 0, Top: 56, Width: 94, Height: 150);
-    Background: (TexturePath: "WornGlow.png");
-    Visible: false;
-  }
 
   Button #Card {
     Anchor: (Left: 0, Top: 0, Width: 94, Height: 200);
@@ -33,7 +28,7 @@ Group {
     Group #Hang {
       Anchor: (Left: 0, Top: 0, Width: 94, Height: 200);
 
-      Group {
+      Group #Hanger {
         Anchor: (Left: 16, Top: 23, Width: 63, Height: 86);
         Background: (TexturePath: "Hanger.png");
       }
