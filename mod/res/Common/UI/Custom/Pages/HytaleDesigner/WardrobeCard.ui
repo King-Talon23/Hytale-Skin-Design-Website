@@ -1,5 +1,5 @@
 // One Locker skin on its hook on the wardrobe's bottom rack. The worn one's hanger is lifted off the rail; the skin hangs on a coat hanger (hook over the
-// rail, wooden bar on its shoulders); the plugin grows it around the shoulders while the pointer is on it, and lifts it with its hanger and grows it more when worn. Art: dev/tools/render-wardrobe.py.
+// rail, wooden bar on its shoulders); the plugin lifts it with its hanger and grows it while the pointer is on it or it is worn. Art: dev/tools/render-wardrobe.py.
 $C = "../../Common.ui";
 
 @NameStyle = LabelStyle(
